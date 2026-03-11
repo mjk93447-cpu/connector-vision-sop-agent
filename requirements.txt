@@ -1,5 +1,9 @@
-pyautogui
-pytesseract
-ultralytics
-pyinstaller
-pytest
+ultralytics==8.3.21
+opencv-python-headless==4.10.0.84
+pytesseract==0.3.13
+pyautogui==0.9.54
+numpy==1.26.4
+Pillow==10.3.0
+pyinstaller==6.10.0
+pyyaml==6.0.2
+torch==2.3.0+cpu
