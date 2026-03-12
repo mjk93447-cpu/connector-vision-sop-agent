@@ -3,14 +3,15 @@ torch==2.3.1+cpu
 torchvision==0.18.1+cpu
 
 # Core Vision/ML
-ultralytics
+ultralytics==8.3.21
 opencv-python-headless==4.10.0.84
-pytesseract
+pytesseract==0.3.13
 pyyaml==6.0.2
 
-# PyInstaller (명시적 추가 - build.bat 필수)
+# Build
 pyinstaller==6.10.0
 
-# 기타 (로컬에서 사용)
-pillow
-numpy
+# Local/runtime
+Pillow==10.3.0
+numpy==1.26.4
+pyautogui==0.9.54

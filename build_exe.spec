@@ -2,32 +2,31 @@
 
 block_cipher = None
 
+from PyInstaller.utils.hooks import Tree
+
 a = Analysis(
     ['src/main.py'],
     pathex=['.'],
     binaries=[],
     datas=[
         ('assets/config.json', 'assets'),
-        ('assets/models/yolov26n.pt', 'assets/models')
+        # Package models directory (may only contain placeholders in git).
+        *Tree('assets/models', prefix='assets/models'),
     ],
     hiddenimports=[
-        # Vision/ML Core (필수)
+        # Vision/ML Core
         'ultralytics',
-        'ultralytics.yolo.engine.model',
-        'ultralytics.yolo.utils',
         'torch',
         'torchvision',
         'torch._C',
-        
         # CV/OCR
         'cv2',
         'pytesseract',
         'PIL',
         'PIL.Image',
-        
         # Utils
         'pyyaml',
-        'numpy'
+        'numpy',
     ],
     hookspath=[],
     hooksconfig={},
@@ -61,5 +60,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None  # 아이콘 추가시 경로 입력
+    icon=None,
 )

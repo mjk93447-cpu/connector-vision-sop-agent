@@ -1,88 +1,66 @@
-name: Build & Release Connector Vision EXE v1.0
+name: Build & Release Connector Vision EXE
+
 on:
   push:
-    tags: 
-      - 'v*'
+    branches:
+      - main
+    tags:
+      - "v*"
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-release:
     runs-on: windows-latest
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Cache pip packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/pip
-          C:hostedtoolcachewindowsPython\u0003.11.*
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
 
-    - name: Install PyTorch CPU first
-      run: |
-        pip install --upgrade pip
-        pip install torch==2.3.1+cpu torchvision==0.18.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+      - name: Install dependencies (CPU wheels)
+        run: |
+          python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
 
-    - name: Install remaining dependencies
-      run: pip install -r requirements.txt
+      - name: Build EXE with PyInstaller (spec)
+        shell: cmd
+        run: |
+          pyinstaller build_exe.spec --distpath dist --clean
 
-    - name: Verify PyInstaller
-      run: pyinstaller --version
+      - name: Verify EXE built
+        shell: cmd
+        run: |
+          dir dist
+          if exist dist\connector_vision_agent.exe (
+            for %%F in (dist\connector_vision_agent.exe) do echo EXE OK: %%~zF bytes
+          ) else (
+            echo ❌ EXE build FAILED
+            exit /b 1
+          )
 
-    - name: Build EXE (Final Working)
-      shell: cmd
-      run: |
-          pyinstaller --onefile --console --name=connector_vision_agent ^
-            --add-data "assets/config.json;assets" ^
-            --add-data "assets/models/yolov26n.pt;assets/models" ^
-            --hidden-import=ultralytics ^
-            --hidden-import=torch ^
-            --hidden-import=torchvision ^
-            --hidden-import=cv2 ^
-            --hidden-import=pytesseract ^
-            --hidden-import=pyyaml ^
-            src/main.py --distpath dist --clean
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: connector_vision_agent-exe
+          path: |
+            dist/connector_vision_agent.exe
+            assets/config.json
+            README.md
 
-    - name: Verify EXE built (CMD)
-      shell: cmd
-      run: |
-        dir dist
-        if exist distconnector_vision_agent.exe (
-          for %%F in (distconnector_vision_agent.exe) do echo EXE OK: %%~zF bytes
-        ) else (
-          echo ❌ EXE build FAILED
-          exit /b 1
-        )
-
-    - name: Upload EXE Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: connector_vision_agent-v1.0-windows
-        path: |
-          dist/connector_vision_agent.exe
-          assets/config.json
-          README.md
-        retention-days: 30
-
-    - name: Create GitHub Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          dist/connector_vision_agent.exe
-          assets/config.json
-          README.md
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/connector_vision_agent.exe
+            assets/config.json
+            README.md
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
