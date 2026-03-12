@@ -1,5 +1,5 @@
 ultralytics==8.4.0
-transformers[torch]==4.44.0
+transformers[torch]==4.56.2
 surya-ocr==0.17.1
 
 # PyTorch (install via -f torch_stable.html in CI when needed)
