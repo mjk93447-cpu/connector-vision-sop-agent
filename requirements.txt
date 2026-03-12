@@ -1,17 +1,21 @@
-# PyTorch CPU (Actions Windows 호환 버전)
-torch==2.3.1+cpu
-torchvision==0.18.1+cpu
+ultralytics==8.4.0
+transformers[torch]==4.44.0
+surya-ocr==0.17.1
 
-# Core Vision/ML
-ultralytics==8.3.21
+# PyTorch CPU wheels (Windows-friendly via -f torch_stable.html)
+torch==2.6.0+cpu
+torchvision==0.21.0+cpu
+torchaudio==2.6.0+cpu
+
+onnxruntime==1.19.0
+accelerate==1.1.0
+
+# bitsandbytes is not reliably available on Windows CPU.
+bitsandbytes==0.44.0; platform_system != "Windows"
+
+pyinstaller==6.10.0
+pillow==10.4.0
 opencv-python-headless==4.10.0.84
 pytesseract==0.3.13
 pyyaml==6.0.2
-
-# Build
-pyinstaller==6.10.0
-
-# Local/runtime
-Pillow==10.3.0
-numpy==1.26.4
 pyautogui==0.9.54

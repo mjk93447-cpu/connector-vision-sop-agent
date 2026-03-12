@@ -62,7 +62,7 @@ class VisionAgent:
 
     def __init__(
         self,
-        model_path: str = "assets/models/yolov26n.pt",
+        model_path: str = "assets/models/yolo26n.pt",
         confidence_threshold: float = 0.6,
         ocr_psm: int = 7,
     ) -> None:
@@ -283,7 +283,7 @@ class VisionEngine(VisionAgent):
     def __init__(
         self,
         config: DetectionConfig | None = None,
-        model_path: str = "assets/models/yolov26n.pt",
+        model_path: str = "assets/models/yolo26n.pt",
     ) -> None:
         self.config = config or DetectionConfig()
         super().__init__(
