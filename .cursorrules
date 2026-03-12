@@ -1,0 +1,9 @@
+Connector Vision SOP Agent v1.0 - Samsung OLED Line
+PURPOSE: 12-step manual SOP -> 30-second automation
+UI: left 60% (pin image) + right 40% (controls)
+CORE: Mold ROI + Pin20 verification
+ARCH: YOLOv26n + Tesseract (PSM7) + PyAutoGUI -> PyInstaller (280MB EXE)
+SOP: 12 steps (Login -> Pin verification -> Save)
+DEPLOY: config.json -> offline line PC
+ERROR: 3 retries + JSON log
+PRIORITY: src/main.py -> EXE -> test
