@@ -2,8 +2,6 @@
 
 block_cipher = None
 
-from PyInstaller.building.datastruct import Tree
-
 a = Analysis(
     ['src/main.py'],
     pathex=['.'],
@@ -11,7 +9,7 @@ a = Analysis(
     datas=[
         ('assets/config.json', 'assets'),
         # Package models directory (may only contain placeholders in git).
-        *Tree('assets/models', prefix='assets/models'),
+        ('assets/models', 'assets/models'),
     ],
     hiddenimports=[
         # Vision/ML Core
