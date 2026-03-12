@@ -2,10 +2,10 @@ ultralytics==8.4.0
 transformers[torch]==4.44.0
 surya-ocr==0.17.1
 
-# PyTorch CPU wheels (Windows-friendly via -f torch_stable.html)
-torch==2.6.0+cpu
-torchvision==0.21.0+cpu
-torchaudio==2.6.0+cpu
+# PyTorch (install via -f torch_stable.html in CI when needed)
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
 
 onnxruntime==1.19.0
 accelerate==1.1.0
