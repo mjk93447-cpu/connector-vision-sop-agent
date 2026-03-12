@@ -2,7 +2,7 @@
 
 block_cipher = None
 
-from PyInstaller.utils.hooks import Tree
+from PyInstaller.building.datastruct import Tree
 
 a = Analysis(
     ['src/main.py'],
