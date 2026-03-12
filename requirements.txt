@@ -1,10 +1,16 @@
-ultralytics==8.3.21
+# PyTorch CPU (Actions Windows 호환 버전)
+torch==2.3.1+cpu
+torchvision==0.18.1+cpu
+
+# Core Vision/ML
+ultralytics
 opencv-python-headless==4.10.0.84
-pytesseract==0.3.13
-pyautogui==0.9.54
-numpy==1.26.4
-Pillow==10.3.0
-pyinstaller==6.10.0
+pytesseract
 pyyaml==6.0.2
-torch==2.4.0
-torchvision==0.19.0
+
+# PyInstaller (명시적 추가 - build.bat 필수)
+pyinstaller==6.10.0
+
+# 기타 (로컬에서 사용)
+pillow
+numpy
