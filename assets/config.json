@@ -3,5 +3,15 @@
   "screen_resolution": null,
   "password": "1111",
   "ocr_threshold": 0.75,
-  "pin_count_min": null
+  "pin_count_min": null,
+  "llm": {
+    "enabled": false,
+    "backend": "llama_cpp",
+    "model_path": "C:/models/qwen2_5-vl-7b-q4_k_m.gguf",
+    "ctx_size": 4096,
+    "gpu_layers": 0,
+    "http_url": "http://localhost:8000/v1/chat/completions",
+    "max_input_tokens": 4096,
+    "max_output_tokens": 512
+  }
 }
