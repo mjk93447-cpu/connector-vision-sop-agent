@@ -40,23 +40,19 @@ jobs:
     - name: Verify PyInstaller
       run: pyinstaller --version
 
-    - name: Build EXE with PyInstaller (PowerShell Safe)
-      shell: pwsh
+    - name: Build EXE (Final Working)
+      shell: cmd
       run: |
-        pyinstaller build_exe.spec `
-          --onefile `
-          --console `
-          --name connector_vision_agent `
-          --add-data "assets/config.json;assets" `
-          --add-data "assets/models/yolov26n.pt;assets/models" `
-          --hidden-import=ultralytics `
-          --hidden-import=torch `
-          --hidden-import=torchvision `
-          --hidden-import=cv2 `
-          --hidden-import=pytesseract `
-          --hidden-import=pyyaml `
-          --distpath=dist `
-          --clean
+          pyinstaller --onefile --console --name=connector_vision_agent ^
+            --add-data "assets/config.json;assets" ^
+            --add-data "assets/models/yolov26n.pt;assets/models" ^
+            --hidden-import=ultralytics ^
+            --hidden-import=torch ^
+            --hidden-import=torchvision ^
+            --hidden-import=cv2 ^
+            --hidden-import=pytesseract ^
+            --hidden-import=pyyaml ^
+            src/main.py --distpath dist --clean
 
     - name: Verify EXE built (CMD)
       shell: cmd
