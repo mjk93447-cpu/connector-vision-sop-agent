@@ -41,7 +41,10 @@ def main() -> list[str]:
             ocr_psm=_resolve_ocr_psm(config),
         )
     )
-    control = ControlEngine(retries=_resolve_retries(config))
+    control = ControlEngine(
+        vision_agent=vision,
+        retries=_resolve_retries(config),
+    )
     executor = SopExecutor(vision=vision, control=control)
     return executor.run()
 
