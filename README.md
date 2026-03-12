@@ -1,6 +1,6 @@
 # connector-vision-sop-agent
 
-Connector Vision SOP Agent v1.0 scaffold for Samsung OLED line automation.
+Connector Vision SOP Agent v1.0 scaffold for OLED line automation.
 
 ## Goal
 
