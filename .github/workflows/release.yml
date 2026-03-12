@@ -28,6 +28,10 @@ jobs:
         run: |
           python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
 
+      - name: Verify YOLO26n loads (80 classes)
+        run: |
+          python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26n.pt'); print('✅ YOLO26n:', len(m.names), 'classes')"
+
       - name: Build EXE with PyInstaller (spec)
         shell: cmd
         run: |
