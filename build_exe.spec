@@ -23,7 +23,6 @@ a = Analysis(
         'PIL',
         'PIL.Image',
         # Utils
-        'pyyaml',
         'numpy',
     ],
     hookspath=[],

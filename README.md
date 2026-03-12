@@ -82,6 +82,43 @@ intact.
     --notes "12-step SOP automation complete"
   ```
 
+## LLM & config.proposed.json 수동 적용 가이드
+
+LLM 기반 SOP/비전 튜닝은 **항상 사람이 최종 승인**한다는 원칙을 따른다. 에이전트는 `assets/config.json`을 자동으로 덮어쓰지 않고, 대신 제안만 별도 파일로 남긴다.
+
+### 1. LLM 분석 실행 (콘솔 [L])
+
+1. `connector_vision_agent.exe`를 실행한다.
+2. `[1] / [2] / [3]` 중 하나를 선택해 SOP를 한 번 실행한다.
+3. 실행이 끝난 뒤, 콘솔에서 `[L]` 키를 눌러 **Offline LLM 분석**을 수행한다.
+4. LLM이 활성화되어 있고 설정이 올바르면:
+   - 콘솔에 `Suggested config_patch keys`, `SOP recommendations`, `Proposed actions` 리스트가 출력된다.
+   - `assets/config.proposed.json` 파일이 생성되거나 갱신된다.
+
+### 2. config.proposed.json 검토
+
+1. 에이전트를 종료하거나 일시 중지한 상태에서:
+   - `assets/config.json`
+   - `assets/config.proposed.json`
+   두 파일을 텍스트 에디터로 연다.
+2. `config.proposed.json`에서 변경된 키와 값을 확인한다.
+3. 변경 내용이 라인 환경에 적절한지, 안전 범위(예: `ocr_threshold`, `confidence_threshold`)를 벗어나지 않는지 검토한다.
+
+### 3. 승인된 변경 수동 적용
+
+1. 필요하다면 `assets/config.json`을 백업한다. 예:
+
+   - `config.backup-2026-03-12.json`
+
+2. 승인된 변경만 `config.proposed.json`에서 `config.json`으로 **수동으로 복사**한다.
+3. 저장 후, 다음 SOP 실행부터는 업데이트된 `config.json`이 사용된다.
+4. 적용이 끝난 `config.proposed.json`은:
+   - 보관이 필요하면 리네임하여 기록용으로 남기고,
+   - 그렇지 않으면 삭제해도 된다 (다음 [L] 실행 시 다시 생성 가능).
+
+> 중요: 현재 버전에서는 어떠한 경우에도 EXE가 `config.json`을 자동으로 수정하지 않는다.  
+> 항상 엔지니어가 `config.proposed.json`을 검토한 뒤 필요한 변경만 수동으로 반영해야 한다.
+
 ## 🎯 라인 PC 배포 (3분)
 
 1. 브라우저에서 프로젝트 릴리스 페이지로 이동합니다. 예:

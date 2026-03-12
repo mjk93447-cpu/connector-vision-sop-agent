@@ -23,7 +23,12 @@ import json
 from src.config_loader import load_config
 from src.control_engine import ControlEngine
 from src.log_manager import LogManager
-from src.sop_advisor import apply_config_patch, summarize_failures, write_proposed_config
+from src.sop_advisor import (
+    apply_config_patch,
+    summarize_failures,
+    write_proposed_config,
+    propose_actions,
+)
 from src.sop_executor import SopExecutor
 from src.vision_engine import DetectionConfig, VisionEngine
 
@@ -184,18 +189,37 @@ def run_console() -> None:
                 note = result.get("note", "")
                 if note:
                     print(f"      Note: {note}")
-                patch = result.get("config_patch", {})
-                recs = result.get("sop_recommendations", [])
+
+                patch = result.get("config_patch", {}) or {}
+                recs = result.get("sop_recommendations", []) or []
+
                 if patch:
                     print("      Suggested config_patch keys:", ", ".join(patch.keys()))
                 else:
                     print("      No config_patch suggested.")
+
                 if recs:
                     print("      SOP recommendations:")
                     for idx, rec in enumerate(recs, 1):
                         print(f"        {idx}. {rec}")
                 else:
                     print("      No SOP recommendations.")
+
+                # Normalize into high-level actions for human review.
+                actions = propose_actions(result)
+                if actions:
+                    print("      Proposed actions (for engineer review):")
+                    for idx, action in enumerate(actions, 1):
+                        atype = action.get("type", "unknown")
+                        desc = action.get("description", "")
+                        if atype == "config_patch":
+                            key = action.get("key")
+                            value = action.get("value")
+                            print(f"        {idx}. [CONFIG] {desc} (key={key!r}, value={value!r})")
+                        elif atype == "sop_recommendation":
+                            print(f"        {idx}. [SOP] {desc}")
+                        else:
+                            print(f"        {idx}. [{atype.upper()}] {desc}")
 
                 # Phase 4 Checkpoint 2: write a proposed config, do not auto-apply.
                 if patch:
@@ -217,7 +241,11 @@ def run_console() -> None:
                         for step, count in by_step.items():
                             print(f"        {step}: {count}")
 
-                print("      (config.json은 자동으로 변경되지 않습니다. proposed 파일을 검토 후 적용하세요.)")
+                print(
+                    "      (config.json은 자동으로 변경되지 않습니다. "
+                    "assets/config.proposed.json 파일을 편집기로 열어 검토한 뒤, "
+                    "허용할 변경만 수동으로 config.json에 반영하세요.)"
+                )
             except Exception as exc:  # pragma: no cover - defensive guard.
                 print(f"[LLM ERROR] Failed to run offline LLM analysis: {exc!r}")
 
@@ -233,13 +261,21 @@ def run_console() -> None:
             cfg = load_config()
             llm_cfg = cfg.get("llm") or {}
             if not llm_cfg.get("enabled"):
-                print("LLM is disabled in config.json (llm.enabled is false). Enable it to use chat mode.")
+                print(
+                    "LLM is disabled in config.json (llm.enabled is false). "
+                    "config.json의 llm.enabled 값을 true로 변경한 뒤 다시 시도하세요."
+                )
                 continue
 
             try:
                 offline_llm = OfflineLLM.from_config(llm_cfg)
             except Exception as exc:  # pragma: no cover - defensive
-                print(f"[LLM ERROR] Failed to initialize offline LLM: {exc!r}")
+                print(
+                    "[LLM ERROR] Failed to initialize offline LLM: "
+                    f"{exc!r}\n"
+                    "  - assets/config.json 의 llm.model_path / backend 설정을 확인하세요.\n"
+                    "  - 필요한 경우 llama-cpp-python 또는 HTTP LLM 서버가 정상 동작하는지 점검하세요."
+                )
                 continue
 
             # Build initial context from the latest run payload.
@@ -253,6 +289,10 @@ def run_console() -> None:
             )
             print("\n[CHAT] Enter chat mode. Type '/exit' to return to the main menu.")
             print("       The model has been given the latest run payload as context.")
+            print("       Example questions:")
+            print("         - \"이번 SOP 실행에서 실패한 단계와 이유를 요약해줘\"")
+            print("         - \"핀 카운트 관련해서 어떤 튜닝을 시도해 보면 좋을까?\"")
+            print("         - \"ROI 설정이 자주 실패하는 원인을 추정해줘\"")
 
             # Provide a short summary question as the first turn.
             history: list[dict[str, str]] = [
@@ -272,7 +312,11 @@ def run_console() -> None:
                 # Keep the conversation history going.
                 history.append({"role": "assistant", "content": first_answer})
             except Exception as exc:  # pragma: no cover
-                print(f"[LLM ERROR] Failed initial summary: {exc!r}")
+                print(
+                    "[LLM ERROR] Failed initial summary: "
+                    f"{exc!r}\n"
+                    "  - LLM 모델/서버 상태와 config.json의 llm.* 설정을 다시 확인한 뒤 재시도하세요."
+                )
                 continue
 
             while True:
@@ -286,13 +330,22 @@ def run_console() -> None:
                     print("Leaving chat mode.")
                     break
 
+                if not user_q:
+                    print("  (질문을 입력하거나 '/exit'로 종료할 수 있습니다.)")
+                    continue
+
                 history.append({"role": "user", "content": user_q})
                 try:
                     answer = offline_llm.chat(system=system, history=history)
                     print("[LLM]", answer)
                     history.append({"role": "assistant", "content": answer})
                 except Exception as exc:  # pragma: no cover
-                    print(f"[LLM ERROR] Chat failed: {exc!r}")
+                    print(
+                        "[LLM ERROR] Chat failed: "
+                        f"{exc!r}\n"
+                        "  - 네트워크/로컬 LLM 서버 또는 모델 설정 문제일 수 있습니다. "
+                        "config.json과 LLM 프로세스를 확인한 뒤 다시 시도하세요."
+                    )
                     break
 
             continue

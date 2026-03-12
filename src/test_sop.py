@@ -41,6 +41,19 @@ def test_full_sop(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ControlEngine, "click_target", _fake_click_target, raising=True)
     monkeypatch.setattr(ControlEngine, "drag_roi", _fake_drag_roi, raising=True)
 
+    # Fake screen capture so tests do not require a real display or pyautogui.
+    def _fake_capture_screen(
+        self: VisionEngine, region: tuple[int, int, int, int] | None = None
+    ) -> np.ndarray:
+        return np.zeros((480, 640, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        VisionEngine,
+        "capture_screen",
+        _fake_capture_screen,
+        raising=True,
+    )
+
     # Fake pin validation so in_pin_up/in_pin_down both pass.
     def _fake_validate_pin_count(self: VisionEngine, image: Any) -> dict[str, Any]:
         return {"count": 40, "pin_count_min": 20, "valid": True, "centers": []}
@@ -88,6 +101,19 @@ def test_main_integration_trace(monkeypatch: pytest.MonkeyPatch) -> None:
             end: tuple[int, int],
         ) -> ControlResult:
             return ControlResult(success=True, coords=end, duration=0.02)
+
+    # Ensure screen capture does not depend on pyautogui in headless tests.
+    def _fake_capture_screen(
+        self: VisionEngine, region: tuple[int, int, int, int] | None = None
+    ) -> np.ndarray:
+        return np.zeros((480, 640, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        VisionEngine,
+        "capture_screen",
+        _fake_capture_screen,
+        raising=True,
+    )
 
     monkeypatch.setattr(main_module, "VisionEngine", _TestVision, raising=True)
     monkeypatch.setattr(main_module, "ControlEngine", _TestControl, raising=True)
