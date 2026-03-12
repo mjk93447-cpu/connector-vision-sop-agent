@@ -1,7 +1,8 @@
 name: Build & Release Connector Vision EXE v1.0
 on:
   push:
-    tags: ['v*']
+    tags: 
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -39,37 +40,33 @@ jobs:
     - name: Verify PyInstaller
       run: pyinstaller --version
 
-    - name: Build EXE with PyInstaller (Direct Call)
+    - name: Build EXE with PyInstaller (PowerShell Safe)
+      shell: pwsh
       run: |
-        cd .
-        pyinstaller build_exe.spec ^
-          --onefile ^
-          --console ^
-          --name=connector_vision_agent ^
-          --icon=None ^
-          --add-data "assets/config.json;assets" ^
-          --add-data "assets/models/yolov26n.pt;assets/models" ^
-          --hidden-import=ultralytics ^
-          --hidden-import=ultralytics.yolo.engine.model ^
-          --hidden-import=torch ^
-          --hidden-import=torchvision ^
-          --hidden-import=cv2 ^
-          --hidden-import=pytesseract ^
-          --hidden-import=pyyaml ^
-          --hidden-import=PIL ^
-          --distpath=dist ^
-          --workpath=build ^
+        pyinstaller build_exe.spec `
+          --onefile `
+          --console `
+          --name connector_vision_agent `
+          --add-data "assets/config.json;assets" `
+          --add-data "assets/models/yolov26n.pt;assets/models" `
+          --hidden-import=ultralytics `
+          --hidden-import=torch `
+          --hidden-import=torchvision `
+          --hidden-import=cv2 `
+          --hidden-import=pytesseract `
+          --hidden-import=pyyaml `
+          --distpath=dist `
           --clean
 
-    - name: Verify EXE built
+    - name: Verify EXE built (CMD)
+      shell: cmd
       run: |
         dir dist
         if exist distconnector_vision_agent.exe (
-          echo "✅ EXE built successfully: %~z1"
-          dir distconnector_vision_agent.exe
+          for %%F in (distconnector_vision_agent.exe) do echo EXE OK: %%~zF bytes
         ) else (
-          echo "❌ EXE build failed"
-          exit 1
+          echo ❌ EXE build FAILED
+          exit /b 1
         )
 
     - name: Upload EXE Artifact
@@ -82,7 +79,7 @@ jobs:
           README.md
         retention-days: 30
 
-    - name: Create GitHub Release (Tags only)
+    - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
