@@ -32,7 +32,7 @@ jobs:
 
       - name: Verify YOLO26n loads (80 classes)
         run: |
-          python -c "from ultralytics import YOLO; m=YOLO('yolo26n.pt'); print('YOLO26n classes:', len(m.names))"
+          python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26n.pt'); print('YOLO26n classes:', len(m.names))"
       - name: Build EXE with PyInstaller (spec)
         shell: cmd
         run: |
