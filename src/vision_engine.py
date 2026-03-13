@@ -85,11 +85,24 @@ class VisionAgent:
         return os.path.abspath(os.path.join(base_path, relative_path))
 
     def _load_model(self, model_path: str) -> YOLO | None:
-        """Load YOLO weights when available without breaking scaffold runs."""
+        """
+        Load YOLO weights when available without breaking scaffold runs.
 
-        if not os.path.exists(model_path):
+        Priority:
+        1. Use a local .pt file if it exists (offline line PC, assets/models/yolo26n.pt).
+        2. If the local file is missing, fall back to the Ultralytics hub name
+           (e.g. 'yolo26n.pt') so that CI or online dev machines can auto-download.
+        """
+
+        if os.path.exists(model_path):
+            return YOLO(model_path)
+
+        # Fall back to model name only (Ultralytics will download if possible).
+        name = os.path.basename(model_path)
+        try:
+            return YOLO(name)
+        except Exception:
             return None
-        return YOLO(model_path)
 
     def capture_screen(
         self, region: tuple[int, int, int, int] | None = None
