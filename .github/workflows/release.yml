@@ -49,14 +49,15 @@ jobs:
             exit /b 1
           )
 
-      - name: Upload EXE artifact
+      - name: Upload offline EXE bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: connector_vision_agent-exe
           path: |
             dist/connector_vision_agent.exe
-            assets/config.json
+            assets/**
             README.md
+            ROADMAP.md
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')

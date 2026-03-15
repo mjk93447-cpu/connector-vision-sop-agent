@@ -234,6 +234,52 @@ This roadmap should be kept up to date as we iterate. When a phase is completed,
    - 성능/신뢰성/사용성 지표 수집 및 필요 시 모델/프롬프트/UX 튜닝.
    - README/운영 매뉴얼/장애 대응 가이드 최종 정리.
 
+---
+
+## Future Direction – Minimal Offline Computer-Use Agent (Llama4-Scout-8B-Q4 + YOLO26x)
+
+장기적으로는 Tesseract OCR 의존성을 제거하고, 보다 단순한 **오프라인 컴퓨터-유즈 에이전트** 아키텍처로 전환한다. 목표 스택:
+
+- **Vision**: YOLO26x (또는 동급 커스텀 YOLO) 단일 스택으로 버튼/핵심 UI 요소 인식.
+- **LLM**: `Llama4-Scout-8B-Q4` (가칭, 8B Q4 양자화) 오프라인 CPU+경량 GPU 구동.
+- **OCR**: 별도 Tesseract 엔진을 제거하고, 필요 시:
+  - YOLO26x 기반 텍스트 박스 검출 + LLM post-hoc reasoning,
+  - 혹은 라인에서 요구하는 텍스트 수를 최소화하는 UX 재설계.
+
+### Planned large-scale refactor (모델 체인지 플랜)
+
+1. **Vision 레이어 정리 (YOLO26x 중심)**
+   - `src/vision_engine.py`에서:
+     - Tesseract 관련 전처리/`read_text`/`locate_text` 로직을 점진적으로 제거 또는 비활성화.
+     - Mold ROI, 버튼/아이콘 검출 등을 YOLO26x 한 계열로 통합.
+   - `assets/config.json`:
+     - `ocr_threshold`, `ocr_psm` 등 OCR 전용 파라미터를 deprecated로 표시하고,
+     - YOLO confidence/ROI 설정 위주로 재구성.
+
+2. **LLM 백엔드 교체 (Llama4-Scout-8B-Q4)**
+   - `src/llm_offline.py`:
+     - Qwen2.5-VL 중심 설계를 유지하되, `backend: "llama4_scout"` 와 같은 신규 백엔드 타입을 추가.
+     - GGUF 형식의 `Llama4-Scout-8B-Q4` 모델을 기본값으로 가정하고, CPU-only + 저용량 GPU 환경에서의 튜닝 파라미터 정의.
+   - `assets/config.json.llm`:
+     - `model_path`를 `C:/models/llama4-scout-8b-q4.gguf` 와 같은 경로로 업데이트.
+     - 컨텍스트/출력 토큰 수를 실제 응답 지연과 메모리 사용량 기준으로 재조정.
+
+3. **SOP/에이전트 동작 단순화**
+   - Tesseract 제거 이후, 버튼/단계 인식은 모두:
+     - YOLO26x → UI 요소/영역 인식,
+     - LLM (Llama4-Scout) → 로그 해석, 튜닝 제안, 예외 상황 설명,
+     로 역할을 분리.
+   - `sop_executor` 및 `control_engine`에서 OCR 기반 분기를 줄이고,
+     - “탐지 실패 시 LLM에게 진단 요청”과 같은 고수준 처리 패턴으로 통합.
+
+4. **테스트/마이그레이션 전략**
+   - 기존 Tesseract 기반 코드와 YOLO+LLM-only 경로를 **일시적으로 공존**시켜, 라인 테스트 중 비교 가능하게 유지.
+   - Checkpoint 4 이후, 충분한 라인 테스트/벤치마크가 끝나면:
+     - Tesseract 의존 패키지를 `requirements.txt`에서 제거,
+     - 코드/문서에서 OCR 관련 설명을 정리.
+
+이 모델 체인지 계획은 Phase 2~5를 모두 관통하는 장기 리팩터링으로, 실제 라인 PC에 배포되는 최종 버전은 “Llama4-Scout-8B-Q4 + YOLO26x” 조합의 **미니멀 오프라인 컴퓨터-유즈 에이전트** 형태로 귀결되는 것을 목표로 한다.
+
 개발자는 새로운 기능을 설계하거나 수정할 때마다 이 ROADMAP을 우선 검토하고, 현재 단계와 일치하는지 확인한 뒤 작업을 진행해야 한다.
 
 ---
