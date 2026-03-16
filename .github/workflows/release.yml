@@ -62,138 +62,6 @@ jobs:
             exit /b 1
           )
 
-      # ------------------------------------------------------------------ #
-      #  Portable Offline Bundle — Ollama + LLM + EXE
-      # ------------------------------------------------------------------ #
-
-      - name: Download Ollama portable binary (Windows)
-        shell: pwsh
-        run: |
-          $url = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
-          Write-Host "Downloading Ollama from $url ..."
-          Invoke-WebRequest -Uri $url -OutFile ollama-windows.zip -UseBasicParsing
-          New-Item -ItemType Directory -Path ollama_bin -Force | Out-Null
-          Expand-Archive -Path ollama-windows.zip -DestinationPath ollama_bin -Force
-          Write-Host "Ollama binary files:"
-          Get-ChildItem ollama_bin | Format-Table Name, Length
-
-      - name: Start Ollama and pull offline LLM model (qwen2.5:0.5b)
-        shell: cmd
-        run: |
-          set OLLAMA_MODELS=%CD%\ollama_models
-          mkdir ollama_models 2>nul
-          echo OLLAMA_MODELS=%OLLAMA_MODELS%
-          echo Starting Ollama server...
-          start /B ollama_bin\ollama.exe serve
-          timeout /t 15 /nobreak
-          echo Pulling qwen2.5:0.5b (offline SOP analysis model)...
-          ollama_bin\ollama.exe pull qwen2.5:0.5b
-          echo Model pull complete.
-          dir ollama_models /S /B
-
-      - name: Assemble portable offline package
-        shell: pwsh
-        run: |
-          $pkg = "dist\portable"
-          New-Item -ItemType Directory -Path $pkg -Force | Out-Null
-
-          # Core EXE
-          Copy-Item "dist\connector_vision_agent.exe" "$pkg\" -Force
-
-          # Ollama binary (exe + any required libs)
-          Copy-Item "ollama_bin\*" "$pkg\" -Recurse -Force
-
-          # Ollama model blobs
-          New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
-          Copy-Item "ollama_models\*" "$pkg\ollama_models\" -Recurse -Force
-
-          # Config and assets
-          Copy-Item "assets\config.json" "$pkg\" -Force
-
-          # Docs and dev tools
-          Copy-Item "TEST_REPORT.md" "$pkg\" -Force -ErrorAction SilentlyContinue
-          Copy-Item "README.md" "$pkg\" -Force -ErrorAction SilentlyContinue
-          Copy-Item "tools\dummy_ollama_server.py" "$pkg\" -Force -ErrorAction SilentlyContinue
-
-          Write-Host "Portable package contents:"
-          Get-ChildItem "$pkg" -Recurse | Select-Object FullName, Length | Format-Table
-
-      - name: Create portable config (qwen2.5:0.5b, llm enabled)
-        shell: pwsh
-        run: |
-          $cfg = @{
-            version       = "2.0.0"
-            password      = "1111"
-            pin_count_min = $null
-            vision        = @{
-              model_path            = "assets\models\yolo26x.pt"
-              confidence_threshold  = 0.6
-            }
-            llm = @{
-              enabled          = $true
-              backend          = "ollama"
-              model_path       = "qwen2.5:0.5b"
-              http_url         = "http://localhost:11434/v1/chat/completions"
-              ctx_size         = 8192
-              gpu_layers       = 0
-              max_input_tokens  = 6144
-              max_output_tokens = 1024
-            }
-          }
-          $json = $cfg | ConvertTo-Json -Depth 5
-          Set-Content -Path "dist\portable\config.json" -Value $json -Encoding UTF8
-          Write-Host "Portable config written (model: qwen2.5:0.5b, llm.enabled: true)"
-
-      - name: Create launcher scripts
-        shell: pwsh
-        run: |
-          # start_agent.bat — main launcher for line PC
-          $startBat = @'
-          @echo off
-          chcp 65001 >nul
-          title Connector Vision SOP Agent
-          echo ============================================================
-          echo  Connector Vision SOP Agent v2.0 — Portable Offline Bundle
-          echo ============================================================
-          echo.
-
-          set OLLAMA_MODELS=%~dp0ollama_models
-          set OLLAMA_HOST=127.0.0.1:11434
-
-          echo [1/2] Starting Ollama LLM server (qwen2.5:0.5b)...
-          start /B "%~dp0ollama.exe" serve
-          timeout /t 8 /nobreak >nul
-          echo        Ollama ready (port 11434).
-          echo.
-
-          echo [2/2] Launching SOP Agent...
-          "%~dp0connector_vision_agent.exe"
-
-          echo.
-          echo SOP Agent exited. Press any key to close.
-          pause >nul
-          '@
-          Set-Content -Path "dist\portable\start_agent.bat" -Value $startBat.TrimStart() -Encoding UTF8
-
-          # stop_ollama.bat — graceful shutdown helper
-          $stopBat = @'
-          @echo off
-          echo Stopping Ollama server...
-          taskkill /IM ollama.exe /F >nul 2>&1
-          echo Done.
-          '@
-          Set-Content -Path "dist\portable\stop_ollama.bat" -Value $stopBat.TrimStart() -Encoding UTF8
-
-          Write-Host "Launcher scripts created."
-
-      - name: Zip portable offline bundle
-        shell: pwsh
-        run: |
-          $zipPath = "dist\connector_vision_agent_portable_offline.zip"
-          Compress-Archive -Path "dist\portable\*" -DestinationPath $zipPath -Force
-          $size = (Get-Item $zipPath).Length / 1MB
-          Write-Host ("Portable ZIP: {0:F1} MB → {1}" -f $size, $zipPath)
-
       - name: Upload standalone EXE artifact
         uses: actions/upload-artifact@v4
         with:
@@ -206,20 +74,12 @@ jobs:
             README.md
             ROADMAP.md
 
-      - name: Upload portable offline bundle artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: connector_vision_agent-portable-offline
-          path: dist/connector_vision_agent_portable_offline.zip
-          retention-days: 30
-
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/connector_vision_agent.exe
-            dist/connector_vision_agent_portable_offline.zip
             assets/config.json
             tools/dummy_ollama_server.py
             TEST_REPORT.md
