@@ -19,7 +19,7 @@ except Exception as exc:  # pragma: no cover - depends on display availability.
 else:  # pragma: no cover - environment dependent branch.
     PYAUTOGUI_IMPORT_ERROR = None
 
-from src.vision_engine import VisionAgent
+from src.vision_engine import VisionEngine
 
 
 @dataclass
@@ -44,7 +44,7 @@ class ControlEngine:
 
     def __init__(
         self,
-        vision_agent: VisionAgent,
+        vision_agent: VisionEngine,
         retries: int = 3,
         move_duration: float = 0.1,
         click_pause: float = 0.05,
@@ -155,14 +155,12 @@ class ControlEngine:
     ) -> ControlResult:
         """Drag a region of interest on screen, using normalized ROI coordinates."""
 
-        from src.vision_engine import VisionAgent as _VA  # local import to avoid cycle
-
         start_time = time.perf_counter()
         try:
             self._ensure_pyautogui_available()
 
             # Normalize ROI so callers can pass arbitrary corner order.
-            (x1, y1), (x2, y2) = _VA.normalize_roi(start=start, end=end)
+            (x1, y1), (x2, y2) = VisionEngine.normalize_roi(start=start, end=end)
 
             pyautogui.moveTo(x1, y1, duration=self.move_duration)
             pyautogui.dragTo(x2, y2, duration=self.move_duration)
