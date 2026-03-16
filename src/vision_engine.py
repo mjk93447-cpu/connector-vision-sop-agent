@@ -1,8 +1,14 @@
 """
-YOLOv26n button detection + Tesseract OCR PSM7.
+YOLO26x button detection + Tesseract OCR PSM7 (deprecated, CP-3 제거 예정).
 
 Line UI: left 60% image + right 40% control panel.
 Core targets: Mold ROI drag (100,200 -> 800,350) and Pin 40 cluster checks.
+
+CP-2 변경사항:
+  - VisionAgent / VisionEngine 이중 계층 → VisionEngine 단일 클래스로 통합.
+  - DetectionConfig에 model_path 필드 추가.
+  - 기본 모델을 yolo26n → yolo26x 로 업그레이드.
+  - OCR 메서드는 deprecated 표시, CP-3에서 완전 삭제 예정.
 """
 
 from __future__ import annotations
@@ -42,9 +48,15 @@ DEFAULT_MOLD_ROI = ((100, 200), (800, 350))
 
 @dataclass
 class DetectionConfig:
-    """Runtime thresholds for object detection and OCR-assisted UI lookup."""
+    """Runtime thresholds and paths for YOLO detection.
 
+    CP-2: model_path 필드 추가, 기본값 yolo26n → yolo26x 변경.
+    """
+
+    # CP-2: yolo26x 업그레이드
+    model_path: str = "assets/models/yolo26x.pt"
     confidence_threshold: float = 0.6
+    # deprecated: CP-3에서 Tesseract 완전 삭제 시 제거 예정
     ocr_psm: int = 7
 
 
@@ -57,19 +69,24 @@ class UiDetection:
     bbox: tuple[int, int, int, int]
 
 
-class VisionAgent:
-    """YOLO + OCR helper for Samsung OLED line UI automation."""
+class VisionEngine:
+    """YOLO26x + OCR helper for Samsung OLED line UI automation.
+
+    CP-2: VisionAgent / VisionEngine 이중 계층을 단일 클래스로 통합.
+    DetectionConfig 인자 하나로 모든 런타임 파라미터를 수용한다.
+    """
 
     def __init__(
         self,
-        model_path: str = "assets/models/yolo26n.pt",
-        confidence_threshold: float = 0.6,
-        ocr_psm: int = 7,
+        config: DetectionConfig | None = None,
     ) -> None:
-        self.model_path = self._resolve_runtime_path(model_path)
-        self.confidence_threshold = confidence_threshold
-        self.ocr_psm = ocr_psm
+        self.config = config or DetectionConfig()
+        self.model_path = self._resolve_runtime_path(self.config.model_path)
         self.model = self._load_model(self.model_path)
+
+    # ------------------------------------------------------------------ #
+    # 경로 해석 / 모델 로드
+    # ------------------------------------------------------------------ #
 
     def _resolve_runtime_path(self, relative_path: str) -> str:
         """Resolve file paths for both source runs and PyInstaller EXE runs."""
@@ -85,24 +102,25 @@ class VisionAgent:
         return os.path.abspath(os.path.join(base_path, relative_path))
 
     def _load_model(self, model_path: str) -> YOLO | None:
-        """
-        Load YOLO weights when available without breaking scaffold runs.
+        """Load YOLO weights when available without breaking scaffold runs.
 
         Priority:
-        1. Use a local .pt file if it exists (offline line PC, assets/models/yolo26n.pt).
-        2. If the local file is missing, fall back to the Ultralytics hub name
-           (e.g. 'yolo26n.pt') so that CI or online dev machines can auto-download.
+        1. Local .pt file (offline line PC, assets/models/yolo26x.pt).
+        2. Ultralytics hub name fallback for CI / online dev machines.
         """
 
         if os.path.exists(model_path):
             return YOLO(model_path)
 
-        # Fall back to model name only (Ultralytics will download if possible).
         name = os.path.basename(model_path)
         try:
             return YOLO(name)
         except Exception:
             return None
+
+    # ------------------------------------------------------------------ #
+    # 화면 캡처
+    # ------------------------------------------------------------------ #
 
     def capture_screen(
         self, region: tuple[int, int, int, int] | None = None
@@ -114,9 +132,13 @@ class VisionAgent:
                 "pyautogui is unavailable in this environment."
             ) from PYAUTOGUI_IMPORT_ERROR
 
-        screenshot = pyautogui.screenshot(region=region)
-        rgb_image = np.array(screenshot)
-        return cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+        screenshot = pyautogui.screenshot(region=region)  # pragma: no cover
+        rgb_image = np.array(screenshot)  # pragma: no cover
+        return cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)  # pragma: no cover
+
+    # ------------------------------------------------------------------ #
+    # 공통 이미지 헬퍼
+    # ------------------------------------------------------------------ #
 
     @staticmethod
     def _to_gray(image: np.ndarray) -> np.ndarray:
@@ -126,21 +148,31 @@ class VisionAgent:
             return image.copy()
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
+    # ------------------------------------------------------------------ #
+    # OCR 헬퍼 (deprecated: CP-3에서 제거 예정)
+    # ------------------------------------------------------------------ #
+
     def preprocess_for_ocr(self, image: np.ndarray) -> np.ndarray:
-        """Sharpen OCR targets for English button labels such as Mold Left."""
+        """Sharpen OCR targets for English button labels such as Mold Left.
+
+        .. deprecated::
+            CP-3에서 Tesseract 완전 삭제 시 함께 제거된다.
+        """
 
         gray = self._to_gray(image)
         blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-        _, binary = cv2.threshold(
-            blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
+        _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return binary
 
     def read_text(self, image: np.ndarray) -> str:
-        """Read a text string from the supplied ROI using Tesseract PSM 7."""
+        """Read text from the supplied ROI using Tesseract PSM 7.
+
+        .. deprecated::
+            CP-3에서 제거 예정.
+        """
 
         processed = self.preprocess_for_ocr(image)
-        config = f"--psm {self.ocr_psm}"
+        config = f"--psm {self.config.ocr_psm}"
         return pytesseract.image_to_string(processed, config=config).strip()
 
     @staticmethod
@@ -152,12 +184,16 @@ class VisionAgent:
     def locate_text(
         self, image: np.ndarray, target_text: str, min_score: float = 0.65
     ) -> dict[str, object] | None:
-        """Locate the best OCR text match and return its box and score."""
+        """Locate the best OCR text match and return its box and score.
+
+        .. deprecated::
+            CP-3에서 제거 예정.
+        """
 
         processed = self.preprocess_for_ocr(image)
         ocr_data = pytesseract.image_to_data(
             processed,
-            config=f"--psm {self.ocr_psm}",
+            config=f"--psm {self.config.ocr_psm}",
             output_type=pytesseract.Output.DICT,
         )
 
@@ -183,6 +219,10 @@ class VisionAgent:
             return best_match
         return None
 
+    # ------------------------------------------------------------------ #
+    # YOLO 검출
+    # ------------------------------------------------------------------ #
+
     def detect_objects(
         self, image: np.ndarray, conf_threshold: float | None = None
     ) -> list[UiDetection]:
@@ -191,7 +231,7 @@ class VisionAgent:
         if self.model is None:
             return []
 
-        confidence = conf_threshold or self.confidence_threshold
+        confidence = conf_threshold or self.config.confidence_threshold
         results = self.model.predict(source=image, conf=confidence, verbose=False)
         detections: list[UiDetection] = []
 
@@ -217,7 +257,7 @@ class VisionAgent:
     ) -> UiDetection | None:
         """Return the highest-confidence detection for the requested label."""
 
-        score_threshold = min_score or self.confidence_threshold
+        score_threshold = min_score or self.config.confidence_threshold
         matches = [
             detection
             for detection in self.detect_objects(image, conf_threshold=score_threshold)
@@ -226,6 +266,10 @@ class VisionAgent:
         if not matches:
             return None
         return max(matches, key=lambda detection: detection.confidence)
+
+    # ------------------------------------------------------------------ #
+    # ROI / 핀 헬퍼
+    # ------------------------------------------------------------------ #
 
     @staticmethod
     def normalize_roi(
@@ -290,17 +334,10 @@ class VisionAgent:
         return ordered_labels
 
 
-class VisionEngine(VisionAgent):
-    """Compatibility wrapper used by the scaffold main execution path."""
+# ---------------------------------------------------------------------------
+# 하위 호환 별칭 (CP-3 이후 제거 예정)
+# ---------------------------------------------------------------------------
 
-    def __init__(
-        self,
-        config: DetectionConfig | None = None,
-        model_path: str = "assets/models/yolo26n.pt",
-    ) -> None:
-        self.config = config or DetectionConfig()
-        super().__init__(
-            model_path=model_path,
-            confidence_threshold=self.config.confidence_threshold,
-            ocr_psm=self.config.ocr_psm,
-        )
+#: .. deprecated:: CP-2
+#:    ``VisionEngine`` 을 직접 사용하세요.
+VisionAgent = VisionEngine
