@@ -1,35 +1,27 @@
-name: "Build Portable Offline Bundle (Split)"
-# ══════════════════════════════════════════════════════════════════════════════
-# 보안 PC 배포용 오프라인 포터블 번들 — 2개 Artifact 분할 빌드
+name: Build Portable Offline Bundle (Split)
+
+# Offline portable bundle for secure PC deployment
+# Model: phi4-mini-reasoning (Microsoft / USA) - non-Chinese model
 #
-# 모델: phi4-mini-reasoning (Microsoft / 미국) ← 비중국 ✅
-#   - 3.8B 파라미터, Q4_K_M 양자화 ~2.5 GB
-#   - 추론 특화(MATH-500 90.4, GPQA 49.0): SOP 로그 분석·config patch 제안
-#   - Ollama library: https://ollama.com/library/phi4-mini-reasoning
+# Produces 2 artifacts:
+#   portable-part1-app        ~400 MB   EXE + Ollama binary + launchers
+#   portable-part2-phi4-mini  ~2.5 GB   LLM model blobs
 #
-# 빌드 결과 (2개 Artifact):
-#   ① portable-part1-app          (~400 MB)  EXE + Ollama + 런처
-#   ② portable-part2-phi4-mini    (~2.5 GB)  LLM 모델 블롭
-#
-# 보안 PC 조립: MERGE_GUIDE.txt 참고
-#   → connector_agent\start_agent.bat 더블클릭으로 즉시 실행
-# ══════════════════════════════════════════════════════════════════════════════
+# See assets/launchers/MERGE_GUIDE.txt for assembly instructions.
 
 on:
   workflow_dispatch:
 
 jobs:
-  # ────────────────────────────────────────────────────────────────────────────
-  # PART 1 — EXE + Ollama 바이너리 + 런처 스크립트
-  # ────────────────────────────────────────────────────────────────────────────
+
   part1-app:
-    name: "Part 1 — EXE + Ollama binary"
+    name: Part 1 - EXE plus Ollama binary
     runs-on: windows-latest
     permissions:
       contents: read
 
     steps:
-      - name: Checkout (with LFS)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           lfs: true
@@ -39,170 +31,73 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies (CPU torch)
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
 
-      - name: Prepare YOLO26x placeholder (CI)
+      - name: Prepare YOLO26x placeholder
         shell: cmd
         run: |
           if not exist assets\models\yolo26x.pt (
-            echo [CI] yolo26x.pt 없음 - yolo26n.pt 복사
+            echo CI placeholder: copying yolo26n.pt as yolo26x.pt
             copy assets\models\yolo26n.pt assets\models\yolo26x.pt
-          ) else (
-            echo [CI] yolo26x.pt 발견
           )
 
-      - name: Build EXE (PyInstaller onefile)
+      - name: Build EXE with PyInstaller
         shell: cmd
         run: pyinstaller build_exe.spec --distpath dist_build --clean
 
-      - name: Verify EXE built
+      - name: Verify EXE
         shell: pwsh
         run: |
-          $exe = "dist_build\connector_vision_agent.exe"
-          if (-not (Test-Path $exe)) { Write-Error "EXE not found!"; exit 1 }
-          $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          if (-not (Test-Path "dist_build\connector_vision_agent.exe")) {
+            throw "EXE not found after build"
+          }
+          $mb = [math]::Round((Get-Item "dist_build\connector_vision_agent.exe").Length / 1MB, 1)
           Write-Host "EXE OK: $mb MB"
 
       - name: Download Ollama Windows binary
         shell: pwsh
         run: |
-          Write-Host "Downloading Ollama for Windows..."
           $uri = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
           Invoke-WebRequest -Uri $uri -OutFile ollama.zip -UseBasicParsing
           Expand-Archive ollama.zip -DestinationPath ollama_bin -Force
-          if (-not (Test-Path "ollama_bin\ollama.exe")) {
-            Write-Error "ollama.exe not found in archive!"; exit 1
-          }
+          if (-not (Test-Path "ollama_bin\ollama.exe")) { throw "ollama.exe not found" }
           $mb = [math]::Round((Get-Item "ollama_bin\ollama.exe").Length / 1MB, 1)
           Write-Host "ollama.exe OK: $mb MB"
 
-      - name: Assemble Part 1 package
+      - name: Assemble package directory
         shell: pwsh
         run: |
           $pkg = "pkg_part1"
-          Remove-Item $pkg -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $pkg | Out-Null
+          New-Item -ItemType Directory -Path $pkg -Force | Out-Null
 
-          # 핵심 바이너리 (루트에 배치)
           Copy-Item "dist_build\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
-          Copy-Item "ollama_bin\ollama.exe"                 "$pkg\ollama.exe"
+          Copy-Item "ollama_bin\ollama.exe" "$pkg\ollama.exe"
 
-          # 설정 파일: assets/ 하위에 (EXE가 frozen 시 exe_dir/assets/config.json 탐색)
-          New-Item -ItemType Directory -Path "$pkg\assets" | Out-Null
+          New-Item -ItemType Directory -Path "$pkg\assets" -Force | Out-Null
           $cfg = Get-Content assets\config.json -Raw | ConvertFrom-Json
           $cfg.llm.enabled    = $true
           $cfg.llm.backend    = "ollama"
           $cfg.llm.model_path = "phi4-mini-reasoning"
           $cfg.llm.http_url   = "http://127.0.0.1:11434/v1/chat/completions"
           $cfg | ConvertTo-Json -Depth 10 | Set-Content "$pkg\assets\config.json" -Encoding UTF8
-          Write-Host "config.json: llm.enabled=true, model=phi4-mini-reasoning"
 
-          # 문서
-          foreach ($f in @("README.md","TEST_REPORT.md","ROADMAP.md")) {
+          Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
+          Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
+          Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
+
+          foreach ($f in @("README.md", "TEST_REPORT.md")) {
             if (Test-Path $f) { Copy-Item $f "$pkg\$f" }
           }
 
-          # Part 2 압축해제 위치 placeholder
-          New-Item -ItemType Directory -Path "$pkg\ollama_models" | Out-Null
-          Set-Content "$pkg\ollama_models\PLACE_PART2_HERE.txt" -Encoding UTF8 `
-            "portable-part2-phi4-mini.zip 의 내용을 이 폴더(ollama_models\)에 압축해제하세요."
+          New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
+          "Extract portable-part2-phi4-mini.zip contents here (ollama_models folder)" |
+            Set-Content "$pkg\ollama_models\PLACE_PART2_HERE.txt" -Encoding UTF8
 
-      - name: Write start_agent.bat
-        shell: pwsh
-        run: |
-          $content = '@echo off
-chcp 65001 >nul
-cd /d "%~dp0"
-title Connector Vision SOP Agent v2.0 [Offline]
-
-set OLLAMA_MODELS=%~dp0ollama_models
-set OLLAMA_HOST=127.0.0.1:11434
-set OLLAMA_ORIGINS=*
-
-echo ================================================================
-echo  Connector Vision SOP Agent v2.0.0  [Fully Offline]
-echo  LLM  : phi4-mini-reasoning  ^(Microsoft, USA^)
-echo  YOLO : yolo26x  ^(embedded in EXE^)
-echo ================================================================
-echo.
-
-echo [1/3] Ollama 서버 시작 중...
-start /B "%~dp0ollama.exe" serve
-timeout /t 15 /nobreak ^>nul
-
-echo [2/3] LLM 모델 확인 중...
-"%~dp0ollama.exe" list
-echo.
-
-echo [3/3] SOP Agent 실행 중...
-"%~dp0connector_vision_agent.exe"
-
-echo.
-echo Agent 종료됨. 아무 키나 누르면 Ollama 도 종료합니다.
-pause ^>nul
-taskkill /IM ollama.exe /F ^>nul 2^>^&1'
-          Set-Content "pkg_part1\start_agent.bat" $content -Encoding UTF8
-
-      - name: Write stop_ollama.bat
-        shell: pwsh
-        run: |
-          $content = '@echo off
-taskkill /IM ollama.exe /F >nul 2>&1
-echo Ollama 종료됨.
-pause'
-          Set-Content "pkg_part1\stop_ollama.bat" $content -Encoding UTF8
-
-      - name: Write MERGE_GUIDE.txt
-        shell: pwsh
-        run: |
-          $content = '================================================================
- Connector Vision SOP Agent v2.0 - 포터블 번들 조립 가이드
-================================================================
-
-[다운로드 목록 (GitHub Actions Artifacts 탭)]
-  1. portable-part1-app.zip          ~400 MB   EXE + Ollama + 런처
-  2. portable-part2-phi4-mini.zip    ~2.5 GB   LLM 모델
-
-[조립 방법 (수동)]
-  1. C:\tools\connector_agent\ 폴더 생성
-  2. portable-part1-app.zip 를 C:\tools\connector_agent\ 에 압축해제
-  3. portable-part2-phi4-mini.zip 를
-     C:\tools\connector_agent\ollama_models\ 에 압축해제
-     (blobs\ 와 manifests\ 가 ollama_models\ 직하위에 있어야 함)
-
-[조립 후 폴더 구조]
-  connector_agent\
-  +-- connector_vision_agent.exe   <- SOP 에이전트 (YOLO26x 내장)
-  +-- ollama.exe                   <- LLM 런타임
-  +-- assets\
-  |   +-- config.json              <- 설정 파일
-  +-- start_agent.bat              <- 실행 ★
-  +-- stop_ollama.bat
-  +-- ollama_models\
-      +-- blobs\sha256-...         <- Part 2 압축해제
-      +-- manifests\...            <- Part 2 압축해제
-
-[실행]
-  start_agent.bat 더블클릭
-
-[LLM 정보]
-  Model : phi4-mini-reasoning
-  제조사: Microsoft Corporation (USA) - 비중국 모델
-  크기  : ~2.5 GB (Q4 양자화, 완전 오프라인)
-================================================================'
-          Set-Content "pkg_part1\MERGE_GUIDE.txt" $content -Encoding UTF8
-
-      - name: Show Part 1 package contents
-        shell: pwsh
-        run: |
-          Write-Host "=== Part 1 package ===" -ForegroundColor Cyan
-          Get-ChildItem pkg_part1 -Recurse |
-            Select-Object FullName,
-              @{N='Size';E={if($_.PSIsContainer){'[dir]'}else{"$([math]::Round($_.Length/1MB,1)) MB"}}} |
-            Format-Table -AutoSize
+          Write-Host "=== Package contents ==="
+          Get-ChildItem $pkg -Recurse | Select-Object FullName | Format-Table -AutoSize
 
       - name: Upload Part 1 artifact
         uses: actions/upload-artifact@v4
@@ -211,23 +106,19 @@ pause'
           path: pkg_part1/
           retention-days: 90
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # PART 2 — LLM 모델 블롭 (phi4-mini-reasoning, ~2.5 GB)
-  #   Python/Torch 불필요 → 빠른 실행
-  # ────────────────────────────────────────────────────────────────────────────
   part2-model:
-    name: "Part 2 — phi4-mini-reasoning model (~2.5 GB)"
+    name: Part 2 - phi4-mini-reasoning model blobs
     runs-on: windows-latest
     permissions:
       contents: read
 
     steps:
-      - name: Check free disk space
+      - name: Check disk space
         shell: pwsh
         run: |
           $free = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
-          Write-Host "Free disk: $free GB  (need >= 6 GB)"
-          if ($free -lt 6) { Write-Error "Disk too small"; exit 1 }
+          Write-Host "Free disk: $free GB"
+          if ($free -lt 6) { throw "Insufficient disk space (need 6 GB)" }
 
       - name: Download Ollama Windows binary
         shell: pwsh
@@ -235,58 +126,46 @@ pause'
           $uri = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
           Invoke-WebRequest -Uri $uri -OutFile ollama.zip -UseBasicParsing
           Expand-Archive ollama.zip -DestinationPath ollama_bin -Force
-          Write-Host "ollama.exe ready"
+          Write-Host "Ollama binary ready"
 
-      - name: Set OLLAMA_MODELS path
+      - name: Configure model storage path
         shell: pwsh
         run: |
-          $modelDir = "$env:GITHUB_WORKSPACE\ollama_models"
+          $modelDir = Join-Path $env:GITHUB_WORKSPACE "ollama_models"
           New-Item -ItemType Directory -Path $modelDir -Force | Out-Null
           "OLLAMA_MODELS=$modelDir" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "OLLAMA_MODELS = $modelDir"
+          Write-Host "OLLAMA_MODELS=$modelDir"
 
       - name: Start Ollama server
         shell: pwsh
-        env:
-          OLLAMA_HOST: "127.0.0.1:11434"
         run: |
-          $env:OLLAMA_MODELS = "$env:GITHUB_WORKSPACE\ollama_models"
-          Start-Process -FilePath "ollama_bin\ollama.exe" `
-            -ArgumentList "serve" -WindowStyle Hidden
-          Write-Host "Waiting 20s for Ollama to initialise..."
+          $env:OLLAMA_HOST = "127.0.0.1:11434"
+          Start-Process "ollama_bin\ollama.exe" -ArgumentList "serve" -WindowStyle Hidden
+          Write-Host "Waiting 20s for Ollama..."
           Start-Sleep -Seconds 20
-          Write-Host "Ollama server ready"
+          Write-Host "Ollama ready"
 
-      - name: Pull phi4-mini-reasoning
+      - name: Pull phi4-mini-reasoning model
         shell: pwsh
-        env:
-          OLLAMA_HOST: "127.0.0.1:11434"
         run: |
-          $env:OLLAMA_MODELS = "$env:GITHUB_WORKSPACE\ollama_models"
+          $env:OLLAMA_HOST = "127.0.0.1:11434"
           Write-Host "Pulling phi4-mini-reasoning (Microsoft, ~2.5 GB)..."
           & ollama_bin\ollama.exe pull phi4-mini-reasoning
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Model pull failed (exit $LASTEXITCODE)"; exit 1
-          }
-          Write-Host "Pull complete." -ForegroundColor Green
+          if ($LASTEXITCODE -ne 0) { throw "Model pull failed with exit $LASTEXITCODE" }
+          Write-Host "Pull complete"
           & ollama_bin\ollama.exe list
 
       - name: Verify model blobs
         shell: pwsh
         run: |
-          $modelDir = "$env:GITHUB_WORKSPACE\ollama_models"
-          Write-Host "=== Model blobs ===" -ForegroundColor Cyan
-          Get-ChildItem $modelDir -Recurse -File |
-            Select-Object Name, @{N='MB';E={[math]::Round($_.Length/1MB,1)}} |
-            Format-Table -AutoSize
-          $gb = (Get-ChildItem $modelDir -Recurse -File |
-                 Measure-Object Length -Sum).Sum / 1GB
-          Write-Host ("Total: {0:F2} GB" -f $gb) -ForegroundColor Green
-          if ($gb -lt 1.0) {
-            Write-Error "Model blobs too small — pull likely failed"; exit 1
-          }
+          $modelDir = Join-Path $env:GITHUB_WORKSPACE "ollama_models"
+          $files = Get-ChildItem $modelDir -Recurse -File
+          $files | Select-Object Name, @{N="MB";E={[math]::Round($_.Length/1MB,1)}} | Format-Table
+          $gb = ($files | Measure-Object Length -Sum).Sum / 1GB
+          Write-Host ("Total model size: {0:F2} GB" -f $gb)
+          if ($gb -lt 1.0) { throw "Model blobs too small - pull may have failed" }
 
-      - name: Upload Part 2 artifact (LLM model blobs)
+      - name: Upload Part 2 artifact
         uses: actions/upload-artifact@v4
         with:
           name: portable-part2-phi4-mini

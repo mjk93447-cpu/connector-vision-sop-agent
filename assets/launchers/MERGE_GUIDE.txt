@@ -1,0 +1,37 @@
+================================================================
+ Connector Vision SOP Agent v2.0 - Portable Bundle Guide
+================================================================
+
+DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
+  1. portable-part1-app.zip          ~400 MB   EXE + Ollama + launchers
+  2. portable-part2-phi4-mini.zip    ~2.5 GB   LLM model blobs
+
+ASSEMBLY STEPS:
+  1. Create folder: C:\tools\connector_agent\
+  2. Extract portable-part1-app.zip
+     -> all files go into C:\tools\connector_agent\
+  3. Extract portable-part2-phi4-mini.zip
+     -> all files go into C:\tools\connector_agent\ollama_models\
+        (blobs\ and manifests\ must be directly inside ollama_models\)
+
+FINAL FOLDER STRUCTURE:
+  connector_agent\
+  +-- connector_vision_agent.exe   <- SOP agent (YOLO26x embedded)
+  +-- ollama.exe                   <- LLM runtime
+  +-- assets\
+  |   +-- config.json              <- settings (editable)
+  +-- start_agent.bat              <- DOUBLE-CLICK TO RUN
+  +-- stop_ollama.bat
+  +-- ollama_models\
+      +-- blobs\sha256-...         <- from Part 2 zip
+      +-- manifests\...            <- from Part 2 zip
+
+HOW TO RUN:
+  Double-click start_agent.bat
+
+LLM MODEL INFO:
+  Name  : phi4-mini-reasoning
+  Vendor: Microsoft Corporation (USA) - non-Chinese model
+  Size  : ~2.5 GB (Q4 quantized, fully offline)
+  Notes : reasoning-optimized, SOP log analysis, config suggestions
+================================================================
