@@ -37,7 +37,20 @@ try:
 except ImportError:
     _QT_AVAILABLE = False
     QWidget = object  # type: ignore[assignment,misc]
-    pyqtSignal = object  # type: ignore[assignment]
+    QDialog = object  # type: ignore[assignment,misc]
+
+    class _FakeSig:  # type: ignore[no-redef]
+        def __init__(self, *a: Any) -> None:
+            pass
+
+        def emit(self, *a: Any) -> None:
+            pass
+
+        def connect(self, *a: Any) -> None:
+            pass
+
+    pyqtSignal = _FakeSig  # type: ignore[assignment]
+    pyqtSlot = lambda *a, **kw: (lambda f: f)  # type: ignore[assignment]  # noqa: E731
 
 
 # ---------------------------------------------------------------------------

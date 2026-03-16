@@ -28,6 +28,7 @@ try:
 except ImportError:
     _QT_AVAILABLE = False
     QWidget = object  # type: ignore[assignment,misc]
+    pyqtSlot = lambda *a, **kw: (lambda f: f)  # type: ignore[assignment]  # noqa: E731
 
 
 class SopPanel(QWidget):  # type: ignore[misc]
