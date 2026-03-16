@@ -1,0 +1,41 @@
+# Build outputs
+dist/
+dist_build/
+dist-ci/
+build/
+pkg_part1/
+pkg_part2/
+*.egg-info/
+
+# Models & large binaries (절대 수정 금지 경로)
+assets/models/
+/data/models/
+*.pt
+*.gguf
+*.bin
+ollama_models/
+ollama_bin/
+
+# Logs & runtime
+logs/
+*.jsonl
+*.png
+screens/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets
+/config/secrets.yaml
+assets/config.proposed.json
+
+# Node / misc
+node_modules/
+.cursor/
+.venv/
+venv/
