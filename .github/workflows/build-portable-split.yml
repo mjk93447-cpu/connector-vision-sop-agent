@@ -35,6 +35,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
+          python -m pip install PyQt6>=6.7.0
 
       - name: Prepare YOLO26x placeholder
         shell: cmd
@@ -83,6 +84,10 @@ jobs:
           $cfg.llm.model_path = "phi4-mini-reasoning"
           $cfg.llm.http_url   = "http://127.0.0.1:11434/v1/chat/completions"
           $cfg | ConvertTo-Json -Depth 10 | Set-Content "$pkg\assets\config.json" -Encoding UTF8
+
+          if (Test-Path "assets\sop_steps.json") {
+            Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json"
+          }
 
           Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"

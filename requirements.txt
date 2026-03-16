@@ -7,6 +7,9 @@ ultralytics==8.3.21
 opencv-python-headless==4.10.0.84
 pyyaml==6.0.2
 
+# GUI (Phase 1+)
+PyQt6>=6.7.0
+
 # Build
 pyinstaller==6.10.0
 

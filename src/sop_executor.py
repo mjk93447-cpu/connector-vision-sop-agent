@@ -1,5 +1,5 @@
 """
-12-step SOP executor for Connector Vision Agent v2.1.
+12-step SOP executor for Connector Vision Agent v2.1 / v3.0.
 
 Coordinates login, recipe loading, Mold Left/Right ROI training, axis marking,
 In Pin Up/Down verification, and final save/open/apply actions for line setup.
@@ -8,13 +8,20 @@ v2.1 changes:
 - ``pin_count_min`` / ``pin_count_max`` now read from config (not hardcoded).
 - ``step_delay`` inserted between every SOP step (configurable via config).
 - ``config`` dict passed through from ``main.py`` for full runtime control.
+
+v3.0 additions:
+- ``get_steps()`` — returns a list of step dicts from sop_steps.json (or fallback).
+- ``run_step(step)`` — execute a single step dict (used by GUI SopWorker).
+- ``sop_steps_path`` parameter to load external step definitions.
 """
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.control_engine import ControlEngine, ControlResult
 from src.vision_engine import VisionEngine, DEFAULT_MOLD_ROI
@@ -37,10 +44,12 @@ class SopExecutor:
         vision: VisionEngine,
         control: ControlEngine,
         config: Optional[Dict[str, Any]] = None,
+        sop_steps_path: Optional[Path] = None,
     ) -> None:
         self.vision = vision
         self.control = control
         self._config = config or {}
+        self._sop_steps_path = sop_steps_path or Path("assets/sop_steps.json")
 
     # ------------------------------------------------------------------
     # Config convenience helpers
@@ -99,6 +108,112 @@ class SopExecutor:
             status = "OK" if step.success else "FAIL"
             trace.append(f"{index:02d}:{step.name}:{status}:{step.details}")
         return trace
+
+    # ------------------------------------------------------------------
+    # GUI-facing API (used by SopWorker)
+    # ------------------------------------------------------------------
+
+    def get_steps(self) -> List[Dict[str, Any]]:
+        """Return enabled steps from sop_steps.json (or built-in fallback)."""
+        if self._sop_steps_path.exists():
+            try:
+                data = json.loads(self._sop_steps_path.read_text(encoding="utf-8"))
+                return [s for s in data.get("steps", []) if s.get("enabled", True)]
+            except Exception:  # noqa: BLE001
+                pass
+        # Fallback: built-in step list
+        return [
+            {"id": "login", "name": "Login", "type": "click", "target": "login_button"},
+            {
+                "id": "open_recipe",
+                "name": "Open Recipe",
+                "type": "click",
+                "target": "recipe_button",
+            },
+            {
+                "id": "image_source",
+                "name": "Select Source",
+                "type": "click",
+                "target": "image_source",
+            },
+            {
+                "id": "mold_left_label",
+                "name": "Mold Left Label",
+                "type": "click",
+                "target": "mold_left_label",
+            },
+            {
+                "id": "mold_left_roi",
+                "name": "Mold Left ROI",
+                "type": "drag",
+                "start": [100, 200],
+                "end": [800, 350],
+            },
+            {
+                "id": "mold_right_label",
+                "name": "Mold Right Label",
+                "type": "click",
+                "target": "mold_right_label",
+            },
+            {
+                "id": "mold_right_roi",
+                "name": "Mold Right ROI",
+                "type": "drag",
+                "start": [100, 200],
+                "end": [800, 350],
+            },
+            {
+                "id": "axis_marking",
+                "name": "Axis Marking",
+                "type": "click",
+                "target": "axis_mark",
+            },
+            {"id": "in_pin_up", "name": "Pin Up Check", "type": "validate_pins"},
+            {"id": "in_pin_down", "name": "Pin Down Check", "type": "validate_pins"},
+            {"id": "save", "name": "Save", "type": "click", "target": "save_button"},
+            {
+                "id": "apply_and_open",
+                "name": "Apply & Open",
+                "type": "click_sequence",
+                "targets": ["apply_button", "open_icon"],
+            },
+        ]
+
+    def run_step(self, step: Dict[str, Any]) -> Tuple[bool, str]:
+        """Execute a single step dict. Returns (success, message)."""
+        step_type = step.get("type", "click")
+        step_id = step.get("id", "?")
+        step_name = step.get("name", step_id)
+
+        if step_type == "click":
+            target = step.get("target", step_id)
+            result: SopStepResult = self._click_with_trace(target, step_name)
+            return result.success, result.details
+
+        elif step_type == "drag":
+            start = tuple(step.get("start", [100, 200]))
+            end = tuple(step.get("end", [800, 350]))
+            drag_result: ControlResult = self.control.drag_roi(start, end)  # type: ignore[arg-type]
+            if drag_result.success:
+                return True, f"dragged {start}->{end} in {drag_result.duration:.3f}s"
+            return False, f"drag failed: {drag_result.error}"
+
+        elif step_type == "validate_pins":
+            result2: SopStepResult = self._validate_pins(step_name)
+            return result2.success, result2.details
+
+        elif step_type == "click_sequence":
+            targets = step.get("targets", [])
+            details_parts = []
+            for tgt in targets:
+                res = self._click_with_trace(tgt, step_name)
+                details_parts.append(res.details)
+                if not res.success:
+                    return False, " | ".join(details_parts)
+            return True, " | ".join(details_parts)
+
+        else:
+            return False, f"Unknown step type: {step_type!r}"
 
     # ------------------------------------------------------------------
     # Individual SOP step implementations

@@ -1,5 +1,17 @@
 """
-Main entry point for Connector Vision SOP Agent v2.1.
+Main entry point for Connector Vision SOP Agent v3.0.
+
+Default mode: PyQt6 GUI application.
+Use --console flag to run in legacy CLI mode.
+
+GUI Mode (default)
+------------------
+  python src/main.py              → Opens PyQt6 GUI
+  python src/main.py --gui        → Same
+
+Console Mode (legacy)
+---------------------
+  python src/main.py --console    → CLI mode
 
 Console commands
 ----------------
@@ -30,6 +42,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -549,8 +562,71 @@ def run_console() -> None:
         print("Unknown command. Choose one of [1/2/3/L/C/A/Q].")
 
 
-if __name__ == "__main__":
+# ---------------------------------------------------------------------------
+# GUI entry point
+# ---------------------------------------------------------------------------
+
+
+def run_gui() -> None:
+    """Launch the PyQt6 GUI application."""
     try:
-        run_console()
-    except KeyboardInterrupt:
-        print("\nExiting Connector Vision SOP Agent.")
+        from PyQt6.QtWidgets import QApplication
+    except ImportError:
+        print(
+            "[ERROR] PyQt6 is not installed.\n"
+            "  Install with: pip install PyQt6>=6.7.0\n"
+            "  Or run in console mode: python src/main.py --console"
+        )
+        sys.exit(1)
+
+    cfg = load_config()
+    audit_log = _get_audit_log(cfg)
+    config_path = Path(_CONFIG_PATH)
+    sop_steps_path = Path("assets/sop_steps.json")
+
+    # Try to build LLM if enabled
+    llm = None
+    if cfg.get("llm", {}).get("enabled"):
+        try:
+            from src.llm_offline import OfflineLLM
+
+            llm = OfflineLLM.from_config(cfg.get("llm", {}))
+        except Exception as exc:
+            print(f"[WARN] LLM init failed: {exc!r} — continuing without LLM.")
+
+    # Build vision/control/executor (graceful fail — GUI still opens)
+    executor = None
+    try:
+        _, _, executor = _build_services(config=cfg, speed="normal")
+        # Attach sop_steps_path for dynamic step loading
+        executor._sop_steps_path = sop_steps_path
+    except Exception as exc:
+        print(f"[WARN] Service init failed: {exc!r} — SOP tab will show warning.")
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("Connector Vision SOP Agent")
+    app.setApplicationVersion("3.0.0")
+
+    from src.gui.main_window import MainWindow
+
+    window = MainWindow(
+        config=cfg,
+        config_path=config_path,
+        sop_steps_path=sop_steps_path,
+        sop_executor=executor,
+        llm=llm,
+        audit_log=audit_log,
+    )
+    window.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    if "--console" in args or "-c" in args:
+        try:
+            run_console()
+        except KeyboardInterrupt:
+            print("\nExiting Connector Vision SOP Agent.")
+    else:
+        run_gui()

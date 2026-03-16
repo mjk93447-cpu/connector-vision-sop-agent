@@ -1,0 +1,103 @@
+{
+  "version": "1.0",
+  "steps": [
+    {
+      "id": "login",
+      "name": "Login",
+      "type": "click",
+      "target": "login_button",
+      "description": "Click the login button to authenticate",
+      "enabled": true
+    },
+    {
+      "id": "open_recipe",
+      "name": "Open Recipe",
+      "type": "click",
+      "target": "recipe_button",
+      "description": "Open the connector recipe file",
+      "enabled": true
+    },
+    {
+      "id": "image_source",
+      "name": "Select Image Source",
+      "type": "click",
+      "target": "image_source",
+      "description": "Select the image source for vision capture",
+      "enabled": true
+    },
+    {
+      "id": "mold_left_label",
+      "name": "Mold Left Label",
+      "type": "click",
+      "target": "mold_left_label",
+      "description": "Click mold left label region",
+      "enabled": true
+    },
+    {
+      "id": "mold_left_roi",
+      "name": "Mold Left ROI",
+      "type": "drag",
+      "start": [100, 200],
+      "end": [800, 350],
+      "description": "Drag to define mold left region of interest",
+      "enabled": true
+    },
+    {
+      "id": "mold_right_label",
+      "name": "Mold Right Label",
+      "type": "click",
+      "target": "mold_right_label",
+      "description": "Click mold right label region",
+      "enabled": true
+    },
+    {
+      "id": "mold_right_roi",
+      "name": "Mold Right ROI",
+      "type": "drag",
+      "start": [100, 200],
+      "end": [800, 350],
+      "description": "Drag to define mold right region of interest",
+      "enabled": true
+    },
+    {
+      "id": "axis_marking",
+      "name": "Axis Marking",
+      "type": "click",
+      "target": "axis_mark",
+      "description": "Mark the axis reference points",
+      "enabled": true
+    },
+    {
+      "id": "in_pin_up",
+      "name": "Pin Up Check",
+      "type": "validate_pins",
+      "description": "Validate top pins (20 pins expected)",
+      "pin_position": "top",
+      "enabled": true
+    },
+    {
+      "id": "in_pin_down",
+      "name": "Pin Down Check",
+      "type": "validate_pins",
+      "description": "Validate bottom pins (20 pins expected)",
+      "pin_position": "bottom",
+      "enabled": true
+    },
+    {
+      "id": "save",
+      "name": "Save",
+      "type": "click",
+      "target": "save_button",
+      "description": "Save the current configuration",
+      "enabled": true
+    },
+    {
+      "id": "apply_and_open",
+      "name": "Apply & Open",
+      "type": "click_sequence",
+      "targets": ["apply_button", "open_icon"],
+      "description": "Apply settings and open the result viewer",
+      "enabled": true
+    }
+  ]
+}

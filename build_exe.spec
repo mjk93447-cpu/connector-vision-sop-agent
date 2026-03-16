@@ -8,6 +8,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('assets/config.json', 'assets'),
+        ('assets/sop_steps.json', 'assets'),
         # Package models directory (may only contain placeholders in git).
         ('assets/models', 'assets/models'),
     ],
@@ -23,6 +24,23 @@ a = Analysis(
         'PIL.Image',
         # Utils
         'numpy',
+        # GUI (PyQt6)
+        'PyQt6',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'PyQt6.sip',
+        # GUI sub-modules
+        'src.gui',
+        'src.gui.main_window',
+        'src.gui.workers',
+        'src.gui.panels',
+        'src.gui.panels.sop_panel',
+        'src.gui.panels.vision_panel',
+        'src.gui.panels.llm_panel',
+        'src.gui.panels.sop_editor_panel',
+        'src.gui.panels.config_panel',
+        'src.gui.panels.audit_panel',
     ],
     hookspath=[],
     hooksconfig={},
@@ -50,7 +68,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
