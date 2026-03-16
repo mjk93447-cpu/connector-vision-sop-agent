@@ -11,10 +11,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
 
+from src.config_audit import ConfigAuditLog
 from src.sop_advisor import (
     SAFE_NUMERIC_RANGES,
+    apply_config_direct,
     apply_config_patch,
     propose_actions,
     summarize_failures,
@@ -62,7 +63,9 @@ class TestApplyConfigPatch:
 
     def test_nested_dotted_key(self) -> None:
         cfg: dict[str, Any] = {"vision": {"confidence_threshold": 0.6}}
-        new_cfg, warnings = apply_config_patch(cfg, {"vision.confidence_threshold": 0.7})
+        new_cfg, warnings = apply_config_patch(
+            cfg, {"vision.confidence_threshold": 0.7}
+        )
         assert new_cfg["vision"]["confidence_threshold"] == 0.7
         assert warnings == []
 
@@ -238,3 +241,150 @@ class TestProposeActions:
         actions = propose_actions(output)
         assert "description" in actions[0]
         assert len(actions[0]["description"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# apply_config_direct
+# ---------------------------------------------------------------------------
+
+
+class TestApplyConfigDirect:
+    def _make_audit(self, tmp_path: Path) -> ConfigAuditLog:
+        return ConfigAuditLog(line_id="LINE-T", log_dir=tmp_path)
+
+    def test_writes_config_json(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "config.json"
+        cfg = {"pin_count_min": 20, "version": "2.0.0"}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+        audit = self._make_audit(tmp_path)
+        new_cfg, warnings, entry = apply_config_direct(
+            config=cfg,
+            patch={"pin_count_min": 40},
+            config_path=cfg_path,
+            audit_log=audit,
+            username="Raj Kumar",
+            reason="SOP spec 40 pins",
+        )
+        assert warnings == []
+        assert new_cfg["pin_count_min"] == 40
+        loaded = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert loaded["pin_count_min"] == 40
+
+    def test_audit_entry_recorded(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "config.json"
+        cfg = {"pin_count_min": 20}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+        audit = self._make_audit(tmp_path)
+        _, _, entry = apply_config_direct(
+            config=cfg,
+            patch={"pin_count_min": 40},
+            config_path=cfg_path,
+            audit_log=audit,
+            username="Alice",
+            reason="test reason",
+            source="llm_chat",
+        )
+        assert entry is not None
+        assert entry["username"] == "Alice"
+        assert entry["changes"]["pin_count_min"]["old"] == 20
+        assert entry["changes"]["pin_count_min"]["new"] == 40
+
+    def test_immutable_key_blocked(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "config.json"
+        cfg = {"password": "secret", "pin_count_min": 20}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+        audit = self._make_audit(tmp_path)
+        new_cfg, warnings, entry = apply_config_direct(
+            config=cfg,
+            patch={"password": "hacked"},
+            config_path=cfg_path,
+            audit_log=audit,
+            username="x",
+        )
+        # password must not change
+        loaded = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert loaded.get("password") == "secret"
+        assert any("immutable" in w for w in warnings)
+
+    def test_out_of_range_skipped(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "config.json"
+        cfg = {"pin_count_min": 20}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+        audit = self._make_audit(tmp_path)
+        _, warnings, _ = apply_config_direct(
+            config=cfg,
+            patch={"pin_count_min": 9999},
+            config_path=cfg_path,
+            audit_log=audit,
+            username="x",
+        )
+        assert any("safe range" in w for w in warnings)
+
+    def test_empty_patch_returns_none_entry(self, tmp_path: Path) -> None:
+        cfg_path = tmp_path / "config.json"
+        cfg = {"version": "2.0.0"}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+        audit = self._make_audit(tmp_path)
+        _, _, entry = apply_config_direct(
+            config=cfg,
+            patch={},
+            config_path=cfg_path,
+            audit_log=audit,
+            username="x",
+        )
+        assert entry is None
+
+    def test_new_control_timing_keys(self, tmp_path: Path) -> None:
+        """All new timing keys must be patchable."""
+        cfg_path = tmp_path / "config.json"
+        cfg: dict = {"control": {"step_delay": 0.5, "move_duration": 0.1}}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+        audit = self._make_audit(tmp_path)
+        new_cfg, warnings, entry = apply_config_direct(
+            config=cfg,
+            patch={"control.step_delay": 2.0, "control.move_duration": 0.5},
+            config_path=cfg_path,
+            audit_log=audit,
+            username="Bob",
+        )
+        assert warnings == []
+        assert new_cfg["control"]["step_delay"] == 2.0
+        assert new_cfg["control"]["move_duration"] == 0.5
+
+
+# ---------------------------------------------------------------------------
+# SAFE_NUMERIC_RANGES completeness
+# ---------------------------------------------------------------------------
+
+
+class TestSafeNumericRanges:
+    """All new v2.1 config keys must be present in SAFE_NUMERIC_RANGES."""
+
+    required_keys = [
+        "pin_count_min",
+        "pin_count_max",
+        "confidence_threshold",
+        "move_duration",
+        "click_pause",
+        "drag_duration",
+        "retry_delay",
+        "step_delay",
+        "retries",
+        "pin_area_min_px",
+    ]
+
+    def test_all_required_keys_present(self) -> None:
+        for key in self.required_keys:
+            assert (
+                key in SAFE_NUMERIC_RANGES
+            ), f"Missing key in SAFE_NUMERIC_RANGES: {key}"
+
+    def test_all_ranges_valid(self) -> None:
+        for key, (lo, hi) in SAFE_NUMERIC_RANGES.items():
+            assert lo < hi, f"Range for '{key}' is invalid: lo={lo} >= hi={hi}"

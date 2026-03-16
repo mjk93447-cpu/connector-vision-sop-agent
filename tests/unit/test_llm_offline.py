@@ -10,7 +10,6 @@ CP-1: ollama 백엔드 추가 및 기본값 변경 반영
 from __future__ import annotations
 
 import json
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -139,9 +138,10 @@ class TestBackendDispatch:
         mock_method.assert_called_once()
 
     def test_http_dispatches_to_http_method(self) -> None:
-        llm = OfflineLLM.from_config({"backend": "http",
-                                       "http_url": "http://localhost:8000/v1/chat/completions"})
-        with patch.object(llm, "_chat_http", return_value="http-ok") as mock_method:
+        llm = OfflineLLM.from_config(
+            {"backend": "http", "http_url": "http://localhost:8000/v1/chat/completions"}
+        )
+        with patch.object(llm, "_chat_http", return_value="http-ok"):
             result = llm.chat("sys", [{"role": "user", "content": "hi"}])
         assert result == "http-ok"
 
@@ -170,7 +170,9 @@ class TestOllamaBackend:
 
     def test_default_url_used_when_not_set(self) -> None:
         llm = OfflineLLM.from_config({"http_url": None})
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
         call_url = mock_post.call_args[0][0]
         assert call_url == _OLLAMA_DEFAULT_URL
@@ -178,27 +180,35 @@ class TestOllamaBackend:
     def test_custom_url_used_when_set(self) -> None:
         custom_url = "http://192.168.1.100:11434/v1/chat/completions"
         llm = OfflineLLM.from_config({"http_url": custom_url})
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
         assert mock_post.call_args[0][0] == custom_url
 
     def test_default_model_tag_in_payload(self) -> None:
         llm = OfflineLLM.from_config({"model_path": None})
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
         payload = mock_post.call_args[1]["json"]
         assert payload["model"] == _OLLAMA_DEFAULT_MODEL
 
     def test_custom_model_tag_in_payload(self) -> None:
         llm = OfflineLLM.from_config({"model_path": "llama3.2:3b"})
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
         payload = mock_post.call_args[1]["json"]
         assert payload["model"] == "llama3.2:3b"
 
     def test_system_prompt_prepended(self) -> None:
         llm = OfflineLLM.from_config({})
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("expert engineer", [{"role": "user", "content": "진단해줘"}])
         messages = mock_post.call_args[1]["json"]["messages"]
         assert messages[0]["role"] == "system"
@@ -207,7 +217,9 @@ class TestOllamaBackend:
     def test_stream_false_in_payload(self) -> None:
         """Ollama에 stream:false 명시 — 비스트리밍 응답 보장."""
         llm = OfflineLLM.from_config({})
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
         payload = mock_post.call_args[1]["json"]
         assert payload.get("stream") is False
@@ -215,7 +227,9 @@ class TestOllamaBackend:
     def test_timeout_is_120s(self) -> None:
         """Ollama는 모델 로딩 지연을 위해 더 긴 타임아웃 사용."""
         llm = OfflineLLM.from_config({})
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
         assert mock_post.call_args[1]["timeout"] == 120
 
@@ -226,7 +240,9 @@ class TestOllamaBackend:
             {"role": "system", "content": "existing system"},
             {"role": "user", "content": "hi"},
         ]
-        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
             llm.chat("new system (should be ignored)", history)
         messages = mock_post.call_args[1]["json"]["messages"]
         system_messages = [m for m in messages if m["role"] == "system"]
@@ -236,18 +252,19 @@ class TestOllamaBackend:
     def test_korean_content_preserved(self) -> None:
         """한국어 콘텐츠가 깨지지 않고 전달된다."""
         llm = OfflineLLM.from_config({})
-        with patch("requests.post", return_value=self._mock_response("분석 완료")) as mock_post:
+        with patch("requests.post", return_value=self._mock_response("분석 완료")):
             result = llm.chat("시스템", [{"role": "user", "content": "로그 분석해줘"}])
         assert result == "분석 완료"
 
     def test_config_json_ollama_block_works(self) -> None:
         """assets/config.json의 llm 블록으로 OfflineLLM 생성 가능."""
         from src.config_loader import load_config
+
         config = load_config()
         llm_cfg = config.get("llm", {})
         llm = OfflineLLM.from_config(llm_cfg)
         assert llm.cfg.backend == "ollama"
-        assert llm.cfg.model_path == "llama4:scout"
+        assert llm.cfg.model_path == "phi4-mini-reasoning"
 
 
 # ---------------------------------------------------------------------------
@@ -263,11 +280,13 @@ class TestHttpBackend:
         return resp
 
     def test_chat_returns_content(self) -> None:
-        cfg = LLMConfig.from_dict({
-            "backend": "http",
-            "http_url": "http://localhost:8000/v1/chat/completions",
-            "model_path": "test-model",
-        })
+        cfg = LLMConfig.from_dict(
+            {
+                "backend": "http",
+                "http_url": "http://localhost:8000/v1/chat/completions",
+                "model_path": "test-model",
+            }
+        )
         llm = OfflineLLM(cfg)
         with patch("requests.post", return_value=self._make_mock_response("OK")):
             result = llm.chat("sys", [{"role": "user", "content": "hi"}])
@@ -277,17 +296,23 @@ class TestHttpBackend:
         url = "http://my-server:9000/v1/chat/completions"
         cfg = LLMConfig.from_dict({"backend": "http", "http_url": url})
         llm = OfflineLLM(cfg)
-        with patch("requests.post", return_value=self._make_mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._make_mock_response("ok")
+        ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
         assert mock_post.call_args[0][0] == url
 
     def test_chat_includes_system_message(self) -> None:
-        cfg = LLMConfig.from_dict({
-            "backend": "http",
-            "http_url": "http://localhost:8000/v1/chat/completions",
-        })
+        cfg = LLMConfig.from_dict(
+            {
+                "backend": "http",
+                "http_url": "http://localhost:8000/v1/chat/completions",
+            }
+        )
         llm = OfflineLLM(cfg)
-        with patch("requests.post", return_value=self._make_mock_response("ok")) as mock_post:
+        with patch(
+            "requests.post", return_value=self._make_mock_response("ok")
+        ) as mock_post:
             llm.chat("you are an expert", [{"role": "user", "content": "test"}])
         roles = [m["role"] for m in mock_post.call_args[1]["json"]["messages"]]
         assert "system" in roles
@@ -305,22 +330,26 @@ class TestAnalyzeLogs:
         return llm
 
     def test_result_has_required_keys(self) -> None:
-        valid = json.dumps({
-            "config_patch": {"vision.confidence_threshold": 0.6},
-            "sop_recommendations": ["ROI 재조정"],
-            "raw_text": "분석 완료",
-        })
+        valid = json.dumps(
+            {
+                "config_patch": {"vision.confidence_threshold": 0.6},
+                "sop_recommendations": ["ROI 재조정"],
+                "raw_text": "분석 완료",
+            }
+        )
         result = self._make_llm(valid).analyze_logs({"run_id": "r1"})
         assert "config_patch" in result
         assert "sop_recommendations" in result
         assert "raw_text" in result
 
     def test_valid_json_parsed(self) -> None:
-        valid = json.dumps({
-            "config_patch": {"ocr_threshold": 0.85},
-            "sop_recommendations": ["재시도 횟수 증가"],
-            "raw_text": "이상 감지",
-        })
+        valid = json.dumps(
+            {
+                "config_patch": {"ocr_threshold": 0.85},
+                "sop_recommendations": ["재시도 횟수 증가"],
+                "raw_text": "이상 감지",
+            }
+        )
         result = self._make_llm(valid).analyze_logs({})
         assert result["config_patch"]["ocr_threshold"] == 0.85
 
@@ -340,7 +369,9 @@ class TestAnalyzeLogs:
         assert result["sop_recommendations"] == []
 
     def test_payload_run_id_sent_to_chat(self) -> None:
-        llm = self._make_llm('{"config_patch":{},"sop_recommendations":[],"raw_text":""}')
+        llm = self._make_llm(
+            '{"config_patch":{},"sop_recommendations":[],"raw_text":""}'
+        )
         llm.analyze_logs({"run_id": "unique_run_123"})
         call_args = llm.chat.call_args  # type: ignore[union-attr]
         history = call_args[1].get("history") or call_args[0][1]

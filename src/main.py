@@ -1,142 +1,306 @@
 """
-Main entry point for Connector Vision SOP Agent v1.0.
+Main entry point for Connector Vision SOP Agent v2.1.
 
-Priority path: src/main.py -> EXE build -> test validation for Samsung OLED
-line deployment with YOLO, OCR, PyAutoGUI, JSON logging, and retry handling.
+Console commands
+----------------
+[1] Start SOP run (normal speed)
+[2] Start SOP run (fast)
+[3] Start SOP run (slow)
+[L] Analyze latest run with offline LLM  → writes config.proposed.json
+[C] Chat with LLM about the latest run   → can apply config changes with your approval
+[A] Show config audit history
+[Q] Quit
 
-When packaged as an EXE on the line PC, this module also exposes a simple
-hybrid console UI so engineers can:
+LLM-assisted config changes (command [C])
+-----------------------------------------
+When the LLM suggests config parameter changes during a [C] chat session,
+the agent asks:
 
-- See first-run guidance and usage examples.
-- Start/stop the 12-step SOP run.
-- Adjust basic speed presets (slow/normal/fast) that map to click/drag timing.
-- Trigger an optional LLM analysis pass over the latest run logs when wired.
+  Apply these changes? [Y/N]:
+  Enter your name for the audit log:
+  Enter reason (press Enter to skip):
+
+If confirmed, config.json is updated directly AND an entry is appended to
+  logs/config_audit_<line_id>.jsonl
+
+This means every change is traceable: who, when, what, why.
 """
 
 from __future__ import annotations
 
-from typing import Literal
-
-from pathlib import Path
 import json
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional
 
 from src.config_loader import load_config
+from src.config_audit import ConfigAuditLog
 from src.control_engine import ControlEngine
 from src.log_manager import LogManager
 from src.sop_advisor import (
     apply_config_patch,
+    apply_config_direct,
     summarize_failures,
     write_proposed_config,
     propose_actions,
+    SAFE_NUMERIC_RANGES,
 )
 from src.sop_executor import SopExecutor
 from src.vision_engine import DetectionConfig, VisionEngine
 
+_CONFIG_PATH = "assets/config.json"
+
+SpeedPreset = Literal["slow", "normal", "fast"]
+
+
+# ---------------------------------------------------------------------------
+# Config helpers
+# ---------------------------------------------------------------------------
+
 
 def _resolve_confidence_threshold(config: dict) -> float:
-    """Support both flat and nested config layouts during scaffold evolution."""
-
     if "ocr_threshold" in config:
         return float(config["ocr_threshold"])
     return float(config.get("vision", {}).get("confidence_threshold", 0.6))
 
 
-def _resolve_ocr_psm(config: dict) -> int:
-    """Read OCR page segmentation mode with a sensible scaffold default."""
-
-    return int(config.get("vision", {}).get("ocr_psm", 7))
+def _get_line_id(config: dict) -> str:
+    return str(config.get("line_id", "LINE-UNKNOWN"))
 
 
-def _resolve_retries(config: dict) -> int:
-    """Read retry count from config or fall back to the default."""
+def _get_audit_log(config: dict) -> ConfigAuditLog:
+    audit_cfg = config.get("audit", {})
+    log_path = audit_cfg.get("log_path", "logs/config_audit.jsonl")
+    log_dir = Path(log_path).parent
+    line_id = _get_line_id(config)
+    return ConfigAuditLog(line_id=line_id, log_dir=log_dir)
 
-    return int(config.get("control", {}).get("retries", 3))
+
+# ---------------------------------------------------------------------------
+# Service builder
+# ---------------------------------------------------------------------------
 
 
-SpeedPreset = Literal["slow", "normal", "fast"]
+def _build_services(
+    config: Optional[Dict[str, Any]] = None,
+    speed: SpeedPreset = "normal",
+) -> tuple[VisionEngine, ControlEngine, SopExecutor]:
+    """Construct core services.  All timing comes from config when provided."""
 
+    if config is None:
+        config = load_config()
 
-def _build_services(speed: SpeedPreset = "normal") -> tuple[VisionEngine, ControlEngine, SopExecutor]:
-    """Construct core services with optional speed presets for line engineers."""
-
-    config = load_config()
     vision = VisionEngine(
         DetectionConfig(
             confidence_threshold=_resolve_confidence_threshold(config),
         )
     )
 
-    # Map speed preset to mouse movement / click pacing.
-    if speed == "slow":
-        move_duration = 0.25
-        click_pause = 0.15
-    elif speed == "fast":
-        move_duration = 0.05
-        click_pause = 0.01
-    else:
-        move_duration = 0.1
-        click_pause = 0.05
+    # Speed preset overrides only if config has no control section.
+    has_control_cfg = bool(config.get("control"))
 
-    control = ControlEngine(
-        vision_agent=vision,
-        retries=_resolve_retries(config),
-        move_duration=move_duration,
-        click_pause=click_pause,
-    )
-    executor = SopExecutor(vision=vision, control=control)
+    if has_control_cfg:
+        control = ControlEngine(vision_agent=vision, config=config)
+    else:
+        # Legacy speed-preset mapping (backward compat).
+        if speed == "slow":
+            move_duration, click_pause = 0.25, 0.15
+        elif speed == "fast":
+            move_duration, click_pause = 0.05, 0.01
+        else:
+            move_duration, click_pause = 0.10, 0.05
+        control = ControlEngine(
+            vision_agent=vision,
+            retries=int(config.get("control", {}).get("retries", 3)),
+            move_duration=move_duration,
+            click_pause=click_pause,
+        )
+
+    executor = SopExecutor(vision=vision, control=control, config=config)
     return vision, control, executor
 
 
 def main() -> list[str]:
-    """
-    Programmatic entry used by tests and non-interactive callers.
-
-    Runs the SOP sequence once with the default speed preset and returns
-    the trace of step results.
-    """
-
+    """Programmatic entry used by tests and non-interactive callers."""
     _, _, executor = _build_services(speed="normal")
     return executor.run()
 
 
-def _print_welcome() -> None:
-    """Print first-run guidance for the line PC console."""
+# ---------------------------------------------------------------------------
+# Console UI helpers
+# ---------------------------------------------------------------------------
 
+
+def _print_welcome() -> None:
     banner = """
 ======================================================================
- Connector Vision SOP Agent v1.0  (YOLO26n + OCR + PyAutoGUI)
+ Connector Vision SOP Agent v2.1  (YOLO26x + phi4-mini + PyAutoGUI)
 ======================================================================
 
-This EXE automates the 12-step OLED connector SOP:
-- Login, recipe load, Mold Left/Right ROI, axis marking, pin checks, save/apply.
+12-step OLED connector SOP automation with offline LLM assistance.
 
-Usage (console):
-  [1] Start SOP run (normal speed)
-  [2] Start SOP run (fast)
-  [3] Start SOP run (slow)
-  [L] Analyze latest run with LLM (if wired)
+Commands:
+  [1] Start SOP run (normal speed — uses config.control timings)
+  [2] Start SOP run (fast preset)
+  [3] Start SOP run (slow preset)
+  [L] LLM analysis of latest run  (writes config.proposed.json)
+  [C] Chat with LLM about latest run  (can apply config changes)
+  [A] Show config change audit history
   [Q] Quit
 
-Note:
-- You can always stop the program with CTRL+C.
-- Speed presets only affect mouse move/drag timing, not detection thresholds.
+Tip: Edit assets/config.json to tune pin counts, timing, and thresholds.
+     All changes via [C] are logged with your name and timestamp.
 """
     print(banner.strip())
 
 
-def run_console() -> None:
-    """
-    Hybrid console UI for the line PC.
+def _ask_yes_no(prompt: str) -> bool:
+    """Return True if the user answers Y/y."""
+    try:
+        ans = input(prompt).strip().lower()
+        return ans in ("y", "yes")
+    except (EOFError, KeyboardInterrupt):
+        return False
 
-    This function is invoked only when running the module as a script/EXE.
+
+def _ask_input(prompt: str, default: str = "") -> str:
+    """Return stripped input, or *default* on EOF/interrupt."""
+    try:
+        val = input(prompt).strip()
+        return val if val else default
+    except (EOFError, KeyboardInterrupt):
+        return default
+
+
+# ---------------------------------------------------------------------------
+# LLM config-patch extraction helper
+# ---------------------------------------------------------------------------
+
+# Keys the LLM is allowed to suggest (must also be in SAFE_NUMERIC_RANGES or
+# be a known string key).
+_ALLOWED_PATCH_KEYS = set(SAFE_NUMERIC_RANGES.keys()) | {
+    "llm.enabled",
+    "vision.confidence_threshold",
+    "control.step_delay",
+    "control.move_duration",
+    "control.click_pause",
+    "control.drag_duration",
+    "control.retry_delay",
+    "control.retries",
+    "pin_count_min",
+    "pin_count_max",
+}
+
+_PATCH_JSON_RE = re.compile(
+    r"config[_\s]*patch\s*[:\-]?\s*(\{[^}]+\})",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _extract_patch_from_llm_text(text: str) -> Optional[Dict[str, Any]]:
+    """Try to parse a JSON config_patch block from an LLM response.
+
+    Returns None if nothing parseable is found.
     """
+    match = _PATCH_JSON_RE.search(text)
+    if not match:
+        return None
+    try:
+        candidate = json.loads(match.group(1))
+        if isinstance(candidate, dict):
+            return candidate
+    except json.JSONDecodeError:
+        pass
+    return None
+
+
+def _prompt_config_apply(
+    cfg: Dict[str, Any],
+    patch: Dict[str, Any],
+    audit_log: ConfigAuditLog,
+    llm_text: str,
+    source: str = "llm_chat",
+) -> Optional[Dict[str, Any]]:
+    """Ask the engineer for approval, then apply or skip.
+
+    Returns the updated config dict on approval, None if skipped.
+    """
+    print("\n[LLM SUGGESTION] Config changes proposed:")
+    for key, val in patch.items():
+        old = cfg
+        for part in key.split("."):
+            old = old.get(part, {}) if isinstance(old, dict) else "?"
+        print(f"  {key}: {old!r}  →  {val!r}")
+
+    audit_cfg = cfg.get("audit", {})
+    require_username = audit_cfg.get("require_username", True)
+
+    if not _ask_yes_no("\nApply these changes to config.json? [Y/N]: "):
+        print("  Skipped. No changes applied.")
+        return None
+
+    username = ""
+    if require_username:
+        while not username:
+            username = _ask_input("  Enter your name (required for audit log): ")
+            if not username:
+                print("  Name is required. Please enter your name.")
+    else:
+        username = _ask_input("  Enter your name (optional): ", default="anonymous")
+
+    reason = _ask_input("  Enter reason for change (press Enter to skip): ")
+
+    allow_write = cfg.get("llm", {}).get("allow_config_write", False)
+    if not allow_write:
+        print(
+            "\n  [BLOCKED] config.json -> llm.allow_config_write is false.\n"
+            "  To enable direct LLM config writes, set it to true in config.json first.\n"
+            "  Writing to config.proposed.json instead."
+        )
+        new_cfg, warnings = apply_config_patch(cfg, patch)
+        proposed_path = write_proposed_config(_CONFIG_PATH, new_cfg)
+        print(f"  Proposed config written to: {proposed_path}")
+        for w in warnings:
+            print(f"  Warning: {w}")
+        return None
+
+    new_cfg, warnings, audit_entry = apply_config_direct(
+        config=cfg,
+        patch=patch,
+        config_path=_CONFIG_PATH,
+        audit_log=audit_log,
+        username=username,
+        reason=reason,
+        llm_recommendation=llm_text[:500],
+        source=source,
+    )
+
+    if audit_entry:
+        print("\n  [OK] config.json updated. Audit entry saved:")
+        print(f"       {audit_log._log_path}")
+        print(f"       Changed by: {username}  at: {audit_entry['ts']}")
+    for w in warnings:
+        print(f"  Warning: {w}")
+
+    return new_cfg
+
+
+# ---------------------------------------------------------------------------
+# Console main loop
+# ---------------------------------------------------------------------------
+
+
+def run_console() -> None:
+    """Hybrid console UI for the line PC."""
 
     _print_welcome()
     last_log_manager: LogManager | None = None
+    cfg = load_config()
+    audit_log = _get_audit_log(cfg)
 
     while True:
         try:
-            cmd = input("\nSelect command [1/2/3/L/Q]: ").strip().lower()
+            cmd = input("\nSelect command [1/2/3/L/C/A/Q]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print("\nExiting Connector Vision SOP Agent.")
             break
@@ -145,177 +309,184 @@ def run_console() -> None:
             print("Goodbye.")
             break
 
+        # ----------------------------------------------------------------
+        # [1/2/3] Run SOP
+        # ----------------------------------------------------------------
         if cmd in ("1", "2", "3"):
-            if cmd == "1":
-                speed: SpeedPreset = "normal"
-            elif cmd == "2":
-                speed = "fast"
-            else:
-                speed = "slow"
+            speed_map = {"1": "normal", "2": "fast", "3": "slow"}
+            speed: SpeedPreset = speed_map[cmd]
 
-            print(f"\n[RUN] Starting SOP at '{speed}' speed...")
+            cfg = load_config()  # Re-read so latest config edits are picked up.
+            audit_log = _get_audit_log(cfg)
+
+            print(f"\n[RUN] Starting SOP (speed={speed!r}) ...")
+            print(
+                f"      pin_count_min={cfg.get('pin_count_min')}  "
+                f"pin_count_max={cfg.get('pin_count_max')}  "
+                f"step_delay={cfg.get('control', {}).get('step_delay')}s"
+            )
             log_manager = LogManager()
             last_log_manager = log_manager
 
             try:
-                _, _, executor = _build_services(speed=speed)
+                _, _, executor = _build_services(config=cfg, speed=speed)
                 trace = executor.run()
                 for line in trace:
                     print("  ", line)
                     log_manager.log(step="sop", message=line)
                 summary = log_manager.finalize(success=True)
-                print(f"\n[OK] SOP run completed in {summary.duration_sec:.1f}s (run_id={summary.run_id}).")
-            except KeyboardInterrupt:
-                log_manager.log_error(step="sop", message="Run interrupted by user (CTRL+C).")
-                summary = log_manager.finalize(success=False, error="Interrupted by user")
-                print(f"\n[INTERRUPTED] SOP run stopped (run_id={summary.run_id}).")
-            except Exception as exc:  # pragma: no cover - defensive guard.
-                log_manager.log_error(step="sop", message="Unhandled exception", error=str(exc))
-                summary = log_manager.finalize(success=False, error=str(exc))
-                print(f"\n[ERROR] SOP run failed: {exc!r} (run_id={summary.run_id}).")
-
-            continue
-
-        if cmd in ("l",):
-            if last_log_manager is None:
-                print("No completed run found yet. Please start a SOP run first (option 1/2/3).")
-                continue
-
-            try:
-                cfg = load_config()
-                result = last_log_manager.analyze_with_llm(config=cfg)
-                print("\n[LLM] Offline analysis result (config.json -> llm.* 기반):")
-                note = result.get("note", "")
-                if note:
-                    print(f"      Note: {note}")
-
-                patch = result.get("config_patch", {}) or {}
-                recs = result.get("sop_recommendations", []) or []
-
-                if patch:
-                    print("      Suggested config_patch keys:", ", ".join(patch.keys()))
-                else:
-                    print("      No config_patch suggested.")
-
-                if recs:
-                    print("      SOP recommendations:")
-                    for idx, rec in enumerate(recs, 1):
-                        print(f"        {idx}. {rec}")
-                else:
-                    print("      No SOP recommendations.")
-
-                # Normalize into high-level actions for human review.
-                actions = propose_actions(result)
-                if actions:
-                    print("      Proposed actions (for engineer review):")
-                    for idx, action in enumerate(actions, 1):
-                        atype = action.get("type", "unknown")
-                        desc = action.get("description", "")
-                        if atype == "config_patch":
-                            key = action.get("key")
-                            value = action.get("value")
-                            print(f"        {idx}. [CONFIG] {desc} (key={key!r}, value={value!r})")
-                        elif atype == "sop_recommendation":
-                            print(f"        {idx}. [SOP] {desc}")
-                        else:
-                            print(f"        {idx}. [{atype.upper()}] {desc}")
-
-                # Phase 4 Checkpoint 2: write a proposed config, do not auto-apply.
-                if patch:
-                    new_cfg, warnings = apply_config_patch(cfg, patch)
-                    proposed_path = write_proposed_config("assets/config.json", new_cfg)
-                    print(f"      Proposed config written to: {proposed_path}")
-                    if warnings:
-                        print("      Warnings while applying patch:")
-                        for w in warnings:
-                            print(f"        - {w}")
-
-                # Summarize recent failures (best effort; may be empty).
-                events_tail = result.get("payload", {}).get("events_tail", [])
-                if events_tail:
-                    summary = summarize_failures(events_tail)
-                    by_step = summary.get("error_counts_by_step", {})
-                    if by_step:
-                        print("      Error counts by step (from recent events):")
-                        for step, count in by_step.items():
-                            print(f"        {step}: {count}")
-
                 print(
-                    "      (config.json은 자동으로 변경되지 않습니다. "
-                    "assets/config.proposed.json 파일을 편집기로 열어 검토한 뒤, "
-                    "허용할 변경만 수동으로 config.json에 반영하세요.)"
+                    f"\n[OK] SOP complete in {summary.duration_sec:.1f}s "
+                    f"(run_id={summary.run_id})."
                 )
-            except Exception as exc:  # pragma: no cover - defensive guard.
-                print(f"[LLM ERROR] Failed to run offline LLM analysis: {exc!r}")
-
+            except KeyboardInterrupt:
+                log_manager.log_error(step="sop", message="Run interrupted by user.")
+                summary = log_manager.finalize(success=False, error="Interrupted")
+                print(f"\n[INTERRUPTED] (run_id={summary.run_id}).")
+            except Exception as exc:  # pragma: no cover
+                log_manager.log_error(
+                    step="sop", message="Unhandled exception", error=str(exc)
+                )
+                summary = log_manager.finalize(success=False, error=str(exc))
+                print(f"\n[ERROR] {exc!r} (run_id={summary.run_id}).")
             continue
 
-        if cmd in ("c",):
+        # ----------------------------------------------------------------
+        # [L] LLM analysis → config.proposed.json
+        # ----------------------------------------------------------------
+        if cmd == "l":
             if last_log_manager is None:
-                print("No completed run found yet. Please start a SOP run first (option 1/2/3).")
+                print("No run yet. Run SOP first ([1/2/3]).")
                 continue
-
-            from src.llm_offline import OfflineLLM  # optional dependency; may raise if missing
 
             cfg = load_config()
+            audit_log = _get_audit_log(cfg)
+
+            try:
+                result = last_log_manager.analyze_with_llm(config=cfg)
+                note = result.get("note", "")
+                if note:
+                    print(f"\n[LLM] Note: {note}")
+
+                patch = result.get("config_patch") or {}
+                actions = propose_actions(result)
+
+                if actions:
+                    print("\n[LLM] Proposed actions:")
+                    for idx, a in enumerate(actions, 1):
+                        atype = a.get("type", "")
+                        if atype == "config_patch":
+                            print(f"  {idx}. [CONFIG] {a['description']}")
+                        else:
+                            print(f"  {idx}. [SOP]    {a['description']}")
+
+                events_tail = result.get("payload", {}).get("events_tail", [])
+                if events_tail:
+                    fs = summarize_failures(events_tail)
+                    by_step = fs.get("error_counts_by_step", {})
+                    if by_step:
+                        print("\n  Error counts by step:")
+                        for step, cnt in by_step.items():
+                            print(f"    {step}: {cnt}")
+
+                if patch:
+                    new_cfg, warnings = apply_config_patch(cfg, patch)
+                    proposed_path = write_proposed_config(_CONFIG_PATH, new_cfg)
+                    print(f"\n  Proposed config → {proposed_path}")
+                    for w in warnings:
+                        print(f"  Warning: {w}")
+                    print(
+                        "\n  To apply: copy values from config.proposed.json into "
+                        "config.json,\n  or use [C] chat mode with llm.allow_config_write=true."
+                    )
+                else:
+                    print("\n  No config patch suggested.")
+
+            except Exception as exc:  # pragma: no cover
+                print(f"[LLM ERROR] {exc!r}")
+            continue
+
+        # ----------------------------------------------------------------
+        # [C] LLM chat — can apply config changes with audit
+        # ----------------------------------------------------------------
+        if cmd == "c":
+            if last_log_manager is None:
+                print("No run yet. Run SOP first ([1/2/3]).")
+                continue
+
+            from src.llm_offline import OfflineLLM
+
+            cfg = load_config()
+            audit_log = _get_audit_log(cfg)
             llm_cfg = cfg.get("llm") or {}
+
             if not llm_cfg.get("enabled"):
                 print(
-                    "LLM is disabled in config.json (llm.enabled is false). "
-                    "config.json의 llm.enabled 값을 true로 변경한 뒤 다시 시도하세요."
+                    "LLM is disabled (llm.enabled=false in config.json).\n"
+                    "Set it to true and ensure Ollama is running, then retry."
                 )
                 continue
 
             try:
                 offline_llm = OfflineLLM.from_config(llm_cfg)
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover
                 print(
-                    "[LLM ERROR] Failed to initialize offline LLM: "
-                    f"{exc!r}\n"
-                    "  - assets/config.json 의 llm.model_path / backend 설정을 확인하세요.\n"
-                    "  - 필요한 경우 llama-cpp-python 또는 HTTP LLM 서버가 정상 동작하는지 점검하세요."
+                    f"[LLM ERROR] Cannot init LLM: {exc!r}\n"
+                    "  Check config.json llm.model_path / http_url."
                 )
                 continue
 
-            # Build initial context from the latest run payload.
             payload = last_log_manager.build_llm_payload(config=cfg)
-            import json
+            allow_write = llm_cfg.get("allow_config_write", False)
+            write_note = (
+                "LLM config write: ENABLED (changes will be applied with your approval)"
+                if allow_write
+                else "LLM config write: DISABLED (set llm.allow_config_write=true to enable)"
+            )
 
             system = (
-                "You are an expert Samsung OLED connector SOP and machine vision engineer. "
-                "You will help the user understand and troubleshoot the latest SOP run. "
-                "Use the provided JSON payload as context, but keep answers short and practical."
+                "You are an expert Samsung OLED connector SOP and machine vision engineer "
+                "for an offline line PC. Help the engineer diagnose issues and tune parameters. "
+                "When suggesting config changes, output a JSON block labelled 'config_patch' "
+                'with dotted keys (e.g. {"control.step_delay": 1.5, "pin_count_min": 40}). '
+                "Keep answers short, practical, and in English."
             )
-            print("\n[CHAT] Enter chat mode. Type '/exit' to return to the main menu.")
-            print("       The model has been given the latest run payload as context.")
-            print("       Example questions:")
-            print("         - \"이번 SOP 실행에서 실패한 단계와 이유를 요약해줘\"")
-            print("         - \"핀 카운트 관련해서 어떤 튜닝을 시도해 보면 좋을까?\"")
-            print("         - \"ROI 설정이 자주 실패하는 원인을 추정해줘\"")
 
-            # Provide a short summary question as the first turn.
-            history: list[dict[str, str]] = [
+            print(f"\n[CHAT] {write_note}")
+            print(
+                "       Type '/exit' to return.  '/apply' to manually trigger apply prompt."
+            )
+            print("       Example questions:")
+            print("         - 'Summarize this SOP run and any failures'")
+            print("         - 'Why did pin count fail? Suggest a fix.'")
+            print("         - 'Increase timing to avoid collision with slow programs'")
+
+            history: List[Dict[str, str]] = [
                 {
                     "role": "user",
                     "content": (
-                        "Here is the latest SOP run payload:\n"
-                        f"{json.dumps(payload, ensure_ascii=False)[: offline_llm.cfg.max_input_tokens]}"
-                        "\nSummarize what happened and any obvious issues."
+                        "Latest SOP run payload:\n"
+                        f"{json.dumps(payload, ensure_ascii=False)[:llm_cfg.get('max_input_tokens', 6144)]}"
+                        "\n\nSummarize what happened and flag any issues."
                     ),
                 }
             ]
 
+            last_llm_text = ""
+            last_patch: Optional[Dict[str, Any]] = None
+
             try:
                 first_answer = offline_llm.chat(system=system, history=history)
                 print("\n[LLM]", first_answer)
-                # Keep the conversation history going.
                 history.append({"role": "assistant", "content": first_answer})
+                last_llm_text = first_answer
+                last_patch = _extract_patch_from_llm_text(first_answer)
+                if last_patch:
+                    print(
+                        "[LLM] Config patch detected in response — type '/apply' to apply."
+                    )
             except Exception as exc:  # pragma: no cover
-                print(
-                    "[LLM ERROR] Failed initial summary: "
-                    f"{exc!r}\n"
-                    "  - LLM 모델/서버 상태와 config.json의 llm.* 설정을 다시 확인한 뒤 재시도하세요."
-                )
+                print(f"[LLM ERROR] {exc!r}")
                 continue
 
             while True:
@@ -325,12 +496,24 @@ def run_console() -> None:
                     print("\nLeaving chat mode.")
                     break
 
-                if user_q.lower() in ("", "/exit", "exit", "quit", "/quit"):
+                if user_q.lower() in ("", "/exit", "exit", "quit"):
                     print("Leaving chat mode.")
                     break
 
-                if not user_q:
-                    print("  (질문을 입력하거나 '/exit'로 종료할 수 있습니다.)")
+                # Manual apply trigger.
+                if user_q.lower() == "/apply":
+                    if not last_patch:
+                        print("  No config patch found in recent LLM responses.")
+                        print(
+                            "  Ask the LLM to suggest specific parameter changes first."
+                        )
+                    else:
+                        cfg = load_config()
+                        updated = _prompt_config_apply(
+                            cfg, last_patch, audit_log, last_llm_text, source="llm_chat"
+                        )
+                        if updated is not None:
+                            cfg = updated
                     continue
 
                 history.append({"role": "user", "content": user_q})
@@ -338,18 +521,32 @@ def run_console() -> None:
                     answer = offline_llm.chat(system=system, history=history)
                     print("[LLM]", answer)
                     history.append({"role": "assistant", "content": answer})
+                    last_llm_text = answer
+
+                    patch_candidate = _extract_patch_from_llm_text(answer)
+                    if patch_candidate:
+                        last_patch = patch_candidate
+                        print(
+                            "[LLM] Config patch detected — type '/apply' to apply "
+                            "with your approval and audit log entry."
+                        )
                 except Exception as exc:  # pragma: no cover
-                    print(
-                        "[LLM ERROR] Chat failed: "
-                        f"{exc!r}\n"
-                        "  - 네트워크/로컬 LLM 서버 또는 모델 설정 문제일 수 있습니다. "
-                        "config.json과 LLM 프로세스를 확인한 뒤 다시 시도하세요."
-                    )
+                    print(f"[LLM ERROR] {exc!r}")
                     break
 
             continue
 
-        print("Unrecognized command. Please choose one of [1/2/3/L/C/Q].")
+        # ----------------------------------------------------------------
+        # [A] Audit history
+        # ----------------------------------------------------------------
+        if cmd == "a":
+            cfg = load_config()
+            audit_log = _get_audit_log(cfg)
+            print(f"\n[AUDIT] Config change history — {audit_log._log_path}")
+            print(audit_log.format_history_table(limit=20))
+            continue
+
+        print("Unknown command. Choose one of [1/2/3/L/C/A/Q].")
 
 
 if __name__ == "__main__":
@@ -357,4 +554,3 @@ if __name__ == "__main__":
         run_console()
     except KeyboardInterrupt:
         print("\nExiting Connector Vision SOP Agent.")
-

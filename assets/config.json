@@ -1,19 +1,46 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
+  "line_id": "LINE-A3",
   "password": "1111",
-  "pin_count_min": null,
+
+  "pin_count_min": 40,
+  "pin_count_max": 40,
+  "pin_rows": {
+    "top": 20,
+    "bottom": 20
+  },
+
   "vision": {
     "model_path": "assets/models/yolo26x.pt",
-    "confidence_threshold": 0.6
+    "confidence_threshold": 0.60,
+    "pin_area_min_px": 8,
+    "scan_region": null
   },
+
+  "control": {
+    "retries": 3,
+    "move_duration": 0.30,
+    "click_pause": 0.50,
+    "drag_duration": 0.40,
+    "retry_delay": 0.50,
+    "step_delay": 1.00
+  },
+
   "llm": {
     "enabled": false,
     "backend": "ollama",
-    "model_path": "llama4:scout",
+    "model_path": "phi4-mini-reasoning",
     "http_url": "http://localhost:11434/v1/chat/completions",
     "ctx_size": 8192,
     "gpu_layers": 0,
     "max_input_tokens": 6144,
-    "max_output_tokens": 1024
+    "max_output_tokens": 1024,
+    "allow_config_write": false
+  },
+
+  "audit": {
+    "enabled": true,
+    "log_path": "logs/config_audit.jsonl",
+    "require_username": true
   }
 }
