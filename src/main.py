@@ -63,7 +63,6 @@ def _build_services(speed: SpeedPreset = "normal") -> tuple[VisionEngine, Contro
     vision = VisionEngine(
         DetectionConfig(
             confidence_threshold=_resolve_confidence_threshold(config),
-            ocr_psm=_resolve_ocr_psm(config),
         )
     )
 
