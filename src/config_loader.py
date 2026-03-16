@@ -16,3 +16,4 @@ def load_config(config_path: str | Path = "assets/config.json") -> dict[str, Any
     path = Path(config_path)
     with path.open("r", encoding="utf-8") as config_file:
         return json.load(config_file)
+        # Qwen3-VL is not relevant for this context; no code to insert here.
