@@ -147,7 +147,7 @@ def main() -> list[str]:
 def _print_welcome() -> None:
     banner = """
 ======================================================================
- Connector Vision SOP Agent v2.1  (YOLO26x + phi4-mini + PyAutoGUI)
+ Connector Vision SOP Agent v3.0  (YOLO26x + phi4-mini [Offline])
 ======================================================================
 
 12-step OLED connector SOP automation with offline LLM assistance.
@@ -581,8 +581,20 @@ def run_gui() -> None:
 
     cfg = load_config()
     audit_log = _get_audit_log(cfg)
-    config_path = Path(_CONFIG_PATH)
-    sop_steps_path = Path("assets/sop_steps.json")
+
+    # Resolve asset paths — when frozen (PyInstaller EXE), look next to the EXE first.
+    if getattr(sys, "frozen", False):
+        _exe_dir = Path(sys.executable).parent
+        config_path = _exe_dir / _CONFIG_PATH
+        sop_steps_path = _exe_dir / "assets" / "sop_steps.json"
+        if not sop_steps_path.exists():
+            # Fallback: bundled copy inside _MEIPASS
+            sop_steps_path = (
+                Path(getattr(sys, "_MEIPASS", ".")) / "assets" / "sop_steps.json"
+            )
+    else:
+        config_path = Path(_CONFIG_PATH)
+        sop_steps_path = Path("assets/sop_steps.json")
 
     # Try to build LLM if enabled
     llm = None

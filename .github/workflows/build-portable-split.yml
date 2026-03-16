@@ -89,6 +89,16 @@ jobs:
             Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json"
           }
 
+          # Bundle YOLO model alongside EXE so VisionEngine finds it via exe_dir/assets/models/
+          New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
+          if (Test-Path "assets\models\yolo26x.pt") {
+            Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"
+            $mb = [math]::Round((Get-Item "assets\models\yolo26x.pt").Length / 1MB, 1)
+            Write-Host "yolo26x.pt bundled: $mb MB"
+          } else {
+            Write-Host "[WARN] assets\models\yolo26x.pt not found - models dir empty."
+          }
+
           Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"

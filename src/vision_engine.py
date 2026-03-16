@@ -14,12 +14,24 @@ CP-3 변경사항:
 from __future__ import annotations
 
 import os
+import pathlib
 import sys
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
-from ultralytics import YOLO
+
+# ---------------------------------------------------------------------------
+# Redirect ultralytics config directory BEFORE importing YOLO.
+# This avoids "Error decoding json from persistent_cache.json" crashes that
+# occur on fresh line-PC installs where the default AppData path is missing
+# or contains a corrupted file from a previous installation attempt.
+# ---------------------------------------------------------------------------
+_YOLO_CFG_DIR = str(pathlib.Path.home() / ".connector_vision_agent")
+pathlib.Path(_YOLO_CFG_DIR).mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("YOLO_CONFIG_DIR", _YOLO_CFG_DIR)
+
+from ultralytics import YOLO  # noqa: E402
 
 try:
     import pyautogui
@@ -84,13 +96,25 @@ class VisionEngine:
     # ------------------------------------------------------------------ #
 
     def _resolve_runtime_path(self, relative_path: str) -> str:
-        """Resolve file paths for both source runs and PyInstaller EXE runs."""
+        """Resolve file paths for both source runs and PyInstaller EXE runs.
+
+        Search order when frozen (PyInstaller EXE):
+          1. Next to the EXE — assets/models/yolo26x.pt  (user-editable, deployed by bat)
+          2. Inside _MEIPASS  — bundled copy inside the EXE's extracted temp dir
+        Source-run: project root (parent of src/).
+        """
 
         if os.path.isabs(relative_path):
             return relative_path
 
         if getattr(sys, "frozen", False):
-            base_path = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+            # 1st priority: alongside the EXE (Part1 package layout)
+            exe_dir = os.path.dirname(sys.executable)
+            candidate_exe = os.path.abspath(os.path.join(exe_dir, relative_path))
+            if os.path.exists(candidate_exe):
+                return candidate_exe
+            # 2nd priority: inside _MEIPASS (bundled via PyInstaller datas)
+            base_path = getattr(sys, "_MEIPASS", exe_dir)
         else:
             base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -105,13 +129,15 @@ class VisionEngine:
         """
 
         if os.path.exists(model_path):
-            return YOLO(model_path)
+            try:
+                model = YOLO(model_path)
+                model.overrides["verbose"] = False
+                return model
+            except Exception:
+                return None
 
-        name = os.path.basename(model_path)
-        try:
-            return YOLO(name)
-        except Exception:
-            return None
+        # Local .pt not found — skip hub download to avoid network calls.
+        return None
 
     # ------------------------------------------------------------------ #
     # 화면 캡처
