@@ -19,7 +19,7 @@ except Exception as exc:  # pragma: no cover - depends on display availability.
 else:  # pragma: no cover - environment dependent branch.
     PYAUTOGUI_IMPORT_ERROR = None
 
-from src.vision_engine import VisionAgent
+from src.vision_engine import VisionEngine
 
 
 @dataclass
@@ -44,7 +44,7 @@ class ControlEngine:
 
     def __init__(
         self,
-        vision_agent: VisionAgent,
+        vision_agent: VisionEngine,
         retries: int = 3,
         move_duration: float = 0.1,
         click_pause: float = 0.05,
@@ -69,20 +69,15 @@ class ControlEngine:
     def _resolve_target_coordinates(
         self, target_name: str
     ) -> Optional[Tuple[int, int]]:
-        """Use YOLO (and optional OCR) to find the target on screen."""
+        """Use YOLO26x to find the target on screen."""
 
         # Capture the current screen as a BGR image for the vision engine.
         image = self.vision.capture_screen()
 
-        # 1) Try YOLO label-based detection.
+        # YOLO label-based detection (CP-3: OCR fallback removed).
         detection = self.vision.find_detection(image, label=target_name)
         if detection is not None:
             return self._center_of_bbox(detection.bbox)
-
-        # 2) Fallback: OCR-based lookup when target_name is a visible text label.
-        text_match = self.vision.locate_text(image, target_text=target_name)
-        if text_match is not None:
-            return self._center_of_bbox(text_match["bbox"])  # type: ignore[arg-type]
 
         return None
 
@@ -155,14 +150,12 @@ class ControlEngine:
     ) -> ControlResult:
         """Drag a region of interest on screen, using normalized ROI coordinates."""
 
-        from src.vision_engine import VisionAgent as _VA  # local import to avoid cycle
-
         start_time = time.perf_counter()
         try:
             self._ensure_pyautogui_available()
 
             # Normalize ROI so callers can pass arbitrary corner order.
-            (x1, y1), (x2, y2) = _VA.normalize_roi(start=start, end=end)
+            (x1, y1), (x2, y2) = VisionEngine.normalize_roi(start=start, end=end)
 
             pyautogui.moveTo(x1, y1, duration=self.move_duration)
             pyautogui.dragTo(x2, y2, duration=self.move_duration)

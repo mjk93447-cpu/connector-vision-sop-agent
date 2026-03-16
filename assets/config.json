@@ -1,17 +1,19 @@
 {
-  "version": "1.0.0",
-  "screen_resolution": null,
+  "version": "2.0.0",
   "password": "1111",
-  "ocr_threshold": 0.75,
   "pin_count_min": null,
+  "vision": {
+    "model_path": "assets/models/yolo26x.pt",
+    "confidence_threshold": 0.6
+  },
   "llm": {
     "enabled": false,
-    "backend": "llama_cpp",
-    "model_path": "C:/models/qwen2_5-vl-7b-q4_k_m.gguf",
-    "ctx_size": 4096,
+    "backend": "ollama",
+    "model_path": "llama4:scout",
+    "http_url": "http://localhost:11434/v1/chat/completions",
+    "ctx_size": 8192,
     "gpu_layers": 0,
-    "http_url": "http://localhost:8000/v1/chat/completions",
-    "max_input_tokens": 4096,
-    "max_output_tokens": 512
+    "max_input_tokens": 6144,
+    "max_output_tokens": 1024
   }
 }
