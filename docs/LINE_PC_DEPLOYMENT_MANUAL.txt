@@ -1,0 +1,809 @@
+================================================================================
+  CONNECTOR VISION SOP AGENT v2.0.0
+  Line PC Deployment & Test Manual
+
+  For: OLED Line Engineers (Samsung India / Vendor Engineers)
+  Version: 2.0.0  |  Date: 2026-03-16
+  Model: phi4-mini-reasoning (Microsoft, USA)
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+  PART A : Before You Begin (Prerequisites & Warnings)
+  PART B : Downloading Files from GitHub (Office/Dev PC)
+  PART C : Transferring Files to Line PC
+  PART D : Assembling the Portable Bundle on Line PC
+  PART E : First Run & Verification
+  PART F : Running the 12-Step SOP Agent
+  PART G : Using the LLM Analysis Feature [L]
+  PART H : Testing & Acceptance Checklist
+  PART I : Troubleshooting
+  PART J : Emergency Procedures
+
+
+================================================================================
+  PART A : BEFORE YOU BEGIN
+================================================================================
+
+A-1. WHAT THIS PROGRAM DOES
+-----------------------------
+  The Connector Vision SOP Agent automates the 12-step connector SOP process
+  on Samsung OLED line PCs. It uses:
+    - YOLO26x computer vision model  : detects buttons, labels, UI elements
+    - phi4-mini-reasoning LLM        : analyzes failures, suggests fixes
+    - PyAutoGUI                      : controls mouse and keyboard automatically
+
+  The agent will:
+    1. Log in to the line system automatically
+    2. Navigate menus and set Mold ROI coordinates
+    3. Verify pin counts and connector positions
+    4. Save and apply settings
+    5. Log all steps with screenshots for review
+
+A-2. SYSTEM REQUIREMENTS (Line PC)
+------------------------------------
+  Operating System  : Windows 10 Pro or Windows 11 Pro (64-bit)
+  CPU               : Intel Core i5 or higher (i7 recommended)
+  RAM               : Minimum 8 GB  (16 GB recommended for LLM)
+  Free Disk Space   : Minimum 10 GB free on C:\ drive
+  Display           : 1920 x 1080 resolution (Full HD)
+  Network           : NOT required (fully offline operation)
+
+  IMPORTANT: The program runs 100% offline. No internet connection is used
+             during operation. Do NOT connect to external networks.
+
+A-3. CRITICAL WARNINGS
+------------------------
+  [!] DO NOT modify files inside the "assets\models\" folder.
+  [!] DO NOT delete or rename "assets\config.json".
+  [!] DO NOT run multiple instances of the agent simultaneously.
+  [!] Close all other automation programs before running this agent.
+  [!] Ensure the line system (target application) is already open and visible
+      on screen before starting the agent.
+  [!] Do NOT move the mouse or type on keyboard while the agent is running.
+  [!] If an emergency occurs, press CTRL+C in the console window to stop.
+
+A-4. FILES YOU WILL NEED
+--------------------------
+  Download these TWO files from GitHub Actions (instructions in Part B):
+
+    File 1: portable-part1-app.zip         (~440 MB)
+             Contains: connector_vision_agent.exe, ollama.exe,
+                       config.json, start_agent.bat, stop_ollama.bat
+
+    File 2: portable-part2-phi4-mini.zip   (~2.7 GB)
+             Contains: phi4-mini-reasoning AI model files (blobs + manifests)
+
+  TOTAL size after extraction: approximately 3.5 - 4 GB
+
+
+================================================================================
+  PART B : DOWNLOADING FILES FROM GITHUB (Office / Dev PC)
+================================================================================
+
+  Perform these steps on a PC that HAS internet access (office PC or dev PC).
+  You will then copy the files to the line PC via USB drive.
+
+B-1. ACCESS GITHUB ACTIONS PAGE
+---------------------------------
+  1. Open a web browser (Chrome, Firefox, or Edge)
+
+  2. Go to this URL:
+     https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions/runs/23136160146
+
+  3. If asked to log in to GitHub, enter your GitHub credentials.
+
+  4. You will see a page titled:
+     "Build Portable Offline Bundle (Split)"
+     with a GREEN checkmark showing the build succeeded.
+
+B-2. DOWNLOAD THE ARTIFACTS
+-----------------------------
+  5. Scroll DOWN to the bottom of the page.
+
+  6. You will see a section called "Artifacts" with two items listed:
+
+       [portable-part1-app]            440 MB
+       [portable-part2-phi4-mini]      2749 MB
+
+  7. Click on "portable-part1-app" to download.
+     --> The browser will download "portable-part1-app.zip" (~440 MB)
+     --> This may take 3-10 minutes depending on your internet speed.
+
+  8. Click on "portable-part2-phi4-mini" to download.
+     --> The browser will download "portable-part2-phi4-mini.zip" (~2.7 GB)
+     --> This will take 15-30 minutes. Please wait patiently.
+
+  NOTE: Artifacts are available until 2026-06-14. After that date, you must
+        trigger a new build using the GitHub Actions workflow.
+
+B-3. VERIFY DOWNLOADS
+----------------------
+  9. After both downloads complete, check:
+     - "portable-part1-app.zip"       should be approximately 440 MB
+     - "portable-part2-phi4-mini.zip" should be approximately 2,749 MB
+
+  10. If either file is much smaller than expected, the download may have
+      failed. Delete and re-download the file.
+
+
+================================================================================
+  PART C : TRANSFERRING FILES TO LINE PC
+================================================================================
+
+C-1. PREPARE USB DRIVE
+------------------------
+  1. Use a USB flash drive or external hard drive with at least 10 GB free.
+
+  2. Format the USB drive as NTFS (required for files larger than 4 GB).
+     To format:
+       a. Connect USB to office PC
+       b. Open "This PC" / "My Computer"
+       c. Right-click on the USB drive
+       d. Select "Format..."
+       e. File System: select "NTFS"
+       f. Click "Start" and confirm
+
+  3. Copy both ZIP files to the USB drive:
+       portable-part1-app.zip
+       portable-part2-phi4-mini.zip
+
+C-2. CONNECT TO LINE PC
+-------------------------
+  4. Follow your factory's USB connection procedure for line PCs.
+     (If USB is restricted, contact your line IT administrator for the
+      approved file transfer method: network share, internal file server, etc.)
+
+  5. On the line PC, open File Explorer.
+     --> Press Windows key + E, or right-click desktop -> "Open File Explorer"
+
+C-3. CREATE INSTALLATION FOLDER
+---------------------------------
+  6. Navigate to C:\ drive (Local Disk C:)
+
+  7. Create a new folder:
+     a. Right-click in an empty area of the C:\ window
+     b. Select "New" -> "Folder"
+     c. Name it: tools
+     d. Press Enter
+
+  8. Open the "tools" folder, then create another folder inside it:
+     a. Right-click -> "New" -> "Folder"
+     b. Name it: connector_agent
+     c. Press Enter
+
+  Final path: C:\tools\connector_agent\
+
+C-4. COPY ZIP FILES TO LINE PC
+--------------------------------
+  9. From USB drive, copy both ZIP files to C:\tools\connector_agent\:
+     - portable-part1-app.zip
+     - portable-part2-phi4-mini.zip
+
+
+================================================================================
+  PART D : ASSEMBLING THE PORTABLE BUNDLE ON LINE PC
+================================================================================
+
+D-1. EXTRACT PART 1 (EXE + Ollama + Launchers)
+------------------------------------------------
+  1. On the line PC, navigate to:  C:\tools\connector_agent\
+
+  2. Right-click on "portable-part1-app.zip"
+
+  3. Select "Extract All..."
+     (If you see "Extract Here" in 7-Zip or WinRAR, that also works)
+
+  4. In the "Extract Compressed (Zipped) Folders" dialog:
+     - Destination folder: C:\tools\connector_agent\
+     - Make sure "Show extracted files when complete" is checked
+     - Click "Extract"
+
+  5. Wait for extraction to complete (may take 2-5 minutes for 440 MB).
+
+  6. After extraction, you should see these files in C:\tools\connector_agent\:
+
+       connector_vision_agent.exe     <- Main program (~200-300 MB)
+       ollama.exe                     <- AI model server
+       start_agent.bat                <- Launcher script (run this!)
+       stop_ollama.bat                <- Emergency stop script
+       MERGE_GUIDE.txt                <- This assembly guide
+       README.md                      <- Documentation
+       assets\
+           config.json                <- Settings file
+       ollama_models\
+           PLACE_PART2_HERE.txt       <- Placeholder (will be replaced)
+
+  IMPORTANT: If you do NOT see "connector_vision_agent.exe" directly in
+             C:\tools\connector_agent\ (not inside a subfolder), repeat
+             the extraction and make sure the destination is correct.
+
+D-2. CREATE MODELS SUBFOLDER (if not already present)
+-------------------------------------------------------
+  7. Check if this folder exists: C:\tools\connector_agent\ollama_models\
+     If NOT, create it:
+       a. Open C:\tools\connector_agent\
+       b. Right-click -> New -> Folder
+       c. Name it: ollama_models
+
+D-3. EXTRACT PART 2 (AI Model Files) — IMPORTANT STEP
+-------------------------------------------------------
+  8. Right-click on "portable-part2-phi4-mini.zip"
+
+  9. Select "Extract All..."
+
+  10. In the destination box, type EXACTLY:
+         C:\tools\connector_agent\ollama_models\
+
+      --> It is CRITICAL that you extract INTO the "ollama_models" folder,
+          NOT into "connector_agent" directly.
+
+  11. Click "Extract" and wait (2.7 GB extraction takes 5-15 minutes).
+
+  12. After extraction, verify the structure inside ollama_models:
+      C:\tools\connector_agent\ollama_models\
+          blobs\
+              sha256-[long hash string]    <- Model weight file (~2.5 GB)
+              sha256-[short hash string]   <- Model config file
+          manifests\
+              registry.ollama.ai\
+                  library\
+                      phi4-mini-reasoning\
+                          latest
+
+  If you see "blobs\" and "manifests\" folders directly inside "ollama_models\",
+  the extraction was successful.
+
+D-4. VERIFY FINAL FOLDER STRUCTURE
+------------------------------------
+  13. Your complete folder should look like this:
+
+      C:\tools\connector_agent\
+      |
+      +-- connector_vision_agent.exe     [~200 MB]
+      +-- ollama.exe                     [~50 MB]
+      +-- start_agent.bat                [small]
+      +-- stop_ollama.bat                [small]
+      +-- MERGE_GUIDE.txt
+      +-- README.md
+      +-- assets\
+      |   +-- config.json
+      +-- ollama_models\
+          +-- blobs\
+          |   +-- sha256-[hash]          [~2.5 GB] <- LARGEST FILE
+          |   +-- sha256-[hash]          [small]
+          +-- manifests\
+              +-- registry.ollama.ai\
+                  +-- library\
+                      +-- phi4-mini-reasoning\
+                          +-- latest
+
+
+================================================================================
+  PART E : FIRST RUN & VERIFICATION
+================================================================================
+
+E-1. CHECK TARGET APPLICATION IS READY
+----------------------------------------
+  Before starting the agent:
+
+  1. Make sure the Samsung line application (target system) is:
+     - Already open and visible on the screen
+     - Logged in with the appropriate line credentials if required
+     - Showing the main menu or start screen
+     - Running in FULL SCREEN mode (recommended: 1920x1080)
+
+  2. Close or minimize any other windows that are NOT needed.
+     The agent controls the mouse — extra windows may cause errors.
+
+  3. Make sure the screen resolution is set to 1920 x 1080:
+     a. Right-click on Desktop -> "Display settings"
+     b. Under "Display resolution", select "1920 x 1080"
+     c. Click "Keep changes"
+
+E-2. VERIFY CONFIG.JSON SETTINGS
+----------------------------------
+  4. Navigate to: C:\tools\connector_agent\assets\
+
+  5. Open "config.json" with Notepad:
+     Right-click -> "Open with" -> "Notepad"
+
+  6. Confirm these values are correct for your line:
+
+     {
+       "version": "2.0.0",
+       "password": "1111",          <- CHANGE to actual line password
+       "pin_count_min": null,
+       "vision": {
+         "model_path": "assets/models/yolo26x.pt",
+         "confidence_threshold": 0.6
+       },
+       "llm": {
+         "enabled": true,           <- Should be true
+         "backend": "ollama",
+         "model_path": "phi4-mini-reasoning",
+         "http_url": "http://127.0.0.1:11434/v1/chat/completions"
+       }
+     }
+
+  7. If the password is wrong, change "1111" to the actual line password.
+     SAVE the file (Ctrl+S) before closing.
+
+  DO NOT modify any other values unless instructed by the engineering team.
+
+E-3. FIRST LAUNCH
+------------------
+  8. Navigate to: C:\tools\connector_agent\
+
+  9. Double-click "start_agent.bat"
+
+  10. A black console window will appear with the title:
+      "Connector Vision SOP Agent v2.0 [Offline]"
+
+  11. The console will display startup messages (watch carefully):
+
+      ================================================================
+       Connector Vision SOP Agent v2.0.0  [Fully Offline]
+       LLM  : phi4-mini-reasoning  (Microsoft, USA)
+       YOLO : yolo26x embedded in EXE
+      ================================================================
+
+      [1/3] Starting Ollama server...
+
+  12. Wait approximately 15 seconds while Ollama (AI server) starts.
+
+  13. Next you will see:
+      [2/3] Verifying LLM model...
+
+      The console lists the loaded model:
+        NAME                    ID          SIZE    MODIFIED
+        phi4-mini-reasoning     [hash]      2.5 GB  ...
+
+      If phi4-mini-reasoning appears in the list, the LLM is ready.
+      If the list is EMPTY, see Part I Troubleshooting - Error T-3.
+
+  14. Then:
+      [3/3] Launching SOP Agent...
+
+  15. The main SOP Agent console will appear with a menu like:
+
+      ============================================================
+        Connector Vision SOP Agent v2.0.0
+        Line: [LINE_NAME]   Run: [RUN_ID]
+      ============================================================
+
+      [1] Run SOP - SLOW   (recommended for first test)
+      [2] Run SOP - NORMAL
+      [3] Run SOP - FAST
+      [L] LLM Analysis
+      [C] Chat Mode
+      [Q] Quit
+
+      Enter choice:
+
+  16. The program is now ready. Proceed to Part F for running the SOP.
+
+
+================================================================================
+  PART F : RUNNING THE 12-STEP SOP AGENT
+================================================================================
+
+F-1. BEFORE EACH RUN CHECKLIST
+--------------------------------
+  [ ] Target application is visible and at the correct starting screen
+  [ ] No other automation tools are running
+  [ ] Screen resolution is 1920x1080
+  [ ] config.json has the correct password
+  [ ] You will NOT touch the mouse or keyboard during the run
+  [ ] You are ready to press CTRL+C if something goes wrong
+
+F-2. SELECT SPEED MODE
+-----------------------
+  For the FIRST TEST, always use SLOW mode:
+
+  --> Type "1" and press Enter
+
+  Speed modes explained:
+    [1] SLOW   : 3-5 seconds between actions  (safest, for first test)
+    [2] NORMAL : 1-2 seconds between actions  (standard operation)
+    [3] FAST   : 0.5 seconds between actions  (experienced use only)
+
+F-3. MONITOR THE RUN
+---------------------
+  Once the SOP starts, you will see real-time progress in the console:
+
+    Step  1/12: login         -> [SEARCHING] login_button ...
+    Step  1/12: login         -> [FOUND] login_button (confidence: 0.87)
+    Step  1/12: login         -> [CLICK] x=456, y=312
+    Step  1/12: login         ✓ COMPLETE (2.3s)
+
+    Step  2/12: recipe        -> [SEARCHING] recipe_menu ...
+    ...
+
+    Step 12/12: apply         ✓ COMPLETE (1.1s)
+
+    ✅ SOP Complete! Total time: 28.4s
+    Log saved to: logs\[RUN_ID]\summary.json
+
+  Watch for any RED error messages or RETRY messages, which indicate
+  the agent could not find an expected UI element.
+
+F-4. DURING THE RUN - DO NOT:
+------------------------------
+  [!] Do NOT move your mouse
+  [!] Do NOT press any keyboard keys
+  [!] Do NOT click anywhere on the screen
+  [!] Do NOT open new windows or applications
+  [!] Do NOT let the screen turn off (disable screen saver before running)
+      To disable screen saver:
+        -> Right-click Desktop -> Personalize -> Lock screen
+        -> Screen saver settings -> Set to "None"
+
+F-5. EMERGENCY STOP
+--------------------
+  If the agent is doing something wrong:
+
+  1. Click inside the console window (the black text window)
+  2. Press CTRL + C
+  3. The agent will stop immediately
+  4. If the mouse cursor is stuck or moving, also run stop_ollama.bat
+
+
+================================================================================
+  PART G : USING THE LLM ANALYSIS FEATURE [L]
+================================================================================
+
+  After a SOP run completes (or fails), you can ask the AI to analyze
+  the logs and suggest improvements.
+
+G-1. TRIGGER LLM ANALYSIS
+---------------------------
+  1. After a SOP run, at the main menu, type "L" and press Enter.
+
+  2. The console will show:
+     [LLM] Building analysis payload from last run...
+     [LLM] Sending to phi4-mini-reasoning... (this may take 10-60 seconds)
+
+  3. Wait for the analysis. The AI processes on the CPU - be patient.
+     Expected wait time: 15-60 seconds on a typical line PC.
+
+  4. Results will appear:
+
+     ---- LLM Analysis Result ----
+     SOP Recommendations:
+       1. Step 3 failed 2 times: mold_left_label not detected.
+          Suggestion: Increase confidence_threshold from 0.6 to 0.65
+          or adjust ROI region for left mold area.
+       2. Login step is slow (avg 4.2s). Check if login button position
+          has shifted on screen.
+
+     Suggested Config Changes (config_patch):
+       ocr_threshold: 0.6 -> 0.7
+       vision.confidence_threshold: 0.6 -> 0.65
+
+     Proposed Actions:
+       [CONFIG] Adjust confidence_threshold to 0.65
+       [SOP]    Add retry delay of 0.5s before mold_left_label search
+
+     Saved to: assets/config.proposed.json
+     ---- End of Analysis ----
+
+G-2. APPLYING SUGGESTED CHANGES
+---------------------------------
+  IMPORTANT: The AI suggestions are saved to "config.proposed.json".
+             They are NOT automatically applied to "config.json".
+             An engineer must review and manually apply them.
+
+  To apply a suggested change:
+  1. Open C:\tools\connector_agent\assets\config.proposed.json in Notepad
+  2. Open C:\tools\connector_agent\assets\config.json in Notepad
+  3. Compare the two files
+  4. Copy ONLY the values you approve from proposed -> config.json
+  5. Save config.json
+  6. Run the SOP again to test the new settings
+
+G-3. CHAT MODE [C]
+-------------------
+  Type "C" at the main menu to open interactive chat with the AI.
+
+  You can ask questions like:
+    "Why did step 3 fail?"
+    "What is the correct ROI for mold_left?"
+    "How do I improve pin count detection?"
+
+  The AI responds based on the last run's log data.
+  Type "exit" or "quit" to leave chat mode.
+
+
+================================================================================
+  PART H : TESTING & ACCEPTANCE CHECKLIST
+================================================================================
+
+  Use this checklist to verify the system is working correctly.
+  Mark each item PASS or FAIL. Record observations.
+
+H-1. INSTALLATION VERIFICATION
+--------------------------------
+  [ ] PASS / FAIL  - connector_vision_agent.exe exists at root of connector_agent\
+  [ ] PASS / FAIL  - ollama.exe exists at root of connector_agent\
+  [ ] PASS / FAIL  - start_agent.bat opens the console successfully
+  [ ] PASS / FAIL  - Console shows: "phi4-mini-reasoning" in LLM list
+  [ ] PASS / FAIL  - Main menu [1][2][3][L][C][Q] appears
+
+H-2. SLOW MODE SOP TEST (Step-by-step observation)
+----------------------------------------------------
+  Run SOP in SLOW mode [1] and verify each step:
+
+  [ ] PASS / FAIL  - Step  1: login        - Agent logs in successfully
+  [ ] PASS / FAIL  - Step  2: recipe       - Recipe menu opened correctly
+  [ ] PASS / FAIL  - Step  3: mold_left    - Left mold ROI detected
+  [ ] PASS / FAIL  - Step  4: mold_right   - Right mold ROI detected
+  [ ] PASS / FAIL  - Step  5: axis_x       - X-axis value set
+  [ ] PASS / FAIL  - Step  6: axis_y       - Y-axis value set
+  [ ] PASS / FAIL  - Step  7: pin_scan     - Pin positions scanned
+  [ ] PASS / FAIL  - Step  8: pin_count    - Pin count validated
+  [ ] PASS / FAIL  - Step  9: verify_left  - Left side verified
+  [ ] PASS / FAIL  - Step 10: verify_right - Right side verified
+  [ ] PASS / FAIL  - Step 11: save         - Settings saved
+  [ ] PASS / FAIL  - Step 12: apply        - Settings applied
+  [ ] PASS / FAIL  - SOP COMPLETE message appears
+  [ ] PASS / FAIL  - Log file created in logs\ folder
+
+H-3. NORMAL MODE TEST
+-----------------------
+  [ ] PASS / FAIL  - SOP completes in NORMAL mode [2] without errors
+  [ ] PASS / FAIL  - Total time is under 60 seconds
+
+H-4. LLM ANALYSIS TEST
+------------------------
+  [ ] PASS / FAIL  - [L] analysis runs without error
+  [ ] PASS / FAIL  - Analysis output appears within 60 seconds
+  [ ] PASS / FAIL  - config.proposed.json is created
+
+H-5. FAILURE HANDLING TEST
+----------------------------
+  [ ] PASS / FAIL  - CTRL+C stops the agent cleanly
+  [ ] PASS / FAIL  - Retry messages appear when UI element not found
+  [ ] PASS / FAIL  - Agent shows error message (not crash) on failure
+
+H-6. LOG VERIFICATION
+-----------------------
+  After a successful run, check the logs:
+
+  1. Navigate to: C:\tools\connector_agent\logs\
+  2. Open the latest folder (named with timestamp or run ID)
+  3. Verify:
+     [ ] PASS / FAIL  - summary.json exists and contains step results
+     [ ] PASS / FAIL  - events.jsonl exists and contains event entries
+     [ ] PASS / FAIL  - screens\ folder contains PNG screenshots
+
+H-7. ACCEPTANCE CRITERIA
+--------------------------
+  The system is considered READY FOR PRODUCTION when:
+
+    All H-1 items: PASS
+    All H-2 items: PASS (or only 1 FAIL with documented reason)
+    All H-3 items: PASS
+    At least H-4 first 2 items: PASS
+    H-5 first item: PASS
+
+
+================================================================================
+  PART I : TROUBLESHOOTING
+================================================================================
+
+ERROR T-1: "start_agent.bat" opens and immediately closes
+-----------------------------------------------------------
+  Cause  : A configuration error or missing file is preventing startup.
+  Fix    :
+    1. Instead of double-clicking start_agent.bat, do this:
+       a. Press Windows + R
+       b. Type: cmd   and press Enter
+       c. In the command prompt, type:
+          cd C:\tools\connector_agent
+          start_agent.bat
+       d. Read the error message that appears before the window closes.
+    2. Common causes:
+       - ollama.exe not found -> re-extract Part 1
+       - assets\config.json missing -> re-extract Part 1
+
+ERROR T-2: Ollama server fails to start
+-----------------------------------------
+  Symptom: Console shows "[1/3] Starting Ollama server..." then hangs or errors.
+  Fix    :
+    1. Check if another Ollama process is running:
+       a. Press CTRL+SHIFT+ESC to open Task Manager
+       b. Look for "ollama.exe" in the list
+       c. If found, click it and press "End Task"
+    2. Try again by running start_agent.bat
+    3. If still failing, open Command Prompt and run:
+       C:\tools\connector_agent\ollama.exe serve
+       Check the error message that appears.
+
+ERROR T-3: phi4-mini-reasoning NOT in model list
+--------------------------------------------------
+  Symptom: Step [2/3] shows an empty model list.
+  Fix    :
+    1. Verify the ollama_models folder structure (see D-3, step 12).
+    2. Verify that the "blobs" folder contains a large file (~2.5 GB).
+       If blobs\ is empty or missing, Part 2 was not extracted correctly.
+    3. Re-extract portable-part2-phi4-mini.zip to:
+       C:\tools\connector_agent\ollama_models\  (not a subfolder of it)
+    4. Check the OLLAMA_MODELS variable by opening a new cmd window:
+       set OLLAMA_MODELS=C:\tools\connector_agent\ollama_models
+       C:\tools\connector_agent\ollama.exe list
+
+ERROR T-4: SOP step fails - "Element not found" error
+-------------------------------------------------------
+  Symptom: Console shows "[RETRY] mold_left_label not found (attempt 1/3)"
+  Cause  : The YOLO model cannot find the expected UI element on screen.
+  Fix    :
+    1. Make sure the target application is visible and not minimized.
+    2. Make sure no other windows are overlapping the target application.
+    3. Verify screen resolution is 1920x1080 (see E-1, step 3).
+    4. Try running in SLOW mode [1] first.
+    5. After the run, use [L] LLM Analysis to get specific suggestions.
+    6. If the problem persists, contact the development team with:
+       - The step number that fails
+       - A screenshot of the screen at the time of failure
+       - The log files from C:\tools\connector_agent\logs\
+
+ERROR T-5: "connector_vision_agent.exe" shows Windows Defender warning
+------------------------------------------------------------------------
+  Symptom: Windows shows "Windows protected your PC" SmartScreen warning.
+  Fix    :
+    1. Click "More info" (blue text link)
+    2. Click "Run anyway"
+    Note: This warning appears because the EXE is not code-signed.
+          It is safe to proceed.
+    Alternative: Right-click the EXE -> Properties -> check "Unblock"
+                 at the bottom -> Apply -> OK
+
+ERROR T-6: LLM Analysis takes very long or no response
+--------------------------------------------------------
+  Symptom: "[L] analysis" hangs for more than 5 minutes.
+  Fix    :
+    1. Check RAM usage - press CTRL+SHIFT+ESC, click "Performance" tab.
+       If RAM usage is above 90%, close other applications.
+    2. phi4-mini-reasoning requires ~4 GB RAM for inference.
+       If the PC has only 8 GB RAM and other programs are running,
+       there may not be enough memory.
+    3. Wait up to 3 minutes on slower PCs. The first inference is always
+       slower than subsequent ones.
+    4. If it does not respond after 5 minutes, press CTRL+C and try again.
+
+ERROR T-7: Screen turns off during SOP run
+--------------------------------------------
+  Fix:
+    1. Before running the SOP, disable screen saver and power saving:
+       a. Right-click Desktop -> "Personalize"
+       b. Click "Lock screen" on the left
+       c. Click "Screen saver settings"
+       d. Set Screen saver to "(None)"
+       e. Click "Apply"
+    2. Also adjust power settings:
+       a. Press Windows + R -> type: powercfg.cpl -> press Enter
+       b. Set "Turn off the display" to "Never"
+       c. Set "Put the computer to sleep" to "Never"
+       d. Click "Save changes"
+
+ERROR T-8: Antivirus blocks ollama.exe
+----------------------------------------
+  Symptom: ollama.exe is quarantined or blocked by antivirus software.
+  Fix    :
+    1. Add C:\tools\connector_agent\ as an exclusion in your antivirus.
+    2. Consult your IT department for the approved procedure to whitelist
+       local executables on line PCs.
+
+ERROR T-9: "access is denied" when extracting ZIP files
+---------------------------------------------------------
+  Cause  : Insufficient permissions on the line PC.
+  Fix    :
+    1. Extract to a user-writable location instead:
+       Try: C:\Users\[YourUsername]\connector_agent\
+    2. Or right-click the folder -> Properties -> Security tab
+       -> Verify your user account has "Full control" permission.
+    3. Contact your IT administrator if permission issues persist.
+
+
+================================================================================
+  PART J : EMERGENCY PROCEDURES
+================================================================================
+
+J-1. STOPPING THE AGENT IMMEDIATELY
+--------------------------------------
+  Option A (Keyboard):
+    1. Click inside the console window
+    2. Press CTRL + C
+    3. If prompted "Terminate batch job (Y/N)?", type Y and press Enter
+
+  Option B (Task Manager):
+    1. Press CTRL + SHIFT + ESC
+    2. Find "connector_vision_agent.exe" in the list
+    3. Click it, then click "End Task" button
+    4. Also end "ollama.exe" if it appears
+
+J-2. STOPPING OLLAMA SERVER SEPARATELY
+-----------------------------------------
+  Double-click: C:\tools\connector_agent\stop_ollama.bat
+  This will terminate the Ollama AI server process.
+
+J-3. IF THE MOUSE IS MOVING ON ITS OWN (Agent misbehaving)
+-------------------------------------------------------------
+  1. Quickly move your mouse to the TOP-LEFT corner of the screen.
+     PyAutoGUI has a "failsafe" feature - moving to corner stops all actions.
+  2. Then press CTRL+C in the console window.
+  3. Report the incident with the step number and what was on screen.
+
+J-4. COLLECTING LOGS FOR SUPPORT
+----------------------------------
+  If you need to report an issue to the development team:
+
+  1. Do NOT delete any files in: C:\tools\connector_agent\logs\
+
+  2. Compress the logs folder:
+     a. Right-click "logs" folder -> "Send to" -> "Compressed (zipped) folder"
+     b. Name it: logs_[date]_[your_name].zip
+
+  3. Also take a screenshot:
+     a. Press Print Screen key (or Windows + Shift + S for a region)
+     b. Paste into Paint (Windows + R -> mspaint) and save as PNG
+
+  4. Send both files to your line supervisor or the development team.
+
+J-5. RESTORING DEFAULT SETTINGS
+---------------------------------
+  If config.json becomes corrupted or has wrong values:
+
+  1. The original config.json was included in portable-part1-app.zip
+  2. Re-extract the ZIP and copy the original config.json back:
+     From ZIP: config.json
+     To: C:\tools\connector_agent\assets\config.json
+  3. Update the password field as needed.
+
+
+================================================================================
+  QUICK REFERENCE CARD
+================================================================================
+
+  STARTUP:
+    Double-click: C:\tools\connector_agent\start_agent.bat
+    Wait for: Main menu [1][2][3][L][C][Q] to appear
+
+  RUN SOP (First test: always use SLOW):
+    Type: 1   [SLOW mode]
+    Type: 2   [NORMAL mode]
+    Type: 3   [FAST mode]
+
+  EMERGENCY STOP:
+    Click console window + press CTRL+C
+    OR: Move mouse to TOP-LEFT screen corner
+
+  STOP OLLAMA:
+    Double-click: C:\tools\connector_agent\stop_ollama.bat
+
+  LLM ANALYSIS:
+    Type: L   (after a SOP run)
+
+  CHAT WITH AI:
+    Type: C   (after a SOP run)
+
+  QUIT:
+    Type: Q
+
+  LOG LOCATION:
+    C:\tools\connector_agent\logs\[run_id]\
+
+  CONFIG LOCATION:
+    C:\tools\connector_agent\assets\config.json
+
+  SUPPORT CONTACT:
+    [Add your engineering team contact here]
+    [Add line supervisor contact here]
+
+================================================================================
+  END OF MANUAL
+  Document: LINE_PC_DEPLOYMENT_MANUAL.txt
+  Version : 2.0.0  |  2026-03-16
+  Agent   : Connector Vision SOP Agent v2.0.0
+================================================================================
