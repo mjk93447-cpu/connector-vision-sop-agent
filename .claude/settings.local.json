@@ -11,5 +11,29 @@
       "WebFetch(*)",
       "WebSearch(*)"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /d \"%CLAUDE_PROJECT_DIR%\" && echo [habit-11] 세션 종료 전 progress.md 업데이트를 확인하세요. >> .claude\\session.log 2>nul"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo ok"
+          }
+        ]
+      }
+    ]
   }
 }

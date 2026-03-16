@@ -34,12 +34,21 @@ python -m black src/ tests/ && python -m ruff check src/ tests/ --fix
 gh workflow run "Build Portable Offline Bundle (Split)" --ref main
 ```
 
-## 규칙
-1. 코드 수정 → pytest 통과 → black+ruff → 커밋
+## 규칙 (코드)
+1. 코드 수정 → `bash run_tests.sh` 통과 → black+ruff → 커밋
 2. 커밋 형식: `[feat/fix/refactor/chore/test] 한국어 설명`
 3. 테스트 실패 시 원인 분석 후 재시도 (동일 커맨드 반복 금지)
 4. 새 SOP 단계 → 대응 테스트 필수
-5. 작업 시작: `@progress.md` 로드 | 종료: `progress.md` 업데이트
+
+## 세션 습관 (매 작업 자동 적용 — 생략 불가)
+| 시점 | 행동 |
+|------|------|
+| **작업 시작** | `@progress.md` 로드하여 현재 상태 파악 |
+| **기능 1개 완료** | `/compact` 실행하여 컨텍스트 압축 |
+| **다른 기능 전환** | `/clear` 실행하여 컨텍스트 초기화 |
+| **파일 참조** | `@src/vision_engine.py` 형식으로 지정 파일만 참조 |
+| **요구사항 불명확** | 구현 전 즉시 질문 (추측으로 토큰 낭비 금지) |
+| **세션 종료** | `progress.md` 업데이트 후 커밋 |
 
 ## config v2.0.0 구조
 ```json
