@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-16_
+_최종 갱신: 2026-03-16 (세션 종료)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + 포터블 번들 fix 완료)
@@ -15,6 +15,7 @@ _최종 갱신: 2026-03-16_
 | CP-4 | config v2.0.0, TEST_REPORT.md | 157 pass | 92% |
 | fix | config_loader EXE 경로, 포터블 번들 구조 | 163 pass | 92% |
 | **chore** | **토큰 최적화 세팅 완료** | — | — |
+| **docs** | **라인 PC 영어 매뉴얼 작성 완료** | — | — |
 
 ## 현재 스택 (v2.0.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, CI는 yolo26n.pt 플레이스홀더)
