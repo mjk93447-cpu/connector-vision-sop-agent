@@ -17,9 +17,8 @@ a = Analysis(
         'torch',
         'torchvision',
         'torch._C',
-        # CV/OCR
+        # CV
         'cv2',
-        'pytesseract',
         'PIL',
         'PIL.Image',
         # Utils

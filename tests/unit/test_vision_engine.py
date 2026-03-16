@@ -1,8 +1,8 @@
 """
-vision_engine 단위 테스트 — CP-2.
+vision_engine 단위 테스트 — CP-3.
 
-VisionEngine 단일 클래스 (VisionAgent 병합), YOLO26x 기본 모델,
-DetectionConfig 확장을 외부 디스플레이·가중치·Tesseract 없이 검증한다.
+VisionEngine 단일 클래스 (VisionAgent 병합), YOLO26x 기본 모델.
+CP-3: Tesseract 완전 제거 반영 — ocr_psm 필드, similarity, OCR 메서드 테스트 삭제.
 
 mock 전략:
 - VisionEngine._load_model → None (실제 가중치 로드 없음)
@@ -97,10 +97,6 @@ class TestDetectionConfig:
         cfg = DetectionConfig()
         assert cfg.confidence_threshold == 0.6
 
-    def test_default_ocr_psm(self) -> None:
-        cfg = DetectionConfig()
-        assert cfg.ocr_psm == 7
-
     def test_custom_model_path(self) -> None:
         cfg = DetectionConfig(model_path="assets/models/custom.pt")
         assert cfg.model_path == "assets/models/custom.pt"
@@ -108,10 +104,6 @@ class TestDetectionConfig:
     def test_custom_confidence_threshold(self) -> None:
         cfg = DetectionConfig(confidence_threshold=0.8)
         assert cfg.confidence_threshold == 0.8
-
-    def test_custom_ocr_psm(self) -> None:
-        cfg = DetectionConfig(ocr_psm=6)
-        assert cfg.ocr_psm == 6
 
 
 # ---------------------------------------------------------------------------
@@ -175,27 +167,6 @@ class TestToGray:
         original = np.full((5, 5), 128, dtype=np.uint8)
         VisionEngine._to_gray(original)
         assert original[0, 0] == 128
-
-
-# ---------------------------------------------------------------------------
-# similarity
-# ---------------------------------------------------------------------------
-
-
-class TestSimilarity:
-    def test_identical_strings(self) -> None:
-        assert VisionEngine.similarity("Mold Left", "Mold Left") == pytest.approx(1.0)
-
-    def test_case_insensitive(self) -> None:
-        assert VisionEngine.similarity("MOLD LEFT", "mold left") == pytest.approx(1.0)
-
-    def test_partial_match_between_zero_and_one(self) -> None:
-        score = VisionEngine.similarity("Mold Left", "Mold Right")
-        assert 0.0 < score < 1.0
-
-    def test_completely_different_strings(self) -> None:
-        score = VisionEngine.similarity("abc", "xyz")
-        assert score < 0.5
 
 
 # ---------------------------------------------------------------------------

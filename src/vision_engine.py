@@ -1,14 +1,14 @@
 """
-YOLO26x button detection + Tesseract OCR PSM7 (deprecated, CP-3 제거 예정).
+YOLO26x button detection for Samsung OLED line UI automation.
 
 Line UI: left 60% image + right 40% control panel.
 Core targets: Mold ROI drag (100,200 -> 800,350) and Pin 40 cluster checks.
 
-CP-2 변경사항:
-  - VisionAgent / VisionEngine 이중 계층 → VisionEngine 단일 클래스로 통합.
-  - DetectionConfig에 model_path 필드 추가.
-  - 기본 모델을 yolo26n → yolo26x 로 업그레이드.
-  - OCR 메서드는 deprecated 표시, CP-3에서 완전 삭제 예정.
+CP-3 변경사항:
+  - Tesseract / pytesseract 완전 제거.
+  - DetectionConfig에서 ocr_psm 필드 제거.
+  - preprocess_for_ocr / read_text / locate_text / similarity 메서드 제거.
+  - YOLO26x 단독 검출 방식으로 완전 전환.
 """
 
 from __future__ import annotations
@@ -16,11 +16,9 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 
 import cv2
 import numpy as np
-import pytesseract
 from ultralytics import YOLO
 
 try:
@@ -48,16 +46,13 @@ DEFAULT_MOLD_ROI = ((100, 200), (800, 350))
 
 @dataclass
 class DetectionConfig:
-    """Runtime thresholds and paths for YOLO detection.
+    """Runtime thresholds and paths for YOLO26x detection.
 
-    CP-2: model_path 필드 추가, 기본값 yolo26n → yolo26x 변경.
+    CP-3: ocr_psm 필드 제거 (Tesseract 완전 삭제).
     """
 
-    # CP-2: yolo26x 업그레이드
     model_path: str = "assets/models/yolo26x.pt"
     confidence_threshold: float = 0.6
-    # deprecated: CP-3에서 Tesseract 완전 삭제 시 제거 예정
-    ocr_psm: int = 7
 
 
 @dataclass
@@ -70,10 +65,10 @@ class UiDetection:
 
 
 class VisionEngine:
-    """YOLO26x + OCR helper for Samsung OLED line UI automation.
+    """YOLO26x helper for Samsung OLED line UI automation.
 
-    CP-2: VisionAgent / VisionEngine 이중 계층을 단일 클래스로 통합.
-    DetectionConfig 인자 하나로 모든 런타임 파라미터를 수용한다.
+    CP-2: VisionAgent / VisionEngine 이중 계층 통합.
+    CP-3: Tesseract / OCR 완전 제거, YOLO26x 단독 검출로 전환.
     """
 
     def __init__(
@@ -147,77 +142,6 @@ class VisionEngine:
         if image.ndim == 2:
             return image.copy()
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    # ------------------------------------------------------------------ #
-    # OCR 헬퍼 (deprecated: CP-3에서 제거 예정)
-    # ------------------------------------------------------------------ #
-
-    def preprocess_for_ocr(self, image: np.ndarray) -> np.ndarray:
-        """Sharpen OCR targets for English button labels such as Mold Left.
-
-        .. deprecated::
-            CP-3에서 Tesseract 완전 삭제 시 함께 제거된다.
-        """
-
-        gray = self._to_gray(image)
-        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-        _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        return binary
-
-    def read_text(self, image: np.ndarray) -> str:
-        """Read text from the supplied ROI using Tesseract PSM 7.
-
-        .. deprecated::
-            CP-3에서 제거 예정.
-        """
-
-        processed = self.preprocess_for_ocr(image)
-        config = f"--psm {self.config.ocr_psm}"
-        return pytesseract.image_to_string(processed, config=config).strip()
-
-    @staticmethod
-    def similarity(left: str, right: str) -> float:
-        """Measure fuzzy similarity between OCR output and target labels."""
-
-        return SequenceMatcher(None, left.lower(), right.lower()).ratio()
-
-    def locate_text(
-        self, image: np.ndarray, target_text: str, min_score: float = 0.65
-    ) -> dict[str, object] | None:
-        """Locate the best OCR text match and return its box and score.
-
-        .. deprecated::
-            CP-3에서 제거 예정.
-        """
-
-        processed = self.preprocess_for_ocr(image)
-        ocr_data = pytesseract.image_to_data(
-            processed,
-            config=f"--psm {self.config.ocr_psm}",
-            output_type=pytesseract.Output.DICT,
-        )
-
-        best_match: dict[str, object] | None = None
-        for index, raw_text in enumerate(ocr_data["text"]):
-            text = raw_text.strip()
-            if not text:
-                continue
-
-            score = self.similarity(text, target_text)
-            if best_match is None or score > float(best_match["score"]):
-                left = int(ocr_data["left"][index])
-                top = int(ocr_data["top"][index])
-                width = int(ocr_data["width"][index])
-                height = int(ocr_data["height"][index])
-                best_match = {
-                    "text": text,
-                    "score": score,
-                    "bbox": (left, top, left + width, top + height),
-                }
-
-        if best_match and float(best_match["score"]) >= min_score:
-            return best_match
-        return None
 
     # ------------------------------------------------------------------ #
     # YOLO 검출
