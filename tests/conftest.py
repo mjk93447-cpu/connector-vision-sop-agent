@@ -115,6 +115,9 @@ def mock_llm_response() -> dict[str, Any]:
     """LLM analyze_logs() 반환값 형태의 더미 딕셔너리."""
     return {
         "config_patch": {"ocr_threshold": 0.8, "vision.confidence_threshold": 0.6},
-        "sop_recommendations": ["ROI 좌표 재조정 권장", "재시도 횟수를 3 → 5로 늘리세요"],
+        "sop_recommendations": [
+            "ROI 좌표 재조정 권장",
+            "재시도 횟수를 3 → 5로 늘리세요",
+        ],
         "raw_text": "Analysis complete. Two issues detected.",
     }

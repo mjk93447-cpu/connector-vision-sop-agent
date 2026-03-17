@@ -8,7 +8,7 @@ the control/vision layers to behave deterministically.
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 import numpy as np
 import pytest
@@ -16,7 +16,7 @@ import pytest
 from src.main import main
 from src.sop_executor import SopExecutor
 from src.control_engine import ControlEngine, ControlResult
-from src.vision_engine import VisionEngine, DetectionConfig, DEFAULT_MOLD_ROI
+from src.vision_engine import VisionEngine, DetectionConfig
 
 
 def test_full_sop(monkeypatch: pytest.MonkeyPatch) -> None:

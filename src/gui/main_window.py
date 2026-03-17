@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
+    from PyQt6.QtGui import QImage, QPixmap
     from PyQt6.QtWidgets import (
         QLabel,
         QMainWindow,
@@ -55,6 +56,8 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         sop_executor: Optional[Any] = None,
         llm: Optional[Any] = None,
         audit_log: Optional[Any] = None,
+        log_manager: Optional[Any] = None,
+        vision: Optional[Any] = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -64,6 +67,11 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._sop_executor = sop_executor
         self._llm = llm
         self._audit_log = audit_log
+        self._log_manager: Optional[Any] = log_manager
+        # vision engine — used to run YOLO on screenshots
+        self._vision: Optional[Any] = vision or (
+            getattr(sop_executor, "vision", None) if sop_executor else None
+        )
         self._steps: List[Dict[str, Any]] = []
         self._worker: Optional[Any] = None
         self._llm_worker: Optional[Any] = None
@@ -105,11 +113,15 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         if self._llm is None:
             self._llm_panel.on_llm_error("LLM이 설정되지 않았습니다.")
             return
-        # Build a basic payload — in Phase 2 we'll use LogManager.build_llm_payload()
-        payload: Dict[str, Any] = {
-            "summary": "최근 SOP 실행 로그 분석 요청",
-            "config": self._config,
-        }
+        if self._log_manager is None:
+            self._llm_panel.on_llm_error(
+                "아직 SOP 실행 기록이 없습니다. ▶ Run SOP 탭에서 실행 후 다시 시도하세요."
+            )
+            return
+        # Use real LogManager payload (Phase 2)
+        payload: Dict[str, Any] = self._log_manager.build_llm_payload(
+            config=self._config
+        )
         self._llm_panel.set_sending(True)
         worker = AnalysisWorker(self._llm, payload)
         worker.analysis_ready.connect(self._llm_panel.on_analysis_ready)
@@ -223,10 +235,20 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._sop_panel.append_log("=" * 60)
         self._lbl_status.setText("Status: RUNNING")
 
+        # Create a fresh LogManager for this run
+        try:
+            from src.log_manager import LogManager
+
+            self._log_manager = LogManager()
+        except Exception:  # noqa: BLE001
+            self._log_manager = None
+
         self._worker = SopWorker(self._sop_executor, steps=self._steps)
         self._worker.step_started.connect(self._sop_panel.on_step_started)
         self._worker.step_finished.connect(self._sop_panel.on_step_finished)
         self._worker.log_message.connect(self._sop_panel.on_log_message)
+        self._worker.log_message.connect(self._on_worker_log)
+        self._worker.screenshot_ready.connect(self._on_screenshot_ready)
         self._worker.sop_finished.connect(self._on_sop_finished)
         self._worker.start()
 
@@ -234,10 +256,59 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         if self._worker and self._worker.isRunning():
             self._worker.abort()
 
+    def _on_worker_log(self, text: str) -> None:
+        """Forward SOP worker log lines to the active LogManager."""
+        if self._log_manager is not None:
+            try:
+                self._log_manager.log(step="sop", message=text)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_screenshot_ready(self, img: Any) -> None:
+        """Convert a numpy BGR ndarray to QPixmap and show in VisionPanel."""
+        if not _QT_AVAILABLE:
+            return
+        try:
+            import numpy as np  # noqa: PLC0415
+
+            arr = img
+            if not isinstance(arr, np.ndarray):
+                return
+            # BGR → RGB
+            rgb = arr[:, :, ::-1].copy()
+            h, w, ch = rgb.shape
+            qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+            pmap = QPixmap.fromImage(qimg)
+            self._vision_panel.set_screenshot(pmap)
+
+            # YOLO detection — run if vision engine is available
+            if self._vision is not None:
+                try:
+                    detections = self._vision.detect(arr)
+                    det_list = [
+                        {
+                            "label": d.label,
+                            "bbox": list(d.bbox),
+                            "conf": d.confidence,
+                        }
+                        for d in detections
+                    ]
+                    self._vision_panel.set_detections(det_list)
+                except Exception:  # noqa: BLE001
+                    pass  # detection failed — still show screenshot
+        except Exception:  # noqa: BLE001
+            pass
+
     def _on_sop_finished(self, success: bool, summary: str) -> None:
         self._sop_panel.on_sop_finished(success, summary)
         status = "DONE" if success else "FAILED"
         self._lbl_status.setText(f"Status: {status}")
+        # Finalize LogManager
+        if self._log_manager is not None:
+            try:
+                self._log_manager.finalize(success=success)
+            except Exception:  # noqa: BLE001
+                pass
         if self._audit_panel:
             self._audit_panel.refresh()
 

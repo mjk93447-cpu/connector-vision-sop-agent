@@ -17,7 +17,6 @@ Actual LLM API calls are intentionally left out so that:
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -72,7 +71,10 @@ class LogManager:
 
         if run_id is None:
             # Example: 2026-03-12T09-30-15Z_run-123456
-            run_id = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ") + f"_run-{int(time.time())}"
+            run_id = (
+                datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+                + f"_run-{int(time.time())}"
+            )
 
         self.base_dir = base
         self.run_id = run_id
@@ -193,7 +195,9 @@ class LogManager:
     # LLM analysis scaffolding
     # --------------------------------------------------------------------- #
 
-    def build_llm_payload(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def build_llm_payload(
+        self, config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Build a compact JSON payload that an external LLM (e.g. Qwen2.5-VL) can consume.
 
@@ -206,7 +210,9 @@ class LogManager:
         - current config snapshot (if provided)
         """
 
-        last_events = [asdict(ev) for ev in self.events[-50:]]  # last 50 events in memory
+        last_events = [
+            asdict(ev) for ev in self.events[-50:]
+        ]  # last 50 events in memory
 
         summary: Dict[str, Any] = {}
         if self._summary_path.exists():
@@ -285,4 +291,3 @@ class LogManager:
                 "raw_text": "",
                 "note": f"LLM analysis failed: {exc!r}",
             }
-

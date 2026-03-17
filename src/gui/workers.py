@@ -47,12 +47,14 @@ class SopWorker(QThread):  # type: ignore[misc]
     step_finished(step_index, step_name, success, message)
     sop_finished(success, summary)
     log_message(text)
+    screenshot_ready(numpy_ndarray)  — BGR image captured after each step
     """
 
     step_started: Any = pyqtSignal(int, str)
     step_finished: Any = pyqtSignal(int, str, bool, str)
     sop_finished: Any = pyqtSignal(bool, str)
     log_message: Any = pyqtSignal(str)
+    screenshot_ready: Any = pyqtSignal(object)  # emits numpy ndarray (BGR)
 
     def __init__(
         self,
@@ -102,6 +104,15 @@ class SopWorker(QThread):  # type: ignore[misc]
                     self.log_message.emit(
                         f"  [{idx + 1}/{total}] {step_name} ✗ — {err}"
                     )
+
+                # Capture screenshot for Vision Panel (best-effort; silent fail)
+                try:
+                    vision = getattr(self._executor, "vision", None)
+                    if vision is not None:
+                        img = vision.capture_screen()
+                        self.screenshot_ready.emit(img)
+                except Exception:  # noqa: BLE001
+                    pass  # headless / no display — skip silently
 
             self.log_message.emit("✅ SOP 완료!")
             self.sop_finished.emit(True, f"{total}단계 완료")

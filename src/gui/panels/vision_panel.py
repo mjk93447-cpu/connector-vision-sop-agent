@@ -12,8 +12,9 @@ from typing import Any, Dict, List, Optional
 
 try:
     from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
+    from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
     from PyQt6.QtWidgets import (
+        QFileDialog,
         QHBoxLayout,
         QLabel,
         QPushButton,
@@ -36,7 +37,12 @@ class VisionPanel(QWidget):  # type: ignore[misc]
         super().__init__(parent)
         self._detections: List[Dict[str, Any]] = []
         self._pixmap: Optional[Any] = None
+        self._vision_engine: Optional[Any] = None
         self._setup_ui()
+
+    def set_vision_engine(self, vision_engine: Any) -> None:
+        """Wire a VisionEngine instance for YOLO detection on loaded images."""
+        self._vision_engine = vision_engine
 
     # ------------------------------------------------------------------
     # Public API
@@ -98,6 +104,10 @@ class VisionPanel(QWidget):  # type: ignore[misc]
         btn_capture.setToolTip("현재 화면을 캡처하여 YOLO 분석")
         btn_capture.clicked.connect(self._on_capture)
 
+        btn_open = QPushButton("📁 파일 열기")
+        btn_open.setToolTip("이미지 파일을 불러와 YOLO 분석")
+        btn_open.clicked.connect(self._on_open_file)
+
         btn_clear = QPushButton("🗑 지우기")
         btn_clear.clicked.connect(self.clear)
 
@@ -105,6 +115,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
         self._lbl_status.setStyleSheet("color: #607d8b;")
 
         btn_row.addWidget(btn_capture)
+        btn_row.addWidget(btn_open)
         btn_row.addWidget(btn_clear)
         btn_row.addStretch()
         btn_row.addWidget(self._lbl_status)
@@ -143,21 +154,67 @@ class VisionPanel(QWidget):  # type: ignore[misc]
         self._lbl_status.setText(f"검출: {n}개")
 
     def _on_capture(self) -> None:
-        """Capture current screen (Phase 2 — placeholder for Phase 1)."""
+        """Capture current screen and run YOLO detection."""
         if not _QT_AVAILABLE:
             return
         try:
-            import pyautogui  # optional in Phase 1
+            import pyautogui  # optional
 
             screenshot = pyautogui.screenshot()
-            # Convert PIL image → QPixmap
-            from io import BytesIO
+            # Convert PIL image → numpy BGR for YOLO, and QPixmap for display
+            import numpy as np  # noqa: PLC0415
 
-            buf = BytesIO()
-            screenshot.save(buf, format="PNG")
-            buf.seek(0)
-            pmap = QPixmap()
-            pmap.loadFromData(buf.read())
-            self.set_screenshot(pmap)
+            rgb_arr = np.array(screenshot)
+            bgr_arr = rgb_arr[:, :, ::-1].copy()
+
+            # Show screenshot
+            h, w, ch = rgb_arr.shape
+            qimg = QImage(rgb_arr.data, w, h, ch * w, QImage.Format.Format_RGB888)
+            self.set_screenshot(QPixmap.fromImage(qimg))
+
+            # Run YOLO if engine available
+            self._run_yolo(bgr_arr)
         except Exception as exc:  # noqa: BLE001
             self._canvas.setText(f"캡처 실패: {exc}")
+
+    def _on_open_file(self) -> None:
+        """Open an image file from disk and run YOLO detection."""
+        if not _QT_AVAILABLE:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "이미지 파일 열기",
+            "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.webp)",
+        )
+        if not path:
+            return
+        pmap = QPixmap(path)
+        if pmap.isNull():
+            self._canvas.setText(f"이미지 로드 실패: {path}")
+            return
+        self.set_screenshot(pmap)
+
+        # Run YOLO via numpy if engine available
+        try:
+            import cv2  # noqa: PLC0415
+
+            bgr_arr = cv2.imread(path)
+            if bgr_arr is not None:
+                self._run_yolo(bgr_arr)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _run_yolo(self, bgr_arr: Any) -> None:
+        """Run YOLO detection on a BGR ndarray and update detections overlay."""
+        if self._vision_engine is None:
+            return
+        try:
+            detections = self._vision_engine.detect(bgr_arr)
+            det_list = [
+                {"label": d.label, "bbox": list(d.bbox), "conf": d.confidence}
+                for d in detections
+            ]
+            self.set_detections(det_list)
+        except Exception:  # noqa: BLE001
+            pass  # YOLO model not loaded — skip silently

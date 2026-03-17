@@ -608,8 +608,9 @@ def run_gui() -> None:
 
     # Build vision/control/executor (graceful fail — GUI still opens)
     executor = None
+    vision = None
     try:
-        _, _, executor = _build_services(config=cfg, speed="normal")
+        vision, _, executor = _build_services(config=cfg, speed="normal")
         # Attach sop_steps_path for dynamic step loading
         executor._sop_steps_path = sop_steps_path
     except Exception as exc:
@@ -628,7 +629,11 @@ def run_gui() -> None:
         sop_executor=executor,
         llm=llm,
         audit_log=audit_log,
+        vision=vision,
     )
+    # Wire vision engine into Vision Panel for file-open YOLO
+    if vision is not None:
+        window._vision_panel.set_vision_engine(vision)
     window.show()
     sys.exit(app.exec())
 

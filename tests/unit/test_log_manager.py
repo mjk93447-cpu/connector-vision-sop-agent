@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import numpy as np
-import pytest
 from PIL import Image
 
-from src.log_manager import LogManager, LogEvent, RunSummary
+from src.log_manager import LogManager, RunSummary
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +58,12 @@ class TestLogEvents:
         lm = LogManager(base_dir=tmp_path, run_id="r1")
         lm.log(step="a", message="first")
         lm.log(step="b", message="second")
-        lines = (lm.run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        lines = (
+            (lm.run_dir / "events.jsonl")
+            .read_text(encoding="utf-8")
+            .strip()
+            .splitlines()
+        )
         assert len(lines) == 2
 
     def test_log_extra_kwargs_stored_in_data(self, tmp_path: Path) -> None:
@@ -245,5 +248,12 @@ class TestAnalyzeWithLlm:
     def test_result_always_has_contract_keys(self, tmp_path: Path) -> None:
         lm = LogManager(base_dir=tmp_path, run_id="r1")
         result = lm.analyze_with_llm(config=None)
-        required = {"model", "payload", "config_patch", "sop_recommendations", "raw_text", "note"}
+        required = {
+            "model",
+            "payload",
+            "config_patch",
+            "sop_recommendations",
+            "raw_text",
+            "note",
+        }
         assert required.issubset(result.keys())
