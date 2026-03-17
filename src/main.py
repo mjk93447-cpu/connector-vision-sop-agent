@@ -72,8 +72,6 @@ SpeedPreset = Literal["slow", "normal", "fast"]
 
 
 def _resolve_confidence_threshold(config: dict) -> float:
-    if "ocr_threshold" in config:
-        return float(config["ocr_threshold"])
     return float(config.get("vision", {}).get("confidence_threshold", 0.6))
 
 

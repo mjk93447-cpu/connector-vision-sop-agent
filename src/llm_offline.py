@@ -3,9 +3,8 @@ Offline LLM integration for Connector Vision SOP Agent.
 
 지원 백엔드:
 - ``ollama``   : Ollama 로컬 서버 (권장). OpenAI 호환 HTTP API.
-                 설치: https://ollama.com  /  ollama pull llama4:scout
+                 설치: https://ollama.com  /  ollama pull phi4-mini-reasoning
 - ``http``     : LM Studio / Ollama 등 기존 OpenAI 호환 HTTP 서버 (직접 URL 지정).
-- ``llama_cpp``: llama-cpp-python으로 GGUF 파일 직접 로드 (레거시, 무겁다).
 
 모듈 import 시 무거운 의존성을 로드하지 않는다.
 백엔드가 없거나 설정이 잘못된 경우 친절한 RuntimeError만 발생하며 EXE가 종료되지 않는다.
@@ -17,8 +16,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Type
 
-# CP-1: "ollama" 백엔드 추가 (Llama4 Scout 기본 타깃)
-BackendType = Literal["llama_cpp", "http", "ollama"]
+BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
 _OLLAMA_DEFAULT_MODEL = "llama4:scout"
@@ -26,12 +24,11 @@ _OLLAMA_DEFAULT_MODEL = "llama4:scout"
 
 @dataclass
 class LLMConfig:
-    # CP-1: 기본값을 Ollama + Llama4 Scout 기준으로 변경
     backend: BackendType = "ollama"
-    model_path: str | None = _OLLAMA_DEFAULT_MODEL  # Ollama 모델 태그 또는 GGUF 경로
-    ctx_size: int = 8192  # Llama4 Scout 기준 확장
+    model_path: str | None = _OLLAMA_DEFAULT_MODEL  # Ollama 모델 태그
+    ctx_size: int = 8192
     gpu_layers: int = 0
-    http_url: str | None = _OLLAMA_DEFAULT_URL  # Ollama 기본 URL
+    http_url: str | None = _OLLAMA_DEFAULT_URL
     max_input_tokens: int = 6144
     max_output_tokens: int = 1024
 
@@ -77,8 +74,6 @@ class OfflineLLM:
             return self._chat_ollama(system, history)
         if self.cfg.backend == "http":
             return self._chat_http(system, history)
-        if self.cfg.backend == "llama_cpp":
-            return self._chat_llama_cpp(system, history)
         raise RuntimeError(f"Unsupported LLM backend: {self.cfg.backend!r}")
 
     # ------------------------------------------------------------------ #
@@ -167,53 +162,6 @@ class OfflineLLM:
         except Exception as exc:  # pragma: no cover
             raise RuntimeError(
                 f"Unexpected HTTP LLM response format: {data!r}"
-            ) from exc
-
-    # ------------------------------------------------------------------ #
-    # llama_cpp 백엔드 (레거시 — 향후 deprecated 예정)
-    # ------------------------------------------------------------------ #
-
-    def _chat_llama_cpp(self, system: str, history: List[Dict[str, str]]) -> str:
-        """llama-cpp-python으로 GGUF 파일을 직접 로드한다. (레거시)
-
-        .. deprecated::
-            CP-2 이후 ollama 백엔드를 사용할 것을 권장한다.
-            GGUF 파일 관리가 복잡하고 llama-cpp-python 빌드 의존성이 무겁다.
-        """
-
-        try:
-            from llama_cpp import Llama  # type: ignore[import]
-        except Exception as exc:  # pragma: no cover
-            raise RuntimeError(
-                "llama-cpp-python is not installed; cannot use 'llama_cpp' backend. "
-                "권장: config.json의 backend를 'ollama'로 변경하세요."
-            ) from exc
-
-        if not self.cfg.model_path:
-            raise RuntimeError(
-                "LLMConfig.model_path is required for 'llama_cpp' backend."
-            )
-
-        messages: List[Dict[str, str]] = []
-        if not history or history[0].get("role") != "system":
-            messages.append({"role": "system", "content": system})
-        messages.extend(history)
-
-        llm = Llama(
-            model_path=self.cfg.model_path,
-            n_ctx=self.cfg.ctx_size,
-            n_gpu_layers=self.cfg.gpu_layers,
-        )
-
-        result = llm.create_chat_completion(
-            messages=messages,
-            max_tokens=self.cfg.max_output_tokens,
-        )
-        try:
-            return result["choices"][0]["message"]["content"]
-        except Exception as exc:  # pragma: no cover
-            raise RuntimeError(
-                f"Unexpected Llama chat response format: {result!r}"
             ) from exc
 
     # ------------------------------------------------------------------ #

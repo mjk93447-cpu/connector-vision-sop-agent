@@ -43,8 +43,6 @@ SAFE_NUMERIC_RANGES: Dict[str, Tuple[float, float]] = {
     "step_delay": (0.00, 10.0),
     # Control / count
     "retries": (1.0, 10.0),
-    # Legacy key (kept for backward compat)
-    "ocr_threshold": (0.30, 0.95),
 }
 
 # Keys that are never allowed to be patched via LLM (security).

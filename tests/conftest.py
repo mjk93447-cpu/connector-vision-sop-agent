@@ -40,19 +40,19 @@ def dummy_screen_full() -> np.ndarray:
 def sample_config() -> dict[str, Any]:
     """최소 유효 config.json 딕셔너리."""
     return {
-        "version": "1.0.0",
+        "version": "2.0.0",
         "password": "test_password",
-        "ocr_threshold": 0.75,
         "pin_count_min": None,
+        "vision": {"confidence_threshold": 0.6},
         "llm": {
             "enabled": False,
-            "backend": "llama_cpp",
-            "model_path": None,
-            "ctx_size": 4096,
+            "backend": "ollama",
+            "model_path": "phi4-mini-reasoning",
+            "ctx_size": 8192,
             "gpu_layers": 0,
-            "http_url": None,
-            "max_input_tokens": 4096,
-            "max_output_tokens": 512,
+            "http_url": "http://localhost:11434/v1/chat/completions",
+            "max_input_tokens": 6144,
+            "max_output_tokens": 1024,
         },
     }
 

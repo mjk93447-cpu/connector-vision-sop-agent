@@ -30,35 +30,35 @@ from src.sop_advisor import (
 
 class TestApplyConfigPatch:
     def test_simple_key_updated(self) -> None:
-        cfg = {"ocr_threshold": 0.75}
-        new_cfg, warnings = apply_config_patch(cfg, {"ocr_threshold": 0.8})
-        assert new_cfg["ocr_threshold"] == 0.8
+        cfg: dict[str, Any] = {"vision": {"confidence_threshold": 0.6}}
+        new_cfg, warnings = apply_config_patch(cfg, {"confidence_threshold": 0.8})
+        assert new_cfg["confidence_threshold"] == 0.8
         assert warnings == []
 
     def test_original_not_mutated(self) -> None:
-        cfg = {"ocr_threshold": 0.75}
-        apply_config_patch(cfg, {"ocr_threshold": 0.9})
-        assert cfg["ocr_threshold"] == 0.75  # 원본 불변
+        cfg: dict[str, Any] = {"vision": {"confidence_threshold": 0.6}}
+        apply_config_patch(cfg, {"confidence_threshold": 0.9})
+        assert cfg["vision"]["confidence_threshold"] == 0.6  # 원본 불변
 
     def test_out_of_range_skipped_with_warning(self) -> None:
-        cfg = {"ocr_threshold": 0.75}
-        new_cfg, warnings = apply_config_patch(cfg, {"ocr_threshold": 9.99})
-        assert new_cfg["ocr_threshold"] == 0.75  # 변경 안 됨
+        cfg: dict[str, Any] = {"confidence_threshold": 0.6}
+        new_cfg, warnings = apply_config_patch(cfg, {"confidence_threshold": 9.99})
+        assert new_cfg["confidence_threshold"] == 0.6  # 변경 안 됨
         assert len(warnings) == 1
         assert "outside safe range" in warnings[0]
 
     def test_lower_bound_inclusive(self) -> None:
-        lo, _ = SAFE_NUMERIC_RANGES["ocr_threshold"]
-        cfg = {"ocr_threshold": 0.5}
-        new_cfg, warnings = apply_config_patch(cfg, {"ocr_threshold": lo})
-        assert new_cfg["ocr_threshold"] == lo
+        lo, _ = SAFE_NUMERIC_RANGES["confidence_threshold"]
+        cfg: dict[str, Any] = {"confidence_threshold": 0.5}
+        new_cfg, warnings = apply_config_patch(cfg, {"confidence_threshold": lo})
+        assert new_cfg["confidence_threshold"] == lo
         assert warnings == []
 
     def test_upper_bound_inclusive(self) -> None:
-        _, hi = SAFE_NUMERIC_RANGES["ocr_threshold"]
-        cfg = {"ocr_threshold": 0.5}
-        new_cfg, warnings = apply_config_patch(cfg, {"ocr_threshold": hi})
-        assert new_cfg["ocr_threshold"] == hi
+        _, hi = SAFE_NUMERIC_RANGES["confidence_threshold"]
+        cfg: dict[str, Any] = {"confidence_threshold": 0.5}
+        new_cfg, warnings = apply_config_patch(cfg, {"confidence_threshold": hi})
+        assert new_cfg["confidence_threshold"] == hi
         assert warnings == []
 
     def test_nested_dotted_key(self) -> None:
@@ -208,11 +208,11 @@ class TestSummarizeFailures:
 
 class TestProposeActions:
     def test_config_patch_becomes_action(self) -> None:
-        output = {"config_patch": {"ocr_threshold": 0.8}, "sop_recommendations": []}
+        output = {"config_patch": {"confidence_threshold": 0.8}, "sop_recommendations": []}
         actions = propose_actions(output)
         assert len(actions) == 1
         assert actions[0]["type"] == "config_patch"
-        assert actions[0]["key"] == "ocr_threshold"
+        assert actions[0]["key"] == "confidence_threshold"
         assert actions[0]["value"] == 0.8
 
     def test_sop_recommendation_becomes_action(self) -> None:
@@ -237,7 +237,7 @@ class TestProposeActions:
         assert actions == []
 
     def test_action_has_description(self) -> None:
-        output = {"config_patch": {"ocr_threshold": 0.9}, "sop_recommendations": []}
+        output = {"config_patch": {"confidence_threshold": 0.9}, "sop_recommendations": []}
         actions = propose_actions(output)
         assert "description" in actions[0]
         assert len(actions[0]["description"]) > 0

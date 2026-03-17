@@ -416,14 +416,3 @@ class TestDetectUiTargets:
         result.append("extra")
         assert "extra" not in engine.detect_ui_targets(None)
 
-
-# ---------------------------------------------------------------------------
-# 하위 호환 별칭
-# ---------------------------------------------------------------------------
-
-
-class TestBackwardsCompat:
-    def test_vision_agent_alias_is_vision_engine(self) -> None:
-        from src.vision_engine import VisionAgent
-
-        assert VisionAgent is VisionEngine

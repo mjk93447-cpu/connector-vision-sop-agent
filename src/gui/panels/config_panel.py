@@ -42,9 +42,6 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 _CONFIG_SECTIONS: Dict[str, list] = {
-    "기본 설정": [
-        ("ocr_threshold", "OCR 임계값", "float", 0.30, 0.95),
-    ],
     "비전 (vision)": [
         ("vision.confidence_threshold", "신뢰도 임계값", "float", 0.10, 0.99),
     ],

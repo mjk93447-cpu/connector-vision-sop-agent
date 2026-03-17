@@ -57,10 +57,6 @@ class TestLLMConfig:
         cfg = LLMConfig.from_dict({"backend": "http"})
         assert cfg.backend == "http"
 
-    def test_llama_cpp_backend_parsed(self) -> None:
-        cfg = LLMConfig.from_dict({"backend": "llama_cpp"})
-        assert cfg.backend == "llama_cpp"
-
     def test_model_path_override(self) -> None:
         cfg = LLMConfig.from_dict({"model_path": "/tmp/model.gguf"})
         assert cfg.model_path == "/tmp/model.gguf"
@@ -114,13 +110,6 @@ class TestBackendDispatch:
         llm = OfflineLLM(LLMConfig())
         llm.cfg.backend = "not_a_backend"  # type: ignore[assignment]
         with pytest.raises(RuntimeError, match="Unsupported"):
-            llm.chat("sys", [{"role": "user", "content": "hi"}])
-
-    def test_llama_cpp_raises_without_setup(self) -> None:
-        """llama_cpp 백엔드 설정 미완료 시 RuntimeError 발생."""
-        cfg = LLMConfig.from_dict({"backend": "llama_cpp", "model_path": None})
-        llm = OfflineLLM(cfg)
-        with pytest.raises(RuntimeError):
             llm.chat("sys", [{"role": "user", "content": "hi"}])
 
     def test_http_without_url_raises(self) -> None:

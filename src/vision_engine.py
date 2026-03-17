@@ -81,11 +81,7 @@ class UiDetection:
 
 
 class VisionEngine:
-    """YOLO26x helper for Samsung OLED line UI automation.
-
-    CP-2: VisionAgent / VisionEngine 이중 계층 통합.
-    CP-3: Tesseract / OCR 완전 제거, YOLO26x 단독 검출로 전환.
-    """
+    """YOLO26x helper for Samsung OLED line UI automation."""
 
     def __init__(
         self,
@@ -305,11 +301,3 @@ class VisionEngine:
                 ordered_labels.append(detection.label)
         return ordered_labels
 
-
-# ---------------------------------------------------------------------------
-# 하위 호환 별칭 (CP-3 이후 제거 예정)
-# ---------------------------------------------------------------------------
-
-#: .. deprecated:: CP-2
-#:    ``VisionEngine`` 을 직접 사용하세요.
-VisionAgent = VisionEngine
