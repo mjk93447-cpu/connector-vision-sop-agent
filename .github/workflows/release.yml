@@ -86,10 +86,18 @@ print('Copied', src, '->', 'assets/models/yolo26x.pt')
           Copy-Item "assets\launchers\stop_ollama.bat"  "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt"  "$pkg\MERGE_GUIDE.txt"
 
+          # MANDATORY: YOLO26x 전용 (YOLOv8/v9/v10/v11 사용 금지)
           if (Test-Path "assets\models\yolo26x.pt") {
             Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"
             $mb = [math]::Round((Get-Item "assets\models\yolo26x.pt").Length / 1MB, 1)
             Write-Host "yolo26x.pt bundled: $mb MB"
+          }
+
+          # YOLO26x GUI 프리트레인 가중치 (있으면 번들링)
+          if (Test-Path "assets\models\yolo26x_pretrained.pt") {
+            Copy-Item "assets\models\yolo26x_pretrained.pt" "$pkg\assets\models\yolo26x_pretrained.pt"
+            $mb = [math]::Round((Get-Item "assets\models\yolo26x_pretrained.pt").Length/1MB,1)
+            Write-Host "yolo26x_pretrained.pt (YOLO26x GUI 특화) bundled: $mb MB"
           }
 
           foreach ($f in @("README.md", "TEST_REPORT.md", "ROADMAP.md")) {

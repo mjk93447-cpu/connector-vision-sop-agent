@@ -1,10 +1,12 @@
 name: Build All-in-One Package (App Only, No LLM Model)
 
-# 통팩 빌드 - EXE + Ollama + YOLO + config + launchers
+# 통팩 빌드 - EXE + Ollama + YOLO26x + config + launchers
+#
+# MANDATORY: YOLO26x 단독 사용. YOLOv8/v9/v10/v11 절대 금지 (CLAUDE.md 참조).
 #
 # phi4-mini 모델 블롭은 포함하지 않습니다.
-# 기존 portable-part2-phi4-mini 아티팩트의 블롭 파일을
-# ollama_models/ 폴더에 복사하면 즉시 실행 가능합니다.
+# yolo26x_pretrained.pt (GUI 특화 프리트레인 가중치) 가 있으면 함께 번들링됩니다.
+#   → "YOLO26x GUI Pretrain" 워크플로우로 생성 후 artifacts에서 assets/models/에 배치.
 #
 # phi4-mini 재사용 빌드: run #23139568715
 #   https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions/runs/23139568715
@@ -117,9 +119,21 @@ print('Copied', src, '->', 'assets/models/yolo26x.pt')
           $cfg | ConvertTo-Json -Depth 10 |
             Set-Content "$pkg\assets\config.json" -Encoding UTF8
 
-          # sop_steps + YOLO model + launchers + docs
+          # sop_steps + YOLO26x model(s) + launchers + docs
+          # MANDATORY: YOLO26x 전용 (YOLOv8/v9/v10/v11 사용 금지)
           Copy-Item "assets\sop_steps.json"              "$pkg\assets\sop_steps.json"
           Copy-Item "assets\models\yolo26x.pt"           "$pkg\assets\models\yolo26x.pt"
+
+          # YOLO26x GUI 프리트레인 가중치 — "YOLO26x GUI Pretrain" 워크플로우로 생성
+          # 있으면 Tab7 파인튜닝 베이스로 번들링, 없으면 yolo26x.pt(COCO) 사용
+          if (Test-Path "assets\models\yolo26x_pretrained.pt") {
+            Copy-Item "assets\models\yolo26x_pretrained.pt" "$pkg\assets\models\yolo26x_pretrained.pt"
+            $mb = [math]::Round((Get-Item "assets\models\yolo26x_pretrained.pt").Length/1MB,1)
+            Write-Host "[OK] yolo26x_pretrained.pt (YOLO26x GUI 특화) 번들링: $mb MB"
+          } else {
+            Write-Host "[INFO] yolo26x_pretrained.pt 없음 — Tab7 파인튜닝 시 yolo26x.pt(COCO) 사용"
+            Write-Host "[INFO] GUI 특화 프리트레인: Actions → YOLO26x GUI Pretrain 워크플로우 실행"
+          }
           Copy-Item "assets\launchers\start_agent.bat"   "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat"   "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"

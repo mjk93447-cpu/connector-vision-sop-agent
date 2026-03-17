@@ -2,6 +2,19 @@
 
 > 상세 계획: @ROADMAP.md | 진행 상태: @progress.md
 
+## ⚠️ [MANDATORY] YOLO 모델 규칙 (2026-03-17 확정 — 위반 금지)
+
+```
+YOLO 모델: 반드시 yolo26x.pt 단독 사용
+YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지 (STRICTLY FORBIDDEN)
+```
+
+- **Vision 관련 모든 설정·코드·워크플로우·스크립트**는 `yolo26x.pt` 기반으로만 처리.
+- `from ultralytics import YOLO; YOLO("yolo26x.pt")` 외 다른 YOLO 아키텍처 호출 금지.
+- 프리트레인/파인튜닝 베이스 모델도 반드시 `yolo26x.pt` 사용.
+- 외부 GUI 특화 YOLO 모델 통합 시, **반드시 YOLO26x 아키텍처(.pt)로 제공된 것만** 허용.
+- 이 규칙은 Claude 및 모든 기여자에게 영구 적용. 예외 없음.
+
 ## 스택
 - Python 3.11, PyTorch 2.4 CPU, OpenCV 4.9, PyAutoGUI
 - YOLO26x (vision), Ollama HTTP (LLM: phi4-mini-reasoning / llama4:scout)

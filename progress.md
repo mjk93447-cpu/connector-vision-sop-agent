@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-17 (yolo26x 단독 확인 + 프리트레인 파이프라인 구축 + mAP50 측정)_
+_최종 갱신: 2026-03-17 (YOLO26x 전용 규칙 확정 + GUI 프리트레인 CI 워크플로우 추가)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -20,6 +20,7 @@ _최종 갱신: 2026-03-17 (yolo26x 단독 확인 + 프리트레인 파이프라
 | **레거시 정리** | **llama_cpp/VisionAgent/ocr_threshold 완전 제거 + 시나리오 테스트** | **215 pass** | — |
 | **YOLO26x 확정** | **yolo26n/yolov8 잔재 전부 제거, 문서 업데이트** | **242 pass** | — |
 | **프리트레인 파이프라인** | **PretrainPipeline+DatasetConverter+run_pretrain.py + mAP50 실측** | **242 pass** | — |
+| **YOLO26x 전용 규칙** | **CLAUDE.md MANDATORY 규칙 + GUI Pretrain CI 워크플로우** | **254 pass** | — |
 
 ## 현재 스택 (v3.0.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
@@ -69,9 +70,37 @@ _최종 갱신: 2026-03-17 (yolo26x 단독 확인 + 프리트레인 파이프라
 
 > GPU 환경(RTX 3060+) + 실 데이터(Rico/OmniAct) + 더 많은 epoch 시 mAP50 0.5+ 목표
 
+## YOLO26x 전용 규칙 (2026-03-17 확정 — 영구 적용)
+
+```
+YOLO 모델: yolo26x.pt 단독 사용
+YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
+```
+- CLAUDE.md 최상단에 MANDATORY 규칙 추가
+- OmniParser(YOLOv8 기반) 접근법 폐기 — YOLO26x 아키텍처 불일치
+
+## YOLO26x GUI 프리트레인 CI 전략 (2026-03-17)
+
+**로컬 CPU 학습 대신 GitHub Actions에서 YOLO26x 프리트레인 실행**
+
+| 항목 | 내용 |
+|------|------|
+| 워크플로우 | `YOLO26x GUI Pretrain` (`.github/workflows/gui-pretrain.yml`) |
+| 아키텍처 | YOLO26x 단독 (COCO pretrained → GUI 특화 파인튜닝) |
+| 데이터 소스 | Rico WidgetCaptioning 500장 또는 합성 500장 |
+| 기본 epochs | 20 (조정 가능: 5~50) |
+| 출력 | `yolo26x_pretrained.pt` 아티팩트 + `PRETRAIN_REPORT.md` |
+| 번들링 | 아티팩트 → `assets/models/yolo26x_pretrained.pt` 배치 시 통팩에 자동 포함 |
+
+**Tab7 파인튜닝 우선순위**:
+1. `assets/models/yolo26x.pt` 이미 파인튜닝됨 → 그대로 사용
+2. `assets/models/yolo26x_pretrained.pt` 존재 (CI GUI 프리트레인) → 이 모델로 파인튜닝 시작
+3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
+
 ## 다음 작업 후보
-- [ ] Rico WidgetCaptioning 실 데이터(500+장)로 프리트레인 재실행 (`python scripts/run_pretrain.py --source rico_widget`)
-- [ ] `assets/models/yolo26x_pretrained.pt` → Tab7 Training Panel 기반 모델로 선택 후 OLED 파인튜닝
+- [ ] Actions → `YOLO26x GUI Pretrain` 워크플로우 실행 (rico_widget, epochs=20)
+- [ ] 생성된 `yolo26x_pretrained.pt` 아티팩트 → `assets/models/` 배치 → 통팩 재빌드
+- [ ] `yolo26x_pretrained.pt` → Tab7 Training Panel에서 OLED 파인튜닝 실행
 - [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제)
 - [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)

@@ -68,7 +68,9 @@ class TestNoYoloVisionEngine:
         """model=None when the .pt file is absent — no crash."""
         fake_path = str(tmp_path / "nonexistent_yolo26x.pt")
         cfg = DetectionConfig(model_path=fake_path)
-        engine = VisionEngine(config=cfg)
+        # Mock YOLO to simulate no model available (fallback also fails).
+        with patch("src.vision_engine.YOLO", side_effect=RuntimeError("no model")):
+            engine = VisionEngine(config=cfg)
         assert engine.model is None
 
     def test_detect_objects_returns_empty_when_model_none(self, tmp_path: Path) -> None:
@@ -76,7 +78,8 @@ class TestNoYoloVisionEngine:
         import numpy as np
 
         cfg = DetectionConfig(model_path=str(tmp_path / "missing.pt"))
-        engine = VisionEngine(config=cfg)
+        with patch("src.vision_engine.YOLO", side_effect=RuntimeError("no model")):
+            engine = VisionEngine(config=cfg)
         assert engine.model is None
         blank = np.zeros((480, 640, 3), dtype=np.uint8)
         assert engine.detect_objects(blank) == []
