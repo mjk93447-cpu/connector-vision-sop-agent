@@ -1,4 +1,4 @@
-name: Build All-in-One Package (App Only, No LLM Model)
+name: "Build All-in-One Package (App Only, No LLM Model)"
 
 # 통팩 빌드 - EXE + Ollama + YOLO26x + config + launchers
 #
