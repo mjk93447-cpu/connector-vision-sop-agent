@@ -129,7 +129,15 @@ class VisionEngine:
 
         Priority:
         1. Local .pt file (offline line PC, assets/models/yolo26x.pt).
-        2. yolov8x.pt base model auto-download (CI / online dev machines).
+        2. yolo26x.pt base model auto-download (ultralytics >= 8.4.0).
+
+        Model choice rationale — YOLO26x (released 2026-01-14):
+          yolo26x (highest mAP in YOLO26 family) is the preferred base:
+          - NMS-free end-to-end inference (DFL 제거)
+          - YOLO26 계열 최고 정확도 → SOP 12단계 UI 검출 안정성 최우선
+          - 속도보다 정확성/안정성 중시 (라인 PC SOP 자동화 특성)
+          - 파인튜닝 후 12개 OLED UI 클래스에 특화
+          ultralytics 버전 요구사항: >= 8.4.0
         """
 
         if os.path.exists(model_path):
@@ -140,10 +148,11 @@ class VisionEngine:
             except Exception:
                 return None
 
-        # Local .pt not found — try yolov8x.pt as COCO-pretrained base model.
-        # This allows training to start without a custom-trained model.
+        # Local .pt not found — use yolo26x.pt as COCO-pretrained base model.
+        # YOLO26x: highest mAP in the YOLO26 family, preferred for SOP accuracy.
+        # Requires ultralytics >= 8.4.0 (YOLO26 support added 2026-01-14).
         try:
-            model = YOLO("yolov8x.pt")  # auto-downloads from ultralytics on first run
+            model = YOLO("yolo26x.pt")  # auto-downloads from ultralytics hub
             model.overrides["verbose"] = False
             return model
         except Exception:

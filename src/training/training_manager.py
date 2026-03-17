@@ -9,7 +9,7 @@ Usage
   tm = TrainingManager()
   output_path = tm.train(
       dataset_yaml="training_data/dataset.yaml",
-      base_model="yolov8x.pt",     # or "assets/models/yolo26x.pt"
+      base_model="yolo26x.pt",     # or "assets/models/yolo26x.pt"
       epochs=10,
       image_size=640,
       progress_cb=lambda epoch, total: print(f"{epoch}/{total}"),
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 
-_DEFAULT_BASE_MODEL = "yolov8x.pt"
+_DEFAULT_BASE_MODEL = "yolo26x.pt"  # YOLO26x: NMS-free, highest mAP in YOLO26 family (ultralytics>=8.4.0)
 _TARGET_WEIGHTS = Path("assets/models/yolo26x.pt")
 
 

@@ -399,7 +399,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         row_batch.addWidget(self._spin_batch)
         tv.addLayout(row_batch)
 
-        self._lbl_base = QLabel("기반 모델: yolov8x.pt (COCO pretrained)")
+        self._lbl_base = QLabel("기반 모델: yolo26x.pt (COCO pretrained, 최고 정확도, NMS-free)")
         self._lbl_base.setStyleSheet("color: #607d8b; font-size: 11px;")
         tv.addWidget(self._lbl_base)
 
