@@ -36,17 +36,19 @@ _최종 갱신: 2026-03-17 (GUI Phase 2 완료)_
   - `📷 캡처` 버튼: numpy+QPixmap+YOLO 통합
 - **main.py**: `vision` 추출 → `MainWindow` + `VisionPanel.set_vision_engine()` 전달
 
-## ✅ 포터블 번들 빌드 완료 (run: 23136160146)
-| Artifact | 크기 | 상태 |
-|----------|------|------|
-| `portable-part1-app` | **440 MB** | ✅ 완료 |
-| `portable-part2-phi4-mini` | **2,749 MB (~2.7 GB)** | ✅ 완료 |
+## 🔨 빌드 진행 중 (v3.0)
+| 워크플로우 | Run ID | 상태 |
+|-----------|--------|------|
+| Build & Release EXE | 23175357680 | 🔄 진행 중 |
+| Portable Bundle (Split) | 23175358454 | 🔄 진행 중 |
+
+이전 성공 빌드 (Phase 1):
+- run: 23139568715 — `portable-part1-app` (440 MB) + `portable-part2-phi4-mini` (2.7 GB)
 
 ## 다음 작업 후보
 - [ ] YOLO26x 실제 가중치 학습 및 교체 (`assets/models/yolo26x.pt`)
 - [ ] VisionAgent 별칭 제거 (deprecated since CP-2)
 - [ ] llama_cpp 백엔드 코드 삭제 (deprecated since CP-1)
-- [ ] GUI Phase 3: 이미지 업로드 + 시리얼 연결 (고급 기능)
 - [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
