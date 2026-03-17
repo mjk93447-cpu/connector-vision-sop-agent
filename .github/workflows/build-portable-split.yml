@@ -4,7 +4,7 @@ name: Build Portable Offline Bundle (Split)
 # Model: phi4-mini-reasoning (Microsoft / USA) - non-Chinese model
 #
 # Produces 2 artifacts:
-#   portable-part1-app        ~400 MB   EXE + Ollama binary + launchers
+#   portable-part1-app        ~450 MB   EXE + Ollama binary + launchers
 #   portable-part2-phi4-mini  ~2.5 GB   LLM model blobs
 #
 # See assets/launchers/MERGE_GUIDE.txt for assembly instructions.

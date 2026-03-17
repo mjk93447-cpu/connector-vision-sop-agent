@@ -1,9 +1,9 @@
 ================================================================
- Connector Vision SOP Agent v2.0 - Portable Bundle Guide
+ Connector Vision SOP Agent v3.0 - Portable Bundle Guide
 ================================================================
 
 DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
-  1. portable-part1-app.zip          ~400 MB   EXE + Ollama + launchers
+  1. portable-part1-app.zip          ~450 MB   EXE + Ollama + launchers
   2. portable-part2-phi4-mini.zip    ~2.5 GB   LLM model blobs
 
 ASSEMBLY STEPS:
@@ -16,11 +16,14 @@ ASSEMBLY STEPS:
 
 FINAL FOLDER STRUCTURE:
   connector_agent\
-  +-- connector_vision_agent.exe   <- SOP agent (YOLO26x embedded)
+  +-- connector_vision_agent.exe   <- SOP agent (YOLO26x + PyQt6 GUI embedded)
   +-- ollama.exe                   <- LLM runtime
   +-- assets\
   |   +-- config.json              <- settings (editable)
-  +-- start_agent.bat              <- DOUBLE-CLICK TO RUN
+  |   +-- sop_steps.json           <- 12-step SOP definition (editable)
+  |   +-- models\
+  |       +-- yolo26x.pt           <- YOLO weights
+  +-- start_agent.bat              <- DOUBLE-CLICK TO RUN (GUI mode)
   +-- stop_ollama.bat
   +-- ollama_models\
       +-- blobs\sha256-...         <- from Part 2 zip
@@ -28,10 +31,28 @@ FINAL FOLDER STRUCTURE:
 
 HOW TO RUN:
   Double-click start_agent.bat
+  -> Starts Ollama server (LLM backend)
+  -> Opens PyQt6 GUI with 6 tabs:
+       Tab 1: Run SOP    - 12-step SOP execution with live log
+       Tab 2: Vision     - Screenshot capture + YOLO bbox overlay
+       Tab 3: LLM Chat   - Chat with LLM about SOP runs
+       Tab 4: SOP Editor - Edit/reorder SOP steps
+       Tab 5: Config     - Edit config.json via UI
+       Tab 6: Audit      - Config change history
+
+CUSTOMIZATION:
+  - Edit assets\config.json to tune pin counts, timing, thresholds
+  - Edit assets\sop_steps.json to modify the 12-step SOP sequence
+    (changes take effect immediately without rebuilding EXE)
 
 LLM MODEL INFO:
   Name  : phi4-mini-reasoning
   Vendor: Microsoft Corporation (USA) - non-Chinese model
   Size  : ~2.5 GB (Q4 quantized, fully offline)
   Notes : reasoning-optimized, SOP log analysis, config suggestions
+
+TROUBLESHOOTING:
+  - If GUI does not open: check Windows Event Log or run from cmd prompt
+  - If LLM chat fails: ensure ollama.exe is running (check Task Manager)
+  - If YOLO detects nothing: yolo26x.pt may be a placeholder (CI build)
 ================================================================

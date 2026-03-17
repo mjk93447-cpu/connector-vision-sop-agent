@@ -17,12 +17,10 @@ Verifies:
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # Ensure YOLO_CONFIG_DIR is redirected before vision_engine import

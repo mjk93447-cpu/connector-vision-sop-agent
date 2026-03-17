@@ -1,14 +1,15 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Connector Vision SOP Agent v2.0 [Offline]
+title Connector Vision SOP Agent v3.0 [Offline]
 
 set OLLAMA_MODELS=%~dp0ollama_models
 set OLLAMA_HOST=127.0.0.1:11434
 set OLLAMA_ORIGINS=*
 
 echo ================================================================
-echo  Connector Vision SOP Agent v2.0.0  [Fully Offline]
+echo  Connector Vision SOP Agent v3.0.0  [Fully Offline]
+echo  GUI  : PyQt6 6-tab MainWindow (Vision, LLM Chat, Audit...)
 echo  LLM  : phi4-mini-reasoning  (Microsoft, USA)
 echo  YOLO : yolo26x embedded in EXE
 echo ================================================================
@@ -26,7 +27,7 @@ if errorlevel 1 (
 )
 echo.
 
-echo [3/3] Launching SOP Agent...
+echo [3/3] Launching SOP Agent (GUI mode)...
 "%~dp0connector_vision_agent.exe"
 
 echo.
