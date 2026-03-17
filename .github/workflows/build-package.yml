@@ -1,0 +1,148 @@
+name: "Build All-in-One Package"
+
+# All-in-One build: EXE + Ollama + YOLO26x + config + launchers
+# NOTE: YOLO26x only. YOLOv8/v9/v10/v11 strictly forbidden (see CLAUDE.md).
+# phi4-mini model blobs are NOT included in this artifact.
+# Assembly: extract Part2 (phi4-mini blobs) into connector_agent\ollama_models\
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-allinone:
+    name: "All-in-One Package (EXE + Ollama, no LLM blobs)"
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
+
+      - name: Prepare yolo26x.pt (download base model if not present)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "assets\models\yolo26x.pt")) {
+            Write-Host "[INFO] yolo26x.pt not found - downloading yolo26x.pt base model"
+            python -c "
+from ultralytics import YOLO
+import shutil, pathlib
+m = YOLO('yolo26x.pt')
+src = pathlib.Path(m.ckpt_path if hasattr(m,'ckpt_path') else 'yolo26x.pt')
+if not src.exists():
+    src = pathlib.Path('yolo26x.pt')
+pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True)
+shutil.copy2(str(src), 'assets/models/yolo26x.pt')
+print('Copied', src, '->', 'assets/models/yolo26x.pt')
+"
+          } else {
+            Write-Host "[INFO] yolo26x.pt found"
+          }
+          $sz = [math]::Round((Get-Item "assets\models\yolo26x.pt").Length/1MB,1)
+          Write-Host "[INFO] yolo26x.pt size: $sz MB"
+
+      - name: Verify YOLO loads
+        shell: cmd
+        run: |
+          python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26x.pt'); print('YOLO OK  classes='+str(len(m.names)))"
+
+      - name: Run unit tests (sanity check)
+        run: |
+          python -m pip install pytest pytest-cov
+          python -m pytest tests/unit/ -q --tb=short --no-header
+
+      - name: Build EXE with PyInstaller
+        shell: cmd
+        run: pyinstaller build_exe.spec --distpath dist_build --clean
+
+      - name: Verify EXE
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist_build\connector_vision_agent.exe")) {
+            throw "EXE not found after build"
+          }
+          $mb = [math]::Round((Get-Item "dist_build\connector_vision_agent.exe").Length / 1MB, 1)
+          Write-Host "EXE OK: $mb MB"
+
+      - name: Download Ollama Windows binary
+        shell: pwsh
+        run: |
+          $uri = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
+          Invoke-WebRequest -Uri $uri -OutFile ollama.zip -UseBasicParsing
+          Expand-Archive ollama.zip -DestinationPath ollama_bin -Force
+          if (-not (Test-Path "ollama_bin\ollama.exe")) { throw "ollama.exe not found" }
+          $mb = [math]::Round((Get-Item "ollama_bin\ollama.exe").Length / 1MB, 1)
+          Write-Host "ollama.exe OK: $mb MB"
+
+      - name: Assemble all-in-one package
+        shell: pwsh
+        run: |
+          $pkg = "connector_agent"
+          New-Item -ItemType Directory -Path $pkg -Force | Out-Null
+          New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
+
+          # Core executables
+          Copy-Item "dist_build\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
+          Copy-Item "ollama_bin\ollama.exe"                 "$pkg\ollama.exe"
+
+          # Config: enable LLM with Ollama + phi4-mini
+          $cfg = Get-Content assets\config.json -Raw | ConvertFrom-Json
+          $cfg.llm.enabled    = $true
+          $cfg.llm.backend    = "ollama"
+          $cfg.llm.model_path = "phi4-mini-reasoning"
+          $cfg.llm.http_url   = "http://127.0.0.1:11434/v1/chat/completions"
+          $cfg | ConvertTo-Json -Depth 10 |
+            Set-Content "$pkg\assets\config.json" -Encoding UTF8
+
+          # Assets: sop_steps + YOLO26x model(s) + launchers + docs
+          # MANDATORY: YOLO26x only (YOLOv8/v9/v10/v11 forbidden)
+          Copy-Item "assets\sop_steps.json"              "$pkg\assets\sop_steps.json"
+          Copy-Item "assets\models\yolo26x.pt"           "$pkg\assets\models\yolo26x.pt"
+
+          # YOLO26x GUI pretrained weights (bundle if present)
+          if (Test-Path "assets\models\yolo26x_pretrained.pt") {
+            Copy-Item "assets\models\yolo26x_pretrained.pt" "$pkg\assets\models\yolo26x_pretrained.pt"
+            $mb = [math]::Round((Get-Item "assets\models\yolo26x_pretrained.pt").Length/1MB,1)
+            Write-Host "[OK] yolo26x_pretrained.pt bundled: $mb MB"
+          } else {
+            Write-Host "[INFO] yolo26x_pretrained.pt not found - Tab7 will use yolo26x.pt (COCO)"
+          }
+          Copy-Item "assets\launchers\start_agent.bat"   "$pkg\start_agent.bat"
+          Copy-Item "assets\launchers\stop_ollama.bat"   "$pkg\stop_ollama.bat"
+          Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
+
+          foreach ($f in @("README.md", "TEST_REPORT.md")) {
+            if (Test-Path $f) { Copy-Item $f "$pkg\$f" }
+          }
+
+          "Extract portable-part2-phi4-mini blobs here. See INSTALL_GUIDE.txt." |
+            Set-Content "$pkg\ollama_models\PLACE_PART2_HERE.txt" -Encoding UTF8
+
+          # Manifest
+          Write-Host ""
+          Write-Host "=== connector_agent/ package manifest ==="
+          Get-ChildItem $pkg -Recurse |
+            Where-Object { -not $_.PSIsContainer } |
+            Select-Object @{N="File";E={$_.FullName.Replace((Resolve-Path $pkg).Path+"\","")}},
+                          @{N="MB";E={[math]::Round($_.Length/1MB,2)}} |
+            Format-Table -AutoSize
+
+      - name: Upload all-in-one artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: connector-agent-v3.1-allinone
+          path: connector_agent/
+          retention-days: 90
