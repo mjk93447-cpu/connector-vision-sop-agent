@@ -4,3 +4,16 @@ __pycache__/
 build/
 dist/
 .venv/
+
+# YOLO model files (not committed — downloaded/trained locally)
+yolov8*.pt
+assets/models/yolo26n.pt
+
+# Training dataset (local annotations — not committed)
+training_data/
+
+# Ultralytics run output
+runs/
+
+# Logs
+logs/

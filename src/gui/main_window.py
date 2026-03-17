@@ -1,16 +1,17 @@
 """
 MainWindow — PyQt6 QMainWindow for Connector Vision SOP Agent.
 
-Six-tab layout:
+Seven-tab layout:
   Tab 1 (▶ Run SOP)   — SopPanel
   Tab 2 (👁 Vision)   — VisionPanel
   Tab 3 (💬 LLM Chat) — LlmPanel
   Tab 4 (📋 SOP Edit) — SopEditorPanel
   Tab 5 (⚙ Config)   — ConfigPanel
   Tab 6 (📊 Audit)    — AuditPanel
+  Tab 7 (🧠 Training) — TrainingPanel
 
-The window wires QThread workers (SopWorker, LLMWorker) so all
-heavy computation runs off the main thread.
+The window wires QThread workers (SopWorker, LLMWorker, TrainingWorker)
+so all heavy computation runs off the main thread.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from src.gui.panels.config_panel import ConfigPanel
 from src.gui.panels.llm_panel import LlmPanel
 from src.gui.panels.sop_editor_panel import SopEditorPanel
 from src.gui.panels.sop_panel import SopPanel
+from src.gui.panels.training_panel import TrainingPanel
 from src.gui.panels.vision_panel import VisionPanel
 from src.gui.workers import AnalysisWorker, LLMWorker, SopWorker
 
@@ -169,6 +171,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             config=self._config, config_path=self._config_path
         )
         self._audit_panel = AuditPanel(audit_log=self._audit_log)
+        self._training_panel = TrainingPanel()
 
         self._tabs.addTab(self._sop_panel, "▶ Run SOP")
         self._tabs.addTab(self._vision_panel, "👁 Vision")
@@ -176,6 +179,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._tabs.addTab(self._sop_editor_panel, "📋 SOP Editor")
         self._tabs.addTab(self._config_panel, "⚙ Config")
         self._tabs.addTab(self._audit_panel, "📊 Audit")
+        self._tabs.addTab(self._training_panel, "🧠 Training")
 
         self.setCentralWidget(self._tabs)
 
@@ -249,6 +253,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._worker.log_message.connect(self._sop_panel.on_log_message)
         self._worker.log_message.connect(self._on_worker_log)
         self._worker.screenshot_ready.connect(self._on_screenshot_ready)
+        self._worker.screenshot_ready.connect(self._on_screenshot_for_training)
         self._worker.sop_finished.connect(self._on_sop_finished)
         self._worker.start()
 
@@ -361,6 +366,16 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             self._update_status()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "적용 오류", str(exc))
+
+    def _on_screenshot_for_training(self, img: Any) -> None:
+        """Forward the latest SOP screenshot to the Training panel for annotation."""
+        try:
+            import numpy as np  # noqa: PLC0415
+
+            if isinstance(img, np.ndarray):
+                self._training_panel.set_image_for_annotation(img, "sop_capture.png")
+        except Exception:  # noqa: BLE001
+            pass
 
     def _on_tab_changed(self, index: int) -> None:
         # Refresh audit log when Audit tab (index 5) is shown

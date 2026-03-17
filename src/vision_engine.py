@@ -51,6 +51,10 @@ DEFAULT_TARGET_LABELS = [
     "mold_left_label",
     "mold_right_label",
     "pin_cluster",
+    "apply_button",
+    "save_button",
+    "axis_mark",
+    "connector_pin",
 ]
 
 DEFAULT_MOLD_ROI = ((100, 200), (800, 350))
@@ -125,7 +129,7 @@ class VisionEngine:
 
         Priority:
         1. Local .pt file (offline line PC, assets/models/yolo26x.pt).
-        2. Ultralytics hub name fallback for CI / online dev machines.
+        2. yolov8x.pt base model auto-download (CI / online dev machines).
         """
 
         if os.path.exists(model_path):
@@ -136,8 +140,14 @@ class VisionEngine:
             except Exception:
                 return None
 
-        # Local .pt not found — skip hub download to avoid network calls.
-        return None
+        # Local .pt not found — try yolov8x.pt as COCO-pretrained base model.
+        # This allows training to start without a custom-trained model.
+        try:
+            model = YOLO("yolov8x.pt")  # auto-downloads from ultralytics on first run
+            model.overrides["verbose"] = False
+            return model
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------ #
     # 화면 캡처
@@ -266,6 +276,9 @@ class VisionEngine:
             "valid": len(centers) >= pin_count_min,
             "centers": centers,
         }
+
+    #: Convenience alias — vision_panel and workers use the shorter name.
+    detect = detect_objects
 
     def detect_ui_targets(self, image: np.ndarray | None = None) -> list[str]:
         """Return detected labels when possible, otherwise use SOP defaults."""

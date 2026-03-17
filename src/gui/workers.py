@@ -6,8 +6,10 @@ GUI stays responsive during SOP execution and LLM inference.
 
 Workers
 -------
-SopWorker   — executes the full 12-step SOP in a background thread
-LLMWorker   — sends a message to the LLM and emits the response
+SopWorker       — executes the full 12-step SOP in a background thread
+LLMWorker       — sends a message to the LLM and emits the response
+AnalysisWorker  — runs LLM log analysis
+TrainingWorker  — runs YOLO fine-tuning
 """
 
 from __future__ import annotations
@@ -195,3 +197,56 @@ class AnalysisWorker(QThread):  # type: ignore[misc]
             self.analysis_ready.emit(result)
         except Exception as exc:  # noqa: BLE001
             self.error_occurred.emit(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# TrainingWorker
+# ---------------------------------------------------------------------------
+
+
+class TrainingWorker(QThread):  # type: ignore[misc]
+    """Run YOLO fine-tuning in a background thread.
+
+    Signals
+    -------
+    progress(epoch, total)     — epoch progress update
+    finished_ok(weights_path)  — training completed; path to saved .pt
+    error_occurred(error_text) — training failed
+    """
+
+    progress: Any = pyqtSignal(int, int)
+    finished_ok: Any = pyqtSignal(str)
+    error_occurred: Any = pyqtSignal(str)
+
+    def __init__(
+        self,
+        dataset_yaml: str,
+        epochs: int = 10,
+        batch: int = 4,
+        parent: Any = None,
+    ) -> None:
+        super().__init__(parent)
+        self._dataset_yaml = dataset_yaml
+        self._epochs = epochs
+        self._batch = batch
+
+    def run(self) -> None:
+        """Thread entry point."""
+        try:
+            from src.training.training_manager import TrainingManager  # noqa: PLC0415
+
+            tm = TrainingManager()
+
+            def _progress_cb(epoch: int, total: int) -> None:
+                self.progress.emit(epoch, total)
+
+            weights = tm.train(
+                dataset_yaml=self._dataset_yaml,
+                epochs=self._epochs,
+                batch=self._batch,
+                progress_cb=_progress_cb,
+            )
+            self.finished_ok.emit(str(weights))
+        except Exception as exc:  # noqa: BLE001
+            tb = traceback.format_exc()
+            self.error_occurred.emit(f"{exc}\n{tb}")

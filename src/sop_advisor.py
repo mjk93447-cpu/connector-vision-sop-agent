@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +247,85 @@ def summarize_failures(events: List[Dict[str, Any]]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Action normaliser
 # ---------------------------------------------------------------------------
+
+
+def suggest_training_needs(
+    events: List[Dict[str, Any]],
+    class_names: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Analyse failure events and suggest which YOLO classes need more training.
+
+    Returns a list of suggestion dicts::
+
+        [
+          {
+            "class": "login_button",
+            "reason": "3번 미검출 — 신뢰도 < 0.6",
+            "suggested_action": "Tab 7 Training 패널에서 ...",
+            "priority": "high" | "medium" | "low",
+          },
+          ...
+        ]
+    """
+    from src.vision_engine import DEFAULT_TARGET_LABELS  # noqa: PLC0415
+
+    all_classes = class_names or list(DEFAULT_TARGET_LABELS)
+
+    miss_counts: Dict[str, int] = {c: 0 for c in all_classes}
+    low_conf_counts: Dict[str, int] = {c: 0 for c in all_classes}
+
+    for ev in events:
+        msg = str(ev.get("message", "")).lower()
+        lvl = str(ev.get("level", "")).upper()
+        if lvl not in ("ERROR", "WARNING"):
+            continue
+        for cls in all_classes:
+            if cls.lower() in msg and (
+                "not found" in msg or "미검출" in msg or "failed" in msg
+            ):
+                miss_counts[cls] += 1
+            if cls.lower() in msg and (
+                "conf" in msg or "confidence" in msg or "낮" in msg
+            ):
+                low_conf_counts[cls] += 1
+
+    suggestions: List[Dict[str, Any]] = []
+    for cls in all_classes:
+        misses = miss_counts.get(cls, 0)
+        low_conf = low_conf_counts.get(cls, 0)
+        total = misses + low_conf
+        if total == 0:
+            continue
+
+        if misses >= 3 or total >= 5:
+            priority = "high"
+        elif total >= 2:
+            priority = "medium"
+        else:
+            priority = "low"
+
+        reasons: List[str] = []
+        if misses > 0:
+            reasons.append(f"{misses}번 미검출")
+        if low_conf > 0:
+            reasons.append(f"{low_conf}번 낮은 신뢰도")
+
+        suggestions.append(
+            {
+                "class": cls,
+                "reason": ", ".join(reasons),
+                "suggested_action": (
+                    f"🧠 Tab 7 Training 패널에서 '{cls}' 영역 bbox를 "
+                    f"5장 이상 추가한 뒤 [학습 시작] 버튼을 누르세요. "
+                    f"실제 라인 화면 캡처 이미지 사용을 권장합니다."
+                ),
+                "priority": priority,
+            }
+        )
+
+    _order = {"high": 0, "medium": 1, "low": 2}
+    suggestions.sort(key=lambda s: _order.get(s.get("priority", "low"), 2))
+    return suggestions
 
 
 def propose_actions(llm_output: Dict[str, Any]) -> List[Dict[str, Any]]:
