@@ -35,7 +35,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
-          python -m pip install PyQt6>=6.7.0
 
       - name: Prepare YOLO26x placeholder
         shell: cmd
