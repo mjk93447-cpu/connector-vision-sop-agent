@@ -7,6 +7,11 @@ name: "Build All-in-One Package"
 
 on:
   workflow_dispatch:
+    inputs:
+      note:
+        description: "Optional build note"
+        required: false
+        default: "v3.1 OCR-First pipeline"
 
 jobs:
   build-allinone:
