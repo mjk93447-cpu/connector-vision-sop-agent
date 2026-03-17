@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-17 (통팩 빌드 트리거)_
+_최종 갱신: 2026-03-17 (YOLO26x 베이스 모델 전환 + Tab7 Training Panel)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -16,12 +16,13 @@ _최종 갱신: 2026-03-17 (통팩 빌드 트리거)_
 | fix | config_loader EXE 경로, 포터블 번들 구조 | 163 pass | 92% |
 | GUI Phase 1 | PyQt6 6탭 MainWindow + sop_steps.json 외부화 | 210 pass | — |
 | **GUI Phase 2** | **Vision Canvas 실시간 연결 + LLM 로그 분석 실제 연동** | **210 pass** | — |
+| **Training** | **Tab7: BBox 어노테이션+DatasetManager+TrainingManager+YOLO26x 베이스** | **210 pass** | — |
 
 ## 현재 스택 (v3.0.0)
-- YOLO: yolo26x (`assets/models/yolo26x.pt`, CI는 yolo26n.pt 플레이스홀더)
+- YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
 - LLM: phi4-mini-reasoning via Ollama (`http://localhost:11434`)
 - OCR: 완전 제거 / 테스트: 210개
-- GUI: PyQt6 6탭 (Vision Canvas 실시간 + LLM 채팅 + 감사 로그)
+- GUI: PyQt6 7탭 (Vision Canvas 실시간 + LLM 채팅 + 감사 로그 + Tab7 Training)
 
 ## GUI Phase 2 완료 내용
 - **SopWorker**: `screenshot_ready` 시그널 — 매 스텝 후 BGR ndarray emit
@@ -56,7 +57,7 @@ _최종 갱신: 2026-03-17 (통팩 빌드 트리거)_
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
 ## 알려진 이슈
-- `assets/models/yolo26x.pt`: CI 플레이스홀더 (yolo26n.pt 복사본)
+- `assets/models/yolo26x.pt`: CI에서 yolo26x COCO pretrained 다운로드 (파인튜닝 전 상태)
 - `llama_cpp` 백엔드: deprecated, 코드 미삭제
 - `.coveragerc` 제외: main.py, control_engine.py, sop_executor.py, test_sop.py
 
