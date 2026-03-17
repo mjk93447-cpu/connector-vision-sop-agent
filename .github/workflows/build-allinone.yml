@@ -1,19 +1,19 @@
 name: Build All-in-One Package (App Only, No LLM Model)
 
-# 통팩 빌드 — EXE + Ollama + YOLO + config + launchers
+# 통팩 빌드 - EXE + Ollama + YOLO + config + launchers
 #
 # phi4-mini 모델 블롭은 포함하지 않습니다.
 # 기존 portable-part2-phi4-mini 아티팩트의 블롭 파일을
 # ollama_models/ 폴더에 복사하면 즉시 실행 가능합니다.
 #
-# 배포 절차:
-#   1. 이 워크플로우 아티팩트 다운로드 → connector-agent-v3-allinone.zip 압축 해제
-#   2. portable-part2-phi4-mini 아티팩트 다운로드 → 압축 해제 후 blobs/ manifests/ 를
-#      connector_agent\ollama_models\ 안에 복사
-#   3. connector_agent\start_agent.bat 더블클릭 → 바로 실행
-#
-# phi4-mini 재사용 가능 빌드: run #23139568715
+# phi4-mini 재사용 빌드: run #23139568715
 #   https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions/runs/23139568715
+#
+# 배포 절차 (INSTALL_GUIDE.txt 참고):
+#   1. 이 아티팩트 압축 해제
+#   2. Part2(portable-part2-phi4-mini) 압축 해제 후 blobs/ manifests/ 를
+#      connector_agent\ollama_models\ 에 복사
+#   3. start_agent.bat 더블클릭
 
 on:
   workflow_dispatch:
@@ -53,17 +53,14 @@ jobs:
           for %%F in (assets\models\yolo26x.pt) do echo [INFO] yolo26x.pt size: %%~zF bytes
 
       - name: Verify YOLO loads
+        shell: cmd
         run: |
-          python -c "
-          from ultralytics import YOLO
-          m = YOLO('assets/models/yolo26x.pt')
-          print(f'YOLO OK  classes={len(m.names)}  task={m.task}')
-          "
+          python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26x.pt'); print('YOLO OK  classes='+str(len(m.names)))"
 
       - name: Run unit tests (sanity check)
         run: |
           python -m pip install pytest pytest-cov
-          python -m pytest tests/unit/ -q --tb=short --no-header 2>&1 | tail -5
+          python -m pytest tests/unit/ -q --tb=short --no-header
 
       - name: Build EXE with PyInstaller
         shell: cmd
@@ -93,14 +90,14 @@ jobs:
         run: |
           $pkg = "connector_agent"
           New-Item -ItemType Directory -Path $pkg -Force | Out-Null
+          New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
 
-          # ── Core executables ──
+          # Core executables
           Copy-Item "dist_build\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
           Copy-Item "ollama_bin\ollama.exe"                 "$pkg\ollama.exe"
 
-          # ── Assets: config (llm enabled), sop_steps, YOLO model ──
-          New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
-
+          # Config: enable LLM with Ollama + phi4-mini
           $cfg = Get-Content assets\config.json -Raw | ConvertFrom-Json
           $cfg.llm.enabled    = $true
           $cfg.llm.backend    = "ollama"
@@ -109,75 +106,27 @@ jobs:
           $cfg | ConvertTo-Json -Depth 10 |
             Set-Content "$pkg\assets\config.json" -Encoding UTF8
 
-          Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json"
-
-          Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"
-          $yoloMB = [math]::Round((Get-Item "assets\models\yolo26x.pt").Length / 1MB, 1)
-          Write-Host "yolo26x.pt: $yoloMB MB"
-
-          # ── Launchers ──
-          Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
-          Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
-
-          # ── LLM model slot (user fills from Part2 artifact) ──
-          New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
-
-          # ── Install guide ──
-          @"
-================================================================
- Connector Vision SOP Agent v3.0 - All-in-One Package
-================================================================
-
-STEP 1. phi4-mini 모델 블롭 복사 (약 2.7 GB)
------------------------------------------------
-이전 빌드 아티팩트에서 portable-part2-phi4-mini 를 다운로드합니다.
-  Actions run: https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions/runs/23139568715
-
-압축 해제 후 blobs\ 와 manifests\ 폴더를 아래 경로에 복사:
-
-  [이 패키지 폴더]\ollama_models\blobs\
-  [이 패키지 폴더]\ollama_models\manifests\
-
-STEP 2. 실행
------------------------------------------------
-  start_agent.bat 더블클릭
-
-  → Ollama 서버 자동 시작 (포트 11434)
-  → phi4-mini-reasoning 모델 로드 확인
-  → PyQt6 GUI 열림 (6탭)
-
-최종 폴더 구조:
-  connector_agent\
-  +-- connector_vision_agent.exe   ← SOP Agent (GUI, YOLO26x 내장)
-  +-- ollama.exe                   ← LLM 런타임
-  +-- start_agent.bat              ← 실행 스크립트 (더블클릭)
-  +-- stop_ollama.bat
-  +-- assets\
-  |   +-- config.json              ← 설정 (편집 가능)
-  |   +-- sop_steps.json           ← SOP 12단계 정의 (편집 가능)
-  |   +-- models\
-  |       +-- yolo26x.pt           ← YOLO 가중치
-  +-- ollama_models\
-      +-- blobs\    ← Part2에서 복사
-      +-- manifests\ ← Part2에서 복사
-
-NOTES:
-  - LLM 없이도 SOP 실행(Tab1) / Vision 캡처(Tab2) / Config 편집(Tab5) 동작함
-  - yolo26x.pt: CI 플레이스홀더 (실제 라인 학습 모델로 교체 시 성능 향상)
-  - config.json 편집 후 EXE 재시작 없이 일부 설정 반영됨
-================================================================
-"@ | Set-Content "$pkg\INSTALL_GUIDE.txt" -Encoding UTF8
+          # sop_steps + YOLO model + launchers + docs
+          Copy-Item "assets\sop_steps.json"              "$pkg\assets\sop_steps.json"
+          Copy-Item "assets\models\yolo26x.pt"           "$pkg\assets\models\yolo26x.pt"
+          Copy-Item "assets\launchers\start_agent.bat"   "$pkg\start_agent.bat"
+          Copy-Item "assets\launchers\stop_ollama.bat"   "$pkg\stop_ollama.bat"
+          Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
 
           foreach ($f in @("README.md", "TEST_REPORT.md")) {
             if (Test-Path $f) { Copy-Item $f "$pkg\$f" }
           }
 
-          # ── Print manifest ──
+          "Extract portable-part2-phi4-mini blobs here. See INSTALL_GUIDE.txt." |
+            Set-Content "$pkg\ollama_models\PLACE_PART2_HERE.txt" -Encoding UTF8
+
+          # Manifest
           Write-Host ""
           Write-Host "=== connector_agent/ package manifest ==="
           Get-ChildItem $pkg -Recurse |
-            Select-Object @{N="Path";E={$_.FullName.Replace((Resolve-Path $pkg).Path+"\","")}},
-                          @{N="MB";E={if($_.PSIsContainer){"<dir>"}else{[math]::Round($_.Length/1MB,2)}}} |
+            Where-Object { -not $_.PSIsContainer } |
+            Select-Object @{N="File";E={$_.FullName.Replace((Resolve-Path $pkg).Path+"\","")}},
+                          @{N="MB";E={[math]::Round($_.Length/1MB,2)}} |
             Format-Table -AutoSize
 
       - name: Upload all-in-one artifact
