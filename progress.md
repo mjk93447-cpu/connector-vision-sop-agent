@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-17 (레거시 정리 완료 + 가상 시나리오 테스트 215 pass)_
+_최종 갱신: 2026-03-17 (yolo26x 단독 확인 + 프리트레인 파이프라인 구축 + mAP50 측정)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -18,11 +18,13 @@ _최종 갱신: 2026-03-17 (레거시 정리 완료 + 가상 시나리오 테스
 | **GUI Phase 2** | **Vision Canvas 실시간 연결 + LLM 로그 분석 실제 연동** | **210 pass** | — |
 | **Training** | **Tab7: BBox 어노테이션+DatasetManager+TrainingManager+YOLO26x 베이스** | **210 pass** | — |
 | **레거시 정리** | **llama_cpp/VisionAgent/ocr_threshold 완전 제거 + 시나리오 테스트** | **215 pass** | — |
+| **YOLO26x 확정** | **yolo26n/yolov8 잔재 전부 제거, 문서 업데이트** | **242 pass** | — |
+| **프리트레인 파이프라인** | **PretrainPipeline+DatasetConverter+run_pretrain.py + mAP50 실측** | **242 pass** | — |
 
 ## 현재 스택 (v3.0.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
 - LLM: phi4-mini-reasoning via Ollama (`http://localhost:11434`)
-- OCR: 완전 제거 / 테스트: 215개
+- OCR: 완전 제거 / 테스트: 242개
 - GUI: PyQt6 7탭 (Vision Canvas 실시간 + LLM 채팅 + 감사 로그 + Tab7 Training)
 
 ## GUI Phase 2 완료 내용
@@ -50,11 +52,28 @@ _최종 갱신: 2026-03-17 (레거시 정리 완료 + 가상 시나리오 테스
 2. `portable-part2-phi4-mini`(run 23139568715) blobs/ manifests/ → `connector_agent\ollama_models\` 복사
 3. `start_agent.bat` 더블클릭 → GUI 즉시 실행
 
+## 프리트레인 파이프라인 (2026-03-17 실측)
+| 항목 | 값 |
+|------|-----|
+| 데이터 소스 | 합성 GUI 60장 (SyntheticGUIGenerator) |
+| 프리트레인 클래스 | 7개 (button/icon/label/connector/input_field/checkbox/dropdown) |
+| 베이스 모델 | yolo26x.pt (COCO pretrained, 80cls) |
+| 학습 | 3 epoch, imgsz=320, batch=4, CPU |
+| **mAP50** | **0.1534** |
+| mAP50-95 | 0.1483 |
+| Precision | 0.1368 / Recall 0.3487 |
+| 학습 시간 | 254.9s (4.2분, CPU) |
+| 출력 가중치 | `assets/models/yolo26x_pretrained.pt` |
+
+클래스별 mAP50: button=0.2754, checkbox=0.2124, icon=0.1559, connector=0.1513, label=0.1122, input_field=0.1042, dropdown=0.0627
+
+> GPU 환경(RTX 3060+) + 실 데이터(Rico/OmniAct) + 더 많은 epoch 시 mAP50 0.5+ 목표
+
 ## 다음 작업 후보
-- [ ] YOLO26x 실제 가중치 학습 및 교체 (`assets/models/yolo26x.pt`)
+- [ ] Rico WidgetCaptioning 실 데이터(500+장)로 프리트레인 재실행 (`python scripts/run_pretrain.py --source rico_widget`)
+- [ ] `assets/models/yolo26x_pretrained.pt` → Tab7 Training Panel 기반 모델로 선택 후 OLED 파인튜닝
+- [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제)
 - [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
-- [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제 — 프롬프트 또는 모델 조정)
-- [ ] 시나리오 테스트 처리 시간 단축 (GPU 환경 시 300s→30s 예상)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
 ## 알려진 이슈

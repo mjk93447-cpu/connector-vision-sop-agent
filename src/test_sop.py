@@ -64,7 +64,12 @@ def test_full_sop(monkeypatch: pytest.MonkeyPatch) -> None:
     def _fake_validate_pin_count(
         self: VisionEngine, image: Any, pin_count_min: int = 20
     ) -> dict[str, Any]:
-        return {"count": 40, "pin_count_min": pin_count_min, "valid": True, "centers": []}
+        return {
+            "count": 40,
+            "pin_count_min": pin_count_min,
+            "valid": True,
+            "centers": [],
+        }
 
     monkeypatch.setattr(
         VisionEngine,
@@ -97,7 +102,12 @@ def test_main_integration_trace(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class _TestVision(VisionEngine):
         def validate_pin_count(self, image: Any, pin_count_min: int = 20) -> dict[str, Any]:  # type: ignore[override]
-            return {"count": 40, "pin_count_min": pin_count_min, "valid": True, "centers": []}
+            return {
+                "count": 40,
+                "pin_count_min": pin_count_min,
+                "valid": True,
+                "centers": [],
+            }
 
     class _TestControl(ControlEngine):
         def click_target(self, target_name: str) -> ControlResult:  # type: ignore[override]
@@ -203,7 +213,10 @@ def test_screen_detection_and_log(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # Log the result and verify structure
     log = LogManager()
-    log.log(step="screen_detection", message=f"검출 {len(dets)}개: {[d.label for d in dets]}")
+    log.log(
+        step="screen_detection",
+        message=f"검출 {len(dets)}개: {[d.label for d in dets]}",
+    )
     payload = log.build_llm_payload(config={})
     assert "events" in payload or "summary" in payload
 
@@ -279,7 +292,9 @@ def test_text_detection_sequential_drag(monkeypatch: pytest.MonkeyPatch) -> None
 
     # Fake detections in non-canonical order
     fake_detections = [
-        UiDetection(label="mold_right_label", confidence=0.88, bbox=(300, 100, 450, 160)),
+        UiDetection(
+            label="mold_right_label", confidence=0.88, bbox=(300, 100, 450, 160)
+        ),
         UiDetection(label="login_button", confidence=0.95, bbox=(50, 30, 180, 70)),
         UiDetection(label="pin_cluster", confidence=0.72, bbox=(200, 200, 380, 280)),
     ]

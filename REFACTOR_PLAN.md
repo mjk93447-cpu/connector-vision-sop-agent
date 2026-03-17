@@ -1,6 +1,9 @@
 # 리팩토링 계획: YOLO26x + Llama4 Scout (Ollama) 전환
 
-> 최종 목표: YOLO26n + Tesseract + Qwen GGUF → **YOLO26x + Llama4 Scout via Ollama**
+> **[완료 2026-03-17]** CP-0~CP-4 + 레거시 정리(llama_cpp/VisionAgent/Tesseract) 전부 완료.
+> 이 문서는 역사적 계획 기록이며 현재 코드 상태와 다를 수 있음.
+>
+> 최종 목표: YOLO26n + Tesseract + Qwen GGUF → **YOLO26x + phi4-mini-reasoning via Ollama**
 > 핵심 원칙: 에러 감소, 비전 정확도 향상, LLM 성능 향상, 의존성 단순화
 > 작성일: 2026-03-16 | 기반: ROADMAP.md "Future Direction" 섹션
 
@@ -182,7 +185,7 @@ print(llm.chat('test', [{'role':'user','content':'안녕'}]))
       use_ocr_fallback: bool = False       # 기본값 OFF
       nms_iou_threshold: float = 0.45
   ```
-- [ ] `VisionEngine._load_model()`: `yolo26x.pt` 우선, `yolo26n.pt` 폴백
+- [x] `VisionEngine._load_model()`: `yolo26x.pt` 단독 사용 (폴백 없음 — yolo26x가 유일한 모델)
 - [ ] `config.json` `vision` 블록 추가
   ```jsonc
   "vision": {
@@ -201,7 +204,7 @@ print(llm.chat('test', [{'role':'user','content':'안녕'}]))
   - `test_detection_config_defaults()`
   - `test_vision_engine_no_ocr_fallback(monkeypatch)`
   - `test_detect_objects_returns_list(monkeypatch)`
-  - `test_model_fallback_to_yolo26n_when_26x_missing(tmp_path, monkeypatch)`
+  - ~~`test_model_fallback_to_yolo26n_when_26x_missing`~~ (미구현 — yolo26n 폴백 불필요, yolo26x 단독)
   - `test_normalize_roi()`
   - `test_extract_pin_centers_blank_image()`
   - `test_validate_pin_count()`

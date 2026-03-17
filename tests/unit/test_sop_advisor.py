@@ -208,7 +208,10 @@ class TestSummarizeFailures:
 
 class TestProposeActions:
     def test_config_patch_becomes_action(self) -> None:
-        output = {"config_patch": {"confidence_threshold": 0.8}, "sop_recommendations": []}
+        output = {
+            "config_patch": {"confidence_threshold": 0.8},
+            "sop_recommendations": [],
+        }
         actions = propose_actions(output)
         assert len(actions) == 1
         assert actions[0]["type"] == "config_patch"
@@ -237,7 +240,10 @@ class TestProposeActions:
         assert actions == []
 
     def test_action_has_description(self) -> None:
-        output = {"config_patch": {"confidence_threshold": 0.9}, "sop_recommendations": []}
+        output = {
+            "config_patch": {"confidence_threshold": 0.9},
+            "sop_recommendations": [],
+        }
         actions = propose_actions(output)
         assert "description" in actions[0]
         assert len(actions[0]["description"]) > 0

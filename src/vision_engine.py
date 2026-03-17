@@ -300,4 +300,3 @@ class VisionEngine:
             if detection.label not in ordered_labels:
                 ordered_labels.append(detection.label)
         return ordered_labels
-

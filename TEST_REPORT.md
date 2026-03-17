@@ -119,7 +119,7 @@ TOTAL                    363     29    92%
 
 ## 알려진 미진 사항 (향후 작업)
 
-- `main.py`, `sop_executor.py`: 레거시 OCR/Tesseract 레퍼런스 일부 잔존 (UI 리팩터 필요)
-- `llama_cpp` 백엔드: deprecated 처리만, 추후 코드베이스에서 완전 삭제 예정
-- `VisionAgent` 별칭: CP-3 이후 유지 중, 다음 주기에 삭제
-- YOLO26x 실제 가중치: `assets/models/yolo26x.pt` 학습 후 배치 필요
+- YOLO26x 실제 가중치: `assets/models/yolo26x.pt` 파인튜닝 후 배치 필요 (현재 COCO pretrained)
+- phi4-mini-reasoning: CPU-only 환경 ~109초 지연, 한국어/중국어 혼용 응답 발생
+
+> **완료된 정리 (레거시 삭제)**: Tesseract/OCR, llama_cpp 백엔드, VisionAgent 별칭 전부 삭제 완료 (2026-03-17)

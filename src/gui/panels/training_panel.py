@@ -67,7 +67,7 @@ class BBoxCanvas(QWidget):  # type: ignore[misc]
 
     def __init__(self, parent: Any = None) -> None:
         super().__init__(parent)
-        self._image: Optional[Any] = None        # QPixmap
+        self._image: Optional[Any] = None  # QPixmap
         self._annotations: List[Dict[str, Any]] = []
         self._current_label: str = OLED_CLASSES[0]
         self._drawing = False
@@ -399,7 +399,9 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         row_batch.addWidget(self._spin_batch)
         tv.addLayout(row_batch)
 
-        self._lbl_base = QLabel("기반 모델: yolo26x.pt (COCO pretrained, 최고 정확도, NMS-free)")
+        self._lbl_base = QLabel(
+            "기반 모델: yolo26x.pt (COCO pretrained, 최고 정확도, NMS-free)"
+        )
         self._lbl_base.setStyleSheet("color: #607d8b; font-size: 11px;")
         tv.addWidget(self._lbl_base)
 
@@ -439,13 +441,16 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "이미지 파일 열기", "",
+            self,
+            "이미지 파일 열기",
+            "",
             "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.webp)",
         )
         if not path:
             return
         try:
             import cv2  # noqa: PLC0415
+
             bgr = cv2.imread(path)
             if bgr is None:
                 raise ValueError("cv2.imread returned None")
@@ -460,6 +465,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         try:
             import numpy as np  # noqa: PLC0415
             import pyautogui  # noqa: PLC0415
+
             screenshot = pyautogui.screenshot()
             rgb = np.array(screenshot)
             bgr = rgb[:, :, ::-1].copy()
@@ -480,10 +486,14 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             return
         annotations = self._canvas.get_annotations()
         if not annotations:
-            QMessageBox.warning(self, "저장 실패", "Bbox가 없습니다. 먼저 영역을 표시하세요.")
+            QMessageBox.warning(
+                self, "저장 실패", "Bbox가 없습니다. 먼저 영역을 표시하세요."
+            )
             return
         name = self._current_image_name or "capture.png"
-        img_path = self._dm.add_image_with_annotations(name, self._current_bgr, annotations)
+        img_path = self._dm.add_image_with_annotations(
+            name, self._current_bgr, annotations
+        )
         self._dm.save_dataset_yaml()
         self._log(f"✅ 저장 완료: {img_path} ({len(annotations)}개 bbox)")
         self._refresh_stats()
@@ -495,7 +505,8 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         stats = self._dm.get_stats()
         if stats["image_count"] == 0:
             QMessageBox.warning(
-                self, "학습 불가",
+                self,
+                "학습 불가",
                 "어노테이션된 이미지가 없습니다.\n이미지를 추가하고 bbox를 저장한 뒤 학습하세요.",
             )
             return

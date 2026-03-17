@@ -415,4 +415,3 @@ class TestDetectUiTargets:
         result = engine.detect_ui_targets(None)
         result.append("extra")
         assert "extra" not in engine.detect_ui_targets(None)
-

@@ -380,7 +380,7 @@ EXE 파일의 예상 용량(수백 MB)과 GitHub Actions 빌드/아티팩트 업
       - `assets/config.json` / `assets/config.proposed.json` 스키마 검증:
         - 필수 키 (`version`, `password`, `ocr_threshold`, `llm.*` 등)가 누락되지 않았는지.
         - `SAFE_NUMERIC_RANGES` 범위를 벗어나는 값이 없는지.
-      - `assets/models/yolo26n.pt` 존재 여부, Git LFS/Artifacts 경로 일관성 확인.
+      - `assets/models/yolo26x.pt` 존재 여부, Git LFS/Artifacts 경로 일관성 확인.
       - `logs/` 디렉터리 구조 (`run_id/summary.json`, `events.jsonl`, `screens/`)가 ROADMAP/README 설명과 일치하는지 확인.
     - **D. CI/CD 상호 검증 (로컬 ↔ Actions)**
       - 로컬에서 사용하는 Python 버전/requirements와 `.github/workflows/release.yml`에 정의된 버전이 일관된지 재검토.

@@ -22,12 +22,10 @@ import json
 import re
 import textwrap
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import cv2
 import numpy as np
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -35,14 +33,14 @@ import pytest
 # ---------------------------------------------------------------------------
 
 _SCREEN_TEXTS: List[Tuple[str, Tuple[int, int]]] = [
-    ("SOP Step 1: Login to system",            (40,  80)),
-    ("Status: PASS",                            (40, 160)),
-    ("Pin Count: 42 / Expected: 40",            (40, 240)),
-    ("Mold Position: LEFT",                     (40, 320)),
-    ("Error: recipe_button not found at step 5",(40, 400)),
-    ("Retry count: 3 of 5",                     (40, 480)),
-    ("Connector: P40-OLED model",               (40, 560)),
-    ("Vision conf: 0.82  Threshold: 0.60",      (40, 640)),
+    ("SOP Step 1: Login to system", (40, 80)),
+    ("Status: PASS", (40, 160)),
+    ("Pin Count: 42 / Expected: 40", (40, 240)),
+    ("Mold Position: LEFT", (40, 320)),
+    ("Error: recipe_button not found at step 5", (40, 400)),
+    ("Retry count: 3 of 5", (40, 480)),
+    ("Connector: P40-OLED model", (40, 560)),
+    ("Vision conf: 0.82  Threshold: 0.60", (40, 640)),
 ]
 
 
@@ -53,9 +51,19 @@ def _make_synthetic_screen() -> np.ndarray:
     for text, (x, y) in _SCREEN_TEXTS:
         # draw white label box + black text
         text_w = len(text) * 11
-        cv2.rectangle(img, (x - 6, y - 28), (x + text_w + 6, y + 8), (255, 255, 255), -1)
-        cv2.putText(img, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (20, 20, 20), 1,
-                    cv2.LINE_AA)
+        cv2.rectangle(
+            img, (x - 6, y - 28), (x + text_w + 6, y + 8), (255, 255, 255), -1
+        )
+        cv2.putText(
+            img,
+            text,
+            (x, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (20, 20, 20),
+            1,
+            cv2.LINE_AA,
+        )
 
     return img
 
@@ -63,6 +71,7 @@ def _make_synthetic_screen() -> np.ndarray:
 # ---------------------------------------------------------------------------
 # 텍스트 영역 검출 (OpenCV contour 기반)
 # ---------------------------------------------------------------------------
+
 
 def _detect_text_regions(img: np.ndarray) -> List[Tuple[int, int, int, int]]:
     """이미지에서 텍스트처럼 보이는 영역의 bbox (x,y,w,h) 목록을 반환한다.
@@ -96,6 +105,7 @@ def _detect_text_regions(img: np.ndarray) -> List[Tuple[int, int, int, int]]:
 # 드래그 시뮬레이션
 # ---------------------------------------------------------------------------
 
+
 class _NotepadBuffer:
     """실제 notepad 대신 사용하는 메모리 텍스트 버퍼."""
 
@@ -126,15 +136,17 @@ def _simulate_drag_and_collect(
 
     for x, y, w, h in regions:
         drag_from = (x, y + h // 2)
-        drag_to   = (x + w, y + h // 2)
+        drag_to = (x + w, y + h // 2)
 
         # 드래그 작업 기록
-        drag_log.append({
-            "action": "drag",
-            "from": drag_from,
-            "to": drag_to,
-            "region_px": (x, y, w, h),
-        })
+        drag_log.append(
+            {
+                "action": "drag",
+                "from": drag_from,
+                "to": drag_to,
+                "region_px": (x, y, w, h),
+            }
+        )
 
         # 합성 이미지의 텍스트 매핑: bbox y 중심으로 가장 가까운 소스 텍스트 선택
         best_text = _match_text_by_y(y + h // 2)
@@ -163,6 +175,7 @@ _OLLAMA_MODEL = "phi4-mini-reasoning"
 def _is_ollama_available(timeout: float = 2.0) -> bool:
     try:
         import requests
+
         r = requests.get("http://localhost:11434/api/tags", timeout=timeout)
         return r.status_code == 200
     except Exception:
@@ -177,6 +190,7 @@ def _call_phi4_mini(content: str) -> Tuple[str, bool]:
     """
     try:
         import requests
+
         payload = {
             "model": _OLLAMA_MODEL,
             "messages": [
@@ -200,7 +214,9 @@ def _call_phi4_mini(content: str) -> Tuple[str, bool]:
         r.raise_for_status()
         raw_content = r.json()["choices"][0]["message"]["content"]
         # phi4-mini-reasoning outputs <think>...</think> before the actual answer
-        summary = re.sub(r"<think>[\s\S]*?</think>", "", raw_content, flags=re.DOTALL).strip()
+        summary = re.sub(
+            r"<think>[\s\S]*?</think>", "", raw_content, flags=re.DOTALL
+        ).strip()
         if not summary:  # think section was cut off — extract reasoning tail
             match = re.search(r"<think>([\s\S]*)", raw_content, re.DOTALL)
             summary = (match.group(1).strip() if match else raw_content.strip())[:500]
@@ -219,6 +235,7 @@ def _call_phi4_mini(content: str) -> Tuple[str, bool]:
 # ---------------------------------------------------------------------------
 # 시나리오 메인 실행 함수 (테스트 + 독립 실행 가능)
 # ---------------------------------------------------------------------------
+
 
 def run_text_collect_scenario(verbose: bool = True) -> Dict[str, Any]:
     """전체 파이프라인 실행 후 결과 딕셔너리 반환.
@@ -243,23 +260,25 @@ def run_text_collect_scenario(verbose: bool = True) -> Dict[str, Any]:
     if verbose:
         print(f"\n{'='*60}")
         print("[ 단계 1 ] 합성 화면 생성")
-        print(f"  크기: {screen.shape[1]}×{screen.shape[0]} (W×H), "
-              f"텍스트 블록: {len(_SCREEN_TEXTS)}개")
+        print(
+            f"  크기: {screen.shape[1]}×{screen.shape[0]} (W×H), "
+            f"텍스트 블록: {len(_SCREEN_TEXTS)}개"
+        )
 
     # ── 2. 텍스트 영역 검출 ───────────────────────────────────────────────
     regions = _detect_text_regions(screen)
     if verbose:
-        print(f"\n[ 단계 2 ] OpenCV 텍스트 영역 검출")
+        print("\n[ 단계 2 ] OpenCV 텍스트 영역 검출")
         print(f"  검출된 영역 수: {len(regions)}개")
         for i, (x, y, w, h) in enumerate(regions):
             matched = _match_text_by_y(y + h // 2) or "(no match)"
-            print(f"  [{i+1}] bbox=({x},{y},{w},{h})  →  \"{matched[:50]}\"")
+            print(f'  [{i+1}] bbox=({x},{y},{w},{h})  →  "{matched[:50]}"')
 
     # ── 3. 드래그 + 노트패드 수집 ─────────────────────────────────────────
     drag_log: List[Dict[str, Any]] = []
     notepad = _simulate_drag_and_collect(screen, regions, drag_log)
     if verbose:
-        print(f"\n[ 단계 3 ] 드래그 시뮬레이션 + 노트패드 수집")
+        print("\n[ 단계 3 ] 드래그 시뮬레이션 + 노트패드 수집")
         print(f"  드래그 횟수: {len(drag_log)}회")
         print(f"  노트패드 라인 수: {len(notepad)}줄")
         print("  ── 노트패드 내용 ──")
@@ -269,22 +288,26 @@ def run_text_collect_scenario(verbose: bool = True) -> Dict[str, Any]:
     # ── 4. phi4-mini 요약 ─────────────────────────────────────────────────
     if verbose:
         ollama_ok = _is_ollama_available()
-        print(f"\n[ 단계 4 ] phi4-mini-reasoning 요약")
-        print(f"  Ollama 서버 상태: {'[OK] 실행 중' if ollama_ok else '[--] 미실행 (stub 사용)'}")
+        print("\n[ 단계 4 ] phi4-mini-reasoning 요약")
+        print(
+            f"  Ollama 서버 상태: {'[OK] 실행 중' if ollama_ok else '[--] 미실행 (stub 사용)'}"
+        )
 
     content = notepad.get_content()
     llm_summary, used_real_llm = _call_phi4_mini(content)
 
     if verbose:
-        print(f"  사용 LLM: {'phi4-mini-reasoning (실제)' if used_real_llm else 'STUB'}")
-        print(f"\n  ── 요약 결과 ──")
+        print(
+            f"  사용 LLM: {'phi4-mini-reasoning (실제)' if used_real_llm else 'STUB'}"
+        )
+        print("\n  ── 요약 결과 ──")
         for line in textwrap.wrap(llm_summary, width=70):
             print(f"    {line}")
 
     duration_ms = (time.perf_counter() - t0) * 1000
 
     passed = (
-        len(regions) >= len(_SCREEN_TEXTS) * 0.6   # 60% 이상 검출
+        len(regions) >= len(_SCREEN_TEXTS) * 0.6  # 60% 이상 검출
         and len(notepad) >= len(_SCREEN_TEXTS) * 0.6
         and len(llm_summary) > 30
     )
@@ -333,9 +356,9 @@ class TestTextCollectScenario:
         screen = _make_synthetic_screen()
         regions = _detect_text_regions(screen)
         # 소스 텍스트의 60% 이상 검출
-        assert len(regions) >= len(_SCREEN_TEXTS) * 0.6, (
-            f"expected >= {int(len(_SCREEN_TEXTS)*0.6)} regions, got {len(regions)}"
-        )
+        assert (
+            len(regions) >= len(_SCREEN_TEXTS) * 0.6
+        ), f"expected >= {int(len(_SCREEN_TEXTS)*0.6)} regions, got {len(regions)}"
 
     def test_drag_log_populated(self) -> None:
         """드래그 로그가 각 영역에 대해 기록된다."""
@@ -379,7 +402,7 @@ class TestTextCollectScenario:
         screen = _make_synthetic_screen()
         regions = _detect_text_regions(screen)
         drag_log: List[Dict[str, Any]] = []
-        notepad = _simulate_drag_and_collect(screen, regions, drag_log)
+        _simulate_drag_and_collect(screen, regions, drag_log)
         elapsed = time.perf_counter() - t0
         assert elapsed < 5.0, f"Pipeline took {elapsed:.2f}s (limit: 5s)"
 
@@ -404,9 +427,11 @@ if __name__ == "__main__":
     result = run_text_collect_scenario(verbose=True)
 
     print("\n[ 개발자 전달 리포트 ]")
-    print(json.dumps(
-        {k: v for k, v in result.items() if k != "drag_log"},
-        ensure_ascii=False,
-        indent=2,
-        default=str,
-    ))
+    print(
+        json.dumps(
+            {k: v for k, v in result.items() if k != "drag_log"},
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+    )

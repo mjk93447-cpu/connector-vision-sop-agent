@@ -24,7 +24,9 @@ from pathlib import Path
 from typing import Callable, Optional
 
 
-_DEFAULT_BASE_MODEL = "yolo26x.pt"  # YOLO26x: NMS-free, highest mAP in YOLO26 family (ultralytics>=8.4.0)
+_DEFAULT_BASE_MODEL = (
+    "yolo26x.pt"  # YOLO26x: NMS-free, highest mAP in YOLO26 family (ultralytics>=8.4.0)
+)
 _TARGET_WEIGHTS = Path("assets/models/yolo26x.pt")
 
 
@@ -78,6 +80,7 @@ class TrainingManager:
 
         # Patch the on_train_epoch_end callback to forward progress.
         if progress_cb is not None:
+
             def _epoch_cb(trainer: object) -> None:  # noqa: ANN001
                 epoch = getattr(trainer, "epoch", 0) + 1
                 total = getattr(trainer, "epochs", epochs)

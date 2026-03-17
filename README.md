@@ -4,14 +4,14 @@ Connector Vision SOP Agent v1.0 scaffold for OLED line automation.
 
 ## Goal
 
-Automate the manual 12-step SOP with YOLO26n, Tesseract OCR PSM7, and
+Automate the manual 12-step SOP with YOLO26x (NMS-free, highest mAP), and
 PyAutoGUI so Mold ROI setup and pin verification can be executed quickly and
 consistently on an offline line PC.
 
 ## Structure
 
 - `src/main.py`: entry point and dependency wiring
-- `src/vision_engine.py`: YOLO26n + OpenCV + Tesseract vision layer
+- `src/vision_engine.py`: YOLO26x + OpenCV vision layer (Tesseract 제거됨)
 - `src/control_engine.py`: PyAutoGUI-based click/drag automation layer
 - `src/sop_executor.py`: 12-step SOP orchestration (login → recipe → mold ROI → axis → pins → save/apply)
 - `src/config_loader.py`: JSON configuration loader
