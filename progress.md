@@ -1,9 +1,9 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-16 (세션 종료)_
+_최종 갱신: 2026-03-17 (GUI Phase 2 완료)_
 
 ## 현재 브랜치
-`main` (CP-0~CP-4 + 포터블 번들 fix 완료)
+`main` (CP-0~CP-4 + GUI Phase 1~2 완료)
 
 ## 완료 체크포인트
 | CP | 내용 | 테스트 | 커버리지 |
@@ -14,13 +14,27 @@ _최종 갱신: 2026-03-16 (세션 종료)_
 | CP-3 | Tesseract 완전 제거 | 157 pass | 92% |
 | CP-4 | config v2.0.0, TEST_REPORT.md | 157 pass | 92% |
 | fix | config_loader EXE 경로, 포터블 번들 구조 | 163 pass | 92% |
-| **chore** | **토큰 최적화 세팅 완료** | — | — |
-| **docs** | **라인 PC 영어 매뉴얼 작성 완료** | — | — |
+| GUI Phase 1 | PyQt6 6탭 MainWindow + sop_steps.json 외부화 | 210 pass | — |
+| **GUI Phase 2** | **Vision Canvas 실시간 연결 + LLM 로그 분석 실제 연동** | **210 pass** | — |
 
-## 현재 스택 (v2.0.0)
+## 현재 스택 (v3.0.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, CI는 yolo26n.pt 플레이스홀더)
 - LLM: phi4-mini-reasoning via Ollama (`http://localhost:11434`)
-- OCR: 완전 제거 / 테스트: 163개, 92% 커버리지
+- OCR: 완전 제거 / 테스트: 210개
+- GUI: PyQt6 6탭 (Vision Canvas 실시간 + LLM 채팅 + 감사 로그)
+
+## GUI Phase 2 완료 내용
+- **SopWorker**: `screenshot_ready` 시그널 — 매 스텝 후 BGR ndarray emit
+- **MainWindow**:
+  - `_on_screenshot_ready()`: ndarray→QPixmap→VisionPanel + YOLO bbox overlay
+  - `_on_worker_log()`: SOP 로그 → LogManager 기록
+  - `_on_sop_finished()`: `LogManager.finalize()` 호출
+  - `on_llm_analyze()`: 실제 `LogManager.build_llm_payload()` 사용
+- **VisionPanel**:
+  - `📁 파일 열기` 버튼 (QFileDialog → 이미지 로드 → YOLO 검출)
+  - `set_vision_engine()` / `_run_yolo()` API
+  - `📷 캡처` 버튼: numpy+QPixmap+YOLO 통합
+- **main.py**: `vision` 추출 → `MainWindow` + `VisionPanel.set_vision_engine()` 전달
 
 ## ✅ 포터블 번들 빌드 완료 (run: 23136160146)
 | Artifact | 크기 | 상태 |
@@ -28,16 +42,13 @@ _최종 갱신: 2026-03-16 (세션 종료)_
 | `portable-part1-app` | **440 MB** | ✅ 완료 |
 | `portable-part2-phi4-mini` | **2,749 MB (~2.7 GB)** | ✅ 완료 |
 
-다운로드:
-https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions/runs/23136160146
-
 ## 다음 작업 후보
 - [ ] YOLO26x 실제 가중치 학습 및 교체 (`assets/models/yolo26x.pt`)
 - [ ] VisionAgent 별칭 제거 (deprecated since CP-2)
-- [ ] main.py, sop_executor.py 레거시 OCR 레퍼런스 정리
 - [ ] llama_cpp 백엔드 코드 삭제 (deprecated since CP-1)
+- [ ] GUI Phase 3: 이미지 업로드 + 시리얼 연결 (고급 기능)
 - [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
-- [ ] actions/upload-artifact@v4 → v4 Node.js 24 호환 버전 업그레이드 (2026-06 전)
+- [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
 ## 알려진 이슈
 - `assets/models/yolo26x.pt`: CI 플레이스홀더 (yolo26n.pt 복사본)
@@ -47,6 +58,7 @@ https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions/runs/23136160
 ## 핵심 커맨드
 ```bash
 bash run_tests.sh                                          # 테스트+lint
+python src/main.py                                         # GUI 실행
+python src/main.py --console                               # CLI 모드
 gh workflow run "Build Portable Offline Bundle (Split)"    # 포터블 빌드
-gh run view 23136160146                                    # 마지막 빌드 상태
 ```
