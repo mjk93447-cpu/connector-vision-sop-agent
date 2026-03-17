@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-17 (GUI Phase 2 완료)_
+_최종 갱신: 2026-03-17 (통팩 빌드 트리거)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -36,14 +36,17 @@ _최종 갱신: 2026-03-17 (GUI Phase 2 완료)_
   - `📷 캡처` 버튼: numpy+QPixmap+YOLO 통합
 - **main.py**: `vision` 추출 → `MainWindow` + `VisionPanel.set_vision_engine()` 전달
 
-## 🔨 빌드 진행 중 (v3.0)
-| 워크플로우 | Run ID | 상태 |
-|-----------|--------|------|
-| Build & Release EXE | 23175357680 | 🔄 진행 중 |
-| Portable Bundle (Split) | 23175358454 | 🔄 진행 중 |
+## 빌드 이력 (v3.0)
+| 워크플로우 | Run ID | 상태 | 아티팩트 |
+|-----------|--------|------|---------|
+| Build & Release EXE | 23175357680 | ✅ 완료 | `connector_vision_agent-v3` |
+| **Build All-in-One (통팩)** | **23176720634** | 🔄 진행 중 | **`connector-agent-v3-allinone`** |
+| Portable Bundle Part2 (phi4-mini) | 23139568715 | ✅ 재활용 | `portable-part2-phi4-mini` (2.7 GB) |
 
-이전 성공 빌드 (Phase 1):
-- run: 23139568715 — `portable-part1-app` (440 MB) + `portable-part2-phi4-mini` (2.7 GB)
+### 통팩 조립 방법 (2단계)
+1. `connector-agent-v3-allinone` 압축 해제
+2. `portable-part2-phi4-mini`(run 23139568715) blobs/ manifests/ → `connector_agent\ollama_models\` 복사
+3. `start_agent.bat` 더블클릭 → GUI 즉시 실행
 
 ## 다음 작업 후보
 - [ ] YOLO26x 실제 가중치 학습 및 교체 (`assets/models/yolo26x.pt`)
