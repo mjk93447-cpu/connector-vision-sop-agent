@@ -17,17 +17,20 @@ YOLO26x 프리트레인 파이프라인.
   from src.training.pretrain_pipeline import PretrainPipeline
 
   pipeline = PretrainPipeline(output_dir="pretrain_data")
-  pipeline.build_synthetic_dataset(n_images=200)
+  pipeline.build_showui_desktop_dataset(max_samples=500)
   metrics = pipeline.train_and_evaluate(epochs=20, batch=4)
   pipeline.save_report(metrics)
 
 CLI:
-  python scripts/run_pretrain.py --source synthetic --n-images 200 --epochs 20
+  python scripts/run_pretrain.py --source showui_desktop --max-samples 500 --epochs 20
 
 지원 데이터 소스
 ---------------
-- "synthetic"    : 합성 GUI 데이터 (테스트·시연용, 의존성 없음)
-- "rico_widget"  : rootsautomation/RICO-WidgetCaptioning (HuggingFace, datasets 필요)
+- "showui_desktop" : showlab/ShowUI-desktop (HuggingFace, OmniAct 기반 데스크탑)
+                     Windows/Mac/Linux 데스크탑 앱 실제 스크린샷. 권장.
+- "synthetic"      : 합성 GUI 데이터 (테스트·시연용, 의존성 없음)
+- "rico_widget"    : rootsautomation/RICO-WidgetCaptioning (HuggingFace, Android)
+                     레거시 지원. 구형 Windows 환경 사용 시 showui_desktop 권장.
 """
 
 from __future__ import annotations
@@ -42,6 +45,7 @@ from src.training.dataset_converter import (
     PRETRAIN_CLASSES,
     SyntheticGUIGenerator,
     convert_rico_sample,
+    convert_showui_desktop_sample,
     split_train_val,
 )
 from src.training.dataset_manager import DatasetManager
@@ -134,6 +138,79 @@ class PretrainPipeline:
             f"[PretrainPipeline] 합성 데이터 {n_images}장 생성 완료 → {self.output_dir}"
         )
         return n_images
+
+    def build_showui_desktop_dataset(
+        self,
+        max_samples: int = 500,
+    ) -> int:
+        """showlab/ShowUI-desktop 데이터셋 다운로드 및 변환 (권장 소스).
+
+        OmniAct Desktop 기반으로 Windows/Mac/Linux 데스크탑 15개 앱
+        실제 스크린샷 + UI 요소 bbox를 포함한다.
+        Rico(Android) 대비 구형 Windows GUI와 훨씬 유사한 특성.
+
+        Parameters
+        ----------
+        max_samples: 최대 이미지 수 (여러 행이 하나의 이미지를 공유하므로
+                     실제 저장 이미지 수는 max_samples 이하가 될 수 있음).
+
+        Returns
+        -------
+        실제 저장된 이미지 수.
+        """
+        try:
+            from datasets import load_dataset  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError("datasets 패키지 필요: pip install datasets") from e
+
+        print(
+            f"[PretrainPipeline] ShowUI-Desktop 로딩 (최대 이미지 {max_samples}개)..."
+        )
+        ds = load_dataset(
+            "showlab/ShowUI-desktop",
+            split="train",
+            streaming=True,
+            trust_remote_code=False,
+        )
+
+        # 동일 이미지의 여러 행을 하나로 병합 (이미지 해시 키)
+        # ShowUI-desktop: 100 스크린샷 × N 요소/쿼리 = 수천 행
+        import hashlib  # noqa: PLC0415
+
+        img_map: dict = {}  # image_hash → (img_bgr, [annotations])
+        seen_order: list = []  # 삽입 순서 유지
+
+        for sample in ds:
+            if len(img_map) >= max_samples:
+                break
+
+            img, ann = convert_showui_desktop_sample(sample)
+            if img is None:
+                continue
+
+            # 이미지 동일성 판별 (shape + 첫 행 해시)
+            key = hashlib.md5(img[:4].tobytes()).hexdigest()  # 빠른 해시
+
+            if key not in img_map:
+                if len(img_map) >= max_samples:
+                    break
+                img_map[key] = (img, [])
+                seen_order.append(key)
+
+            img_map[key][1].extend(ann)
+
+        saved = 0
+        for key in seen_order:
+            img, anns = img_map[key]
+            if not anns:
+                continue
+            self._save_pretrain_sample(f"showui_{saved:05d}", img, anns)
+            saved += 1
+            if saved % 20 == 0:
+                print(f"  ... {saved} 이미지 저장 완료")
+
+        print(f"[PretrainPipeline] ShowUI-Desktop {saved}장 저장 완료")
+        return saved
 
     def build_rico_dataset(
         self,

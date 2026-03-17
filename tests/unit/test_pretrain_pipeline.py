@@ -13,7 +13,9 @@ from src.training.dataset_converter import (
     PRETRAIN_CLASSES,
     SyntheticGUIGenerator,
     convert_rico_sample,
+    convert_showui_desktop_sample,
     map_android_class,
+    map_omniact_class,
     split_train_val,
 )
 from src.training.pretrain_pipeline import PretrainConfig, PretrainPipeline
@@ -49,6 +51,138 @@ class TestPretrainClasses:
 
 # ---------------------------------------------------------------------------
 # map_android_class
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# map_omniact_class (ShowUI-Desktop / OmniAct 타입 매핑)
+# ---------------------------------------------------------------------------
+
+
+class TestMapOmniactClass:
+    def test_button_maps_to_0(self) -> None:
+        assert map_omniact_class("button") == 0
+        assert map_omniact_class("Button") == 0
+
+    def test_menuitem_maps_to_0(self) -> None:
+        assert map_omniact_class("menuitem") == 0
+        assert map_omniact_class("tab") == 0
+
+    def test_image_maps_to_1(self) -> None:
+        assert map_omniact_class("image") == 1
+        assert map_omniact_class("icon") == 1
+
+    def test_statictext_maps_to_2(self) -> None:
+        assert map_omniact_class("statictext") == 2
+        assert map_omniact_class("label") == 2
+
+    def test_editbox_maps_to_4(self) -> None:
+        assert map_omniact_class("editbox") == 4
+        assert map_omniact_class("textbox") == 4
+
+    def test_checkbox_maps_to_5(self) -> None:
+        assert map_omniact_class("checkbox") == 5
+        assert map_omniact_class("switch") == 5
+
+    def test_combobox_maps_to_6(self) -> None:
+        assert map_omniact_class("combobox") == 6
+        assert map_omniact_class("dropdown") == 6
+
+    def test_keyword_fallback(self) -> None:
+        assert map_omniact_class("Close Button") == 0
+        assert map_omniact_class("some text label") == 2
+        assert map_omniact_class("input field") == 4
+
+    def test_unknown_returns_none(self) -> None:
+        # 완전히 모르는 타입은 None 반환
+        assert map_omniact_class("") is None
+        assert map_omniact_class("scrollbar") is None
+
+
+# ---------------------------------------------------------------------------
+# convert_showui_desktop_sample
+# ---------------------------------------------------------------------------
+
+
+def _make_rgb_array(w: int = 640, h: int = 480) -> Any:
+    from PIL import Image
+
+    return Image.fromarray(np.zeros((h, w, 3), dtype=np.uint8))
+
+
+class TestConvertShowUIDesktopSample:
+    def test_relative_tlwh_bbox(self) -> None:
+        """상대좌표 [top_left_x, top_left_y, width, height] 형식."""
+        pil_img = _make_rgb_array(640, 480)
+        sample = {
+            "image": pil_img,
+            "bbox": [0.1, 0.2, 0.3, 0.15],  # tl_x, tl_y, w, h (상대좌표)
+            "element_type": "button",
+        }
+        img, anns = convert_showui_desktop_sample(sample)
+        assert img is not None
+        assert len(anns) == 1
+        assert anns[0]["label"] == "button"
+        x1, y1, x2, y2 = anns[0]["bbox"]
+        assert abs(x1 - 0.1 * 640) < 2
+        assert abs(y1 - 0.2 * 480) < 2
+        assert abs(x2 - (0.1 + 0.3) * 640) < 2
+
+    def test_element_type_combobox(self) -> None:
+        pil_img = _make_rgb_array()
+        sample = {
+            "image": pil_img,
+            "bbox": [0.1, 0.1, 0.2, 0.1],
+            "element_type": "combobox",
+        }
+        _, anns = convert_showui_desktop_sample(sample)
+        assert anns[0]["label"] == "dropdown"
+
+    def test_missing_image_returns_none(self) -> None:
+        img, anns = convert_showui_desktop_sample({"bbox": [0.1, 0.1, 0.2, 0.1]})
+        assert img is None
+
+    def test_missing_bbox_returns_empty(self) -> None:
+        pil_img = _make_rgb_array()
+        img, anns = convert_showui_desktop_sample({"image": pil_img})
+        assert img is not None
+        assert anns == []
+
+    def test_too_small_bbox_filtered(self) -> None:
+        pil_img = _make_rgb_array()
+        sample = {
+            "image": pil_img,
+            "bbox": [0.0, 0.0, 0.001, 0.001],  # 너무 작음
+            "element_type": "button",
+        }
+        _, anns = convert_showui_desktop_sample(sample, min_box_size=0.01)
+        assert anns == []
+
+    def test_alternative_column_names(self) -> None:
+        """bounding_box 컬럼명 지원."""
+        pil_img = _make_rgb_array()
+        sample = {
+            "screenshot": pil_img,
+            "bounding_box": [0.2, 0.3, 0.4, 0.2],
+            "type": "editbox",
+        }
+        img, anns = convert_showui_desktop_sample(sample)
+        assert img is not None
+        assert anns[0]["label"] == "input_field"
+
+    def test_unknown_type_defaults_to_button(self) -> None:
+        pil_img = _make_rgb_array()
+        sample = {
+            "image": pil_img,
+            "bbox": [0.1, 0.1, 0.2, 0.1],
+            "element_type": "unknownwidget",
+        }
+        _, anns = convert_showui_desktop_sample(sample)
+        assert anns[0]["label"] == "button"
+
+
+# ---------------------------------------------------------------------------
+# map_android_class (기존 테스트)
 # ---------------------------------------------------------------------------
 
 

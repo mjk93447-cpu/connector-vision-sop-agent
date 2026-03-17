@@ -2,14 +2,14 @@
 YOLO26x 프리트레인 실행 스크립트.
 
 사용법:
+  # ShowUI-Desktop (권장: Windows/Mac/Linux 데스크탑 실제 GUI)
+  python scripts/run_pretrain.py --source showui_desktop --max-samples 500 --epochs 20
+
   # 합성 데이터로 빠른 테스트 (의존성 없음)
   python scripts/run_pretrain.py --source synthetic --n-images 200 --epochs 20
 
-  # Rico WidgetCaptioning (HuggingFace datasets 필요)
+  # Rico WidgetCaptioning (레거시: Android UI, 구형 Windows에는 부적합)
   python scripts/run_pretrain.py --source rico_widget --max-samples 500 --epochs 30
-
-  # 커스텀 설정
-  python scripts/run_pretrain.py --source synthetic --n-images 500 --epochs 50 --batch 8
 """
 
 from __future__ import annotations
@@ -22,16 +22,19 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
-from src.training.pretrain_pipeline import PretrainConfig, PretrainPipeline  # noqa: E402
+from src.training.pretrain_pipeline import (
+    PretrainConfig,
+    PretrainPipeline,
+)  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="YOLO26x 프리트레인 파이프라인")
     parser.add_argument(
         "--source",
-        choices=["synthetic", "rico_widget"],
-        default="synthetic",
-        help="데이터 소스 (기본: synthetic)",
+        choices=["showui_desktop", "synthetic", "rico_widget"],
+        default="showui_desktop",
+        help="데이터 소스 (기본: showui_desktop — Windows/Desktop GUI 권장)",
     )
     parser.add_argument(
         "--n-images",
@@ -75,7 +78,9 @@ def main() -> None:
     pipeline = PretrainPipeline(output_dir=args.output_dir, config=cfg)
 
     # 데이터셋 구축
-    if args.source == "synthetic":
+    if args.source == "showui_desktop":
+        pipeline.build_showui_desktop_dataset(max_samples=args.max_samples)
+    elif args.source == "synthetic":
         pipeline.build_synthetic_dataset(n_images=args.n_images)
     elif args.source == "rico_widget":
         pipeline.build_rico_dataset(max_samples=args.max_samples)

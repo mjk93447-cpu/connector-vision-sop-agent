@@ -1,8 +1,11 @@
 name: YOLO26x GUI Pretrain (CI Training)
 
-# YOLO26x 기반 GUI 특화 프리트레인
+# YOLO26x 기반 GUI 특화 프리트레인 (로컬 CPU 학습 금지 — CI 전용)
 #
-# 로컬 CPU 학습 대신 GitHub Actions에서 YOLO26x를 사용한 GUI 프리트레인을 실행.
+# 데이터 소스: showui_desktop (기본, 권장)
+#   showlab/ShowUI-desktop — OmniAct 기반 Windows/Mac/Linux 데스크탑 15개 앱
+#   실제 스크린샷 + UI 요소 bbox. 구형 Windows 라인PC 환경에 Rico(Android)보다 적합.
+#
 # 결과물(yolo26x_pretrained.pt)은 아티팩트로 저장되며,
 # 수동으로 assets/models/yolo26x_pretrained.pt 에 배치 후 통팩 빌드에 포함된다.
 #
@@ -11,17 +14,18 @@ name: YOLO26x GUI Pretrain (CI Training)
 #
 # 사용법:
 #   Actions → "YOLO26x GUI Pretrain" → Run workflow
-#   epochs, n_images, source 파라미터 조정 가능
+#   epochs, source 파라미터 조정 가능
 
 on:
   workflow_dispatch:
     inputs:
       source:
-        description: "데이터 소스 (synthetic | rico_widget)"
+        description: "데이터 소스 (showui_desktop 권장 | rico_widget | synthetic)"
         required: true
-        default: "rico_widget"
+        default: "showui_desktop"
         type: choice
         options:
+          - showui_desktop
           - rico_widget
           - synthetic
       n_images:
@@ -29,7 +33,7 @@ on:
         required: false
         default: "500"
       max_samples:
-        description: "Rico 최대 샘플 수 (source=rico_widget 시 사용)"
+        description: "최대 샘플 수 (showui_desktop/rico_widget 시 사용)"
         required: false
         default: "500"
       epochs:
@@ -98,7 +102,16 @@ jobs:
           echo "[INFO] YOLO26x GUI 프리트레인 시작"
           echo "[INFO] Source: ${{ inputs.source }}, Epochs: ${{ inputs.epochs }}, ImgSz: ${{ inputs.imgsz }}"
 
-          if [ "${{ inputs.source }}" = "rico_widget" ]; then
+          if [ "${{ inputs.source }}" = "showui_desktop" ]; then
+            python scripts/run_pretrain.py \
+              --source showui_desktop \
+              --max-samples ${{ inputs.max_samples }} \
+              --epochs ${{ inputs.epochs }} \
+              --imgsz ${{ inputs.imgsz }} \
+              --batch 4 \
+              --output-dir pretrain_output \
+              --report PRETRAIN_REPORT.md
+          elif [ "${{ inputs.source }}" = "rico_widget" ]; then
             python scripts/run_pretrain.py \
               --source rico_widget \
               --max-samples ${{ inputs.max_samples }} \
