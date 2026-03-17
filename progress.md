@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-17 (YOLO26x 베이스 모델 전환 + Tab7 Training Panel)_
+_최종 갱신: 2026-03-17 (레거시 정리 완료 + 가상 시나리오 테스트 215 pass)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -17,11 +17,12 @@ _최종 갱신: 2026-03-17 (YOLO26x 베이스 모델 전환 + Tab7 Training Pane
 | GUI Phase 1 | PyQt6 6탭 MainWindow + sop_steps.json 외부화 | 210 pass | — |
 | **GUI Phase 2** | **Vision Canvas 실시간 연결 + LLM 로그 분석 실제 연동** | **210 pass** | — |
 | **Training** | **Tab7: BBox 어노테이션+DatasetManager+TrainingManager+YOLO26x 베이스** | **210 pass** | — |
+| **레거시 정리** | **llama_cpp/VisionAgent/ocr_threshold 완전 제거 + 시나리오 테스트** | **215 pass** | — |
 
 ## 현재 스택 (v3.0.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
 - LLM: phi4-mini-reasoning via Ollama (`http://localhost:11434`)
-- OCR: 완전 제거 / 테스트: 210개
+- OCR: 완전 제거 / 테스트: 215개
 - GUI: PyQt6 7탭 (Vision Canvas 실시간 + LLM 채팅 + 감사 로그 + Tab7 Training)
 
 ## GUI Phase 2 완료 내용
@@ -51,14 +52,14 @@ _최종 갱신: 2026-03-17 (YOLO26x 베이스 모델 전환 + Tab7 Training Pane
 
 ## 다음 작업 후보
 - [ ] YOLO26x 실제 가중치 학습 및 교체 (`assets/models/yolo26x.pt`)
-- [ ] VisionAgent 별칭 제거 (deprecated since CP-2)
-- [ ] llama_cpp 백엔드 코드 삭제 (deprecated since CP-1)
 - [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
+- [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제 — 프롬프트 또는 모델 조정)
+- [ ] 시나리오 테스트 처리 시간 단축 (GPU 환경 시 300s→30s 예상)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
 ## 알려진 이슈
 - `assets/models/yolo26x.pt`: CI에서 yolo26x COCO pretrained 다운로드 (파인튜닝 전 상태)
-- `llama_cpp` 백엔드: deprecated, 코드 미삭제
+- phi4-mini-reasoning: CPU-only 환경에서 ~109초 지연, 한국어+중국어 혼용 응답 발생
 - `.coveragerc` 제외: main.py, control_engine.py, sop_executor.py, test_sop.py
 
 ## 핵심 커맨드
