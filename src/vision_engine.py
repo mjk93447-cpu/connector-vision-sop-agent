@@ -282,6 +282,51 @@ class VisionEngine:
             "centers": centers,
         }
 
+    def detect_roi(
+        self,
+        image: np.ndarray,
+        roi: tuple[int, int, int, int],
+        conf_threshold: float | None = None,
+    ) -> list[UiDetection]:
+        """Run YOLO26x detection on a specific ROI (x, y, w, h).
+
+        Returns detections with bounding boxes offset back to original image coords.
+        Used for connector pin and mold area detection.
+        """
+        x, y, w, h = roi
+        if w <= 0 or h <= 0:
+            return []
+        crop = image[y : y + h, x : x + w]
+        if crop.size == 0:
+            return []
+        dets = self.detect_objects(crop, conf_threshold=conf_threshold)
+        # Offset bbox coordinates back to original image coordinates
+        return [
+            UiDetection(
+                label=d.label,
+                confidence=d.confidence,
+                bbox=(d.bbox[0] + x, d.bbox[1] + y, d.bbox[2] + x, d.bbox[3] + y),
+            )
+            for d in dets
+        ]
+
+    def reload_model(self) -> bool:
+        """Hot-reload YOLO26x weights after Tab7 local fine-tuning.
+
+        Called by TrainingPanel.on_training_done() so the new model
+        takes effect immediately without restarting the application.
+
+        Returns True on success, False on failure.
+        """
+        try:
+            new_model = self._load_model(self.model_path)
+            if new_model is not None:
+                self.model = new_model
+                return True
+        except Exception:
+            pass
+        return False
+
     #: Convenience alias — vision_panel and workers use the shorter name.
     detect = detect_objects
 

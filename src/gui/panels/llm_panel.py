@@ -1,24 +1,27 @@
 """
-Tab 3 — LLM Chat Panel.
+Tab 3 — LLM Chat Panel (v3.0 — Streaming + English UI).
 
-Provides a REPL-style chat interface with the offline LLM.
 Features:
-  - Chat history display (QTextEdit)
-  - Message input (QLineEdit)
-  - Send / Analyze buttons
-  - /apply command: extract config_patch from LLM response and prompt engineer approval
+  - ChatGPT-style streaming: tokens appear one by one as LLM generates them
+  - Elapsed timer: shows "Thinking... 12.4s" while waiting
+  - Brief mode: shorter token limit for faster answers (toggle button)
+  - Log analysis: send recent SOP run logs to LLM for diagnosis
+  - /apply command: extract config_patch and prompt engineer approval
+  - All UI text in English for Indian line engineers
 """
 
 from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 try:
-    from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
+    from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
     from PyQt6.QtGui import QTextCursor
     from PyQt6.QtWidgets import (
+        QCheckBox,
         QDialog,
         QDialogButtonBox,
         QFormLayout,
@@ -54,7 +57,7 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# Apply-dialog: username + reason
+# Apply dialog (English UI)
 # ---------------------------------------------------------------------------
 
 
@@ -63,14 +66,13 @@ class _ApplyDialog(QDialog):  # type: ignore[misc]
 
     def __init__(self, patch: Dict[str, Any], parent: Any = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Config 직접 적용 승인")
-        self.setMinimumWidth(420)
+        self.setWindowTitle("Approve Config Change")
+        self.setMinimumWidth(440)
         self._patch = patch
 
         layout = QVBoxLayout(self)
 
-        # Show patch summary
-        box = QGroupBox("변경 내용")
+        box = QGroupBox("Changes to apply")
         box_layout = QVBoxLayout(box)
         patch_text = json.dumps(patch, ensure_ascii=False, indent=2)
         lbl = QLabel(patch_text)
@@ -79,19 +81,17 @@ class _ApplyDialog(QDialog):  # type: ignore[misc]
         box_layout.addWidget(lbl)
         layout.addWidget(box)
 
-        # Form
         form = QFormLayout()
         self._username_edit = QLineEdit()
-        self._username_edit.setPlaceholderText("예: Raj Kumar")
-        form.addRow("엔지니어 이름:", self._username_edit)
+        self._username_edit.setPlaceholderText("e.g. Raj Kumar")
+        form.addRow("Engineer name:", self._username_edit)
 
         self._reason_edit = QLineEdit()
-        self._reason_edit.setPlaceholderText("예: SOP 재시도 횟수 증가")
-        form.addRow("변경 이유:", self._reason_edit)
+        self._reason_edit.setPlaceholderText("e.g. Increase SOP retry count")
+        form.addRow("Reason for change:", self._reason_edit)
 
         layout.addLayout(form)
 
-        # Buttons
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -102,7 +102,9 @@ class _ApplyDialog(QDialog):  # type: ignore[misc]
     def _on_accept(self) -> None:
         username = self._username_edit.text().strip()
         if not username:
-            QMessageBox.warning(self, "입력 오류", "엔지니어 이름을 입력해 주세요.")
+            QMessageBox.warning(
+                self, "Input Required", "Please enter your engineer name."
+            )
             return
         self.accept()
 
@@ -116,18 +118,27 @@ class _ApplyDialog(QDialog):  # type: ignore[misc]
 
 
 class LlmPanel(QWidget):  # type: ignore[misc]
-    """LLM Chat tab."""
+    """LLM Chat tab — streaming, English UI, elapsed timer."""
 
-    # Emitted when engineer approves a config patch
-    apply_patch_requested: Any = pyqtSignal(
-        object, str, str
-    )  # patch_dict, username, reason
+    apply_patch_requested: Any = pyqtSignal(object, str, str)  # patch, username, reason
+
+    # System prompt for line PC context
+    _SYSTEM_PROMPT = (
+        "You are an expert OLED connector SOP assistant for a factory line PC. "
+        "You help Indian line engineers diagnose vision detection failures, "
+        "interpret SOP logs, and suggest configuration improvements. "
+        "Always respond in clear, concise English."
+    )
 
     def __init__(self, parent: Any = None) -> None:
         super().__init__(parent)
         self._history: List[Dict[str, str]] = []
         self._worker: Any = None
         self._last_llm_text: str = ""
+        self._brief_mode: bool = False
+        self._t0: float = 0.0
+        self._streaming_buffer: str = ""
+        self._timer: Optional[Any] = None
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -139,6 +150,9 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if _QT_AVAILABLE:
             self._chat_display.clear()
 
+    def set_brief_mode(self, enabled: bool) -> None:
+        self._brief_mode = enabled
+
     def set_sending(self, sending: bool) -> None:
         if not _QT_AVAILABLE:
             return
@@ -146,9 +160,13 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._btn_analyze.setEnabled(not sending)
         self._input.setEnabled(not sending)
         if sending:
-            self._btn_send.setText("⏳ 응답 대기 중…")
+            self._btn_send.setText("⏳ Waiting...")
+            self._t0 = time.perf_counter()
+            self._start_timer()
         else:
-            self._btn_send.setText("📤 전송")
+            self._btn_send.setText("📤 Send")
+            self._stop_timer()
+            self._lbl_elapsed.setText("")
 
     # ------------------------------------------------------------------
     # Private — UI
@@ -162,21 +180,40 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        header = QLabel("💬 LLM 채팅")
+        # Header row
+        hdr_row = QHBoxLayout()
+        header = QLabel("💬 AI Assistant")
         header.setStyleSheet("font-size: 14px; font-weight: bold;")
-        layout.addWidget(header)
+        hdr_row.addWidget(header)
+        hdr_row.addStretch()
+
+        # Brief mode checkbox
+        self._chk_brief = QCheckBox("⚡ Brief mode (faster)")
+        self._chk_brief.setToolTip(
+            "Shorter response — fewer tokens, faster answer.\n"
+            "Best for quick yes/no or status questions."
+        )
+        self._chk_brief.toggled.connect(self.set_brief_mode)
+        hdr_row.addWidget(self._chk_brief)
+
+        layout.addLayout(hdr_row)
+
+        # Elapsed timer label
+        self._lbl_elapsed = QLabel("")
+        self._lbl_elapsed.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(self._lbl_elapsed)
 
         # Chat display
         self._chat_display = QTextEdit()
         self._chat_display.setReadOnly(True)
         self._chat_display.setStyleSheet(
-            "font-family: Malgun Gothic, sans-serif; font-size: 12px;"
+            "font-family: Segoe UI, Arial, sans-serif; font-size: 12px;"
             "background: #fafafa; padding: 6px;"
         )
         layout.addWidget(self._chat_display, stretch=1)
 
-        # Apply button (visible when LLM suggests config changes)
-        self._btn_apply = QPushButton("⚙ config 직접 적용 (/apply)")
+        # Apply button
+        self._btn_apply = QPushButton("⚙ Apply config patch (/apply)")
         self._btn_apply.setStyleSheet(
             "background-color: #ff9800; color: white; font-weight: bold; padding: 6px;"
         )
@@ -188,31 +225,36 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         input_row = QHBoxLayout()
         self._input = QLineEdit()
         self._input.setPlaceholderText(
-            "LLM에게 질문하세요… (Enter 전송, /apply 로 설정 적용)"
+            "Ask AI assistant... (Enter to send, /apply to apply config)"
         )
         self._input.returnPressed.connect(self._on_send)
         input_row.addWidget(self._input)
 
-        self._btn_send = QPushButton("📤 전송")
+        self._btn_send = QPushButton("📤 Send")
         self._btn_send.clicked.connect(self._on_send)
         input_row.addWidget(self._btn_send)
 
-        self._btn_analyze = QPushButton("🔍 로그 분석")
-        self._btn_analyze.setToolTip("최근 SOP 실행 로그를 LLM에 분석 요청")
+        self._btn_analyze = QPushButton("🔍 Analyze Logs")
+        self._btn_analyze.setToolTip("Send recent SOP run logs to AI for analysis")
         self._btn_analyze.clicked.connect(self._on_analyze)
         input_row.addWidget(self._btn_analyze)
 
         layout.addLayout(input_row)
 
+        # Welcome message
+        self._append_system(
+            "AI Assistant ready. Ask about SOP failures, vision detection, "
+            "or connector pin issues. Type /apply to apply a suggested config change."
+        )
+
     def _append_bubble(self, role: str, text: str) -> None:
-        """Append a chat bubble (user / assistant) to the display."""
         if not _QT_AVAILABLE:
             return
         if role == "user":
             html = (
                 f'<p style="text-align:right; margin:4px;">'
                 f'<span style="background:#e3f2fd; padding:4px 8px; border-radius:8px;">'
-                f"<b>나:</b> {self._escape(text)}</span></p>"
+                f"<b>You:</b> {self._escape(text)}</span></p>"
             )
         else:
             html = (
@@ -222,6 +264,54 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             )
         self._chat_display.append(html)
         self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
+
+    def _append_system(self, text: str) -> None:
+        if not _QT_AVAILABLE:
+            return
+        html = (
+            f'<p style="text-align:center; margin:4px;">'
+            f'<span style="color:#888; font-size:11px; font-style:italic;">'
+            f"{self._escape(text)}</span></p>"
+        )
+        self._chat_display.append(html)
+        self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
+
+    def _begin_streaming_bubble(self) -> None:
+        """Insert an empty AI bubble that will be filled with streaming tokens."""
+        if not _QT_AVAILABLE:
+            return
+        self._streaming_buffer = ""
+        html = (
+            '<p style="text-align:left; margin:4px;" id="stream_bubble">'
+            '<span style="background:#f1f8e9; padding:4px 8px; border-radius:8px;">'
+            "<b>AI:</b> <span id='stream_content'></span></span></p>"
+        )
+        self._chat_display.append(html)
+        self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
+
+    @pyqtSlot(str)
+    def on_token_ready(self, token: str) -> None:
+        """Append a streaming token to the current AI bubble."""
+        if not _QT_AVAILABLE:
+            return
+        self._streaming_buffer += token
+        # Update last paragraph in-place by replacing full content
+        cursor = self._chat_display.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        # Replace entire last block with updated content
+        cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
+        escaped = self._escape(self._streaming_buffer)
+        html = (
+            f'<span style="background:#f1f8e9; padding:4px 8px; border-radius:8px;">'
+            f"<b>AI:</b> {escaped}</span>"
+        )
+        cursor.insertHtml(html)
+        self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
+
+    @pyqtSlot(float)
+    def on_elapsed_tick(self, elapsed: float) -> None:
+        if _QT_AVAILABLE:
+            self._lbl_elapsed.setText(f"Thinking... {elapsed:.1f}s")
 
     @staticmethod
     def _escape(text: str) -> str:
@@ -241,7 +331,6 @@ class LlmPanel(QWidget):  # type: ignore[misc]
                 return json.loads(m.group(1))
             except json.JSONDecodeError:
                 pass
-        # Also try bare JSON block
         json_pattern = r"```(?:json)?\s*(\{[^`]+\})\s*```"
         m2 = re.search(json_pattern, text, re.DOTALL)
         if m2:
@@ -252,6 +341,23 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             except json.JSONDecodeError:
                 pass
         return None
+
+    def _start_timer(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        if self._timer is None:
+            self._timer = QTimer(self)
+            self._timer.timeout.connect(self._tick_timer)
+        self._timer.start(500)  # update every 500ms
+
+    def _stop_timer(self) -> None:
+        if self._timer is not None:
+            self._timer.stop()
+
+    def _tick_timer(self) -> None:
+        if self._t0 > 0:
+            elapsed = time.perf_counter() - self._t0
+            self._lbl_elapsed.setText(f"Thinking... {elapsed:.1f}s")
 
     # ------------------------------------------------------------------
     # Slots / event handlers
@@ -273,14 +379,17 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._append_bubble("user", text)
         self._history.append({"role": "user", "content": text})
 
-        # Signal MainWindow to start LLMWorker
-        # MainWindow connects to _btn_send via the panel reference
         self.set_sending(True)
-        # Emitted to parent — MainWindow handles worker creation
-        self.findChild  # keep reference
+        self._begin_streaming_bubble()
+
         parent = self.parent()
         if parent and hasattr(parent, "on_llm_send"):
-            parent.on_llm_send(self._history[:])  # type: ignore[union-attr]
+            parent.on_llm_send(  # type: ignore[union-attr]
+                self._history[:],
+                system=self._SYSTEM_PROMPT,
+                brief=self._brief_mode,
+                streaming=True,
+            )
 
     def _on_analyze(self) -> None:
         parent = self.parent()
@@ -294,8 +403,8 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if not patch:
             QMessageBox.information(
                 self,
-                "config_patch 없음",
-                "마지막 LLM 응답에서 config_patch를 찾을 수 없습니다.",
+                "No config_patch found",
+                "No config_patch was found in the last AI response.",
             )
             return
         dlg = _ApplyDialog(patch, parent=self)
@@ -305,18 +414,34 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     @pyqtSlot(str)
     def on_llm_response(self, text: str) -> None:
+        """Called when non-streaming LLM response is complete."""
         self._last_llm_text = text
         self._history.append({"role": "assistant", "content": text})
         self._append_bubble("assistant", text)
         self.set_sending(False)
-        # Enable apply button if patch detected
         if _QT_AVAILABLE:
             patch = self._extract_patch(text)
             self._btn_apply.setEnabled(patch is not None)
 
     @pyqtSlot(str)
+    def on_streaming_done(self, full_text: str) -> None:
+        """Called when streaming response is fully assembled."""
+        self._last_llm_text = full_text
+        self._history.append({"role": "assistant", "content": full_text})
+        self.set_sending(False)
+        elapsed = time.perf_counter() - self._t0 if self._t0 > 0 else 0
+        self._lbl_elapsed.setText(f"Response complete ({elapsed:.1f}s)")
+        if _QT_AVAILABLE:
+            patch = self._extract_patch(full_text)
+            self._btn_apply.setEnabled(patch is not None)
+
+    @pyqtSlot(str)
     def on_llm_error(self, error: str) -> None:
-        self._append_bubble("assistant", f"❌ 오류: {error}")
+        self._append_bubble("assistant", f"❌ Error: {error}")
+        self._append_system(
+            "Tip: Check that Ollama is running (start_agent.bat) "
+            "and LLM settings are correct in Tab 5 Config."
+        )
         self.set_sending(False)
 
     @pyqtSlot(object)
@@ -327,7 +452,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if not raw:
             recs = result.get("sop_recommendations", [])
             patch = result.get("config_patch", {})
-            lines = ["📊 로그 분석 결과:"]
+            lines = ["📊 Log Analysis Results:"]
             if patch:
                 lines.append(f"  config_patch: {json.dumps(patch, ensure_ascii=False)}")
             for r in recs:

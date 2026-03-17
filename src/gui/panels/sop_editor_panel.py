@@ -50,7 +50,7 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         self, step: Optional[Dict[str, Any]] = None, parent: Any = None
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("SOP 단계 편집" if step else "새 SOP 단계 추가")
+        self.setWindowTitle("Edit SOP Step" if step else "Add New SOP Step")
         self.setMinimumWidth(380)
         self._step = step or {}
         self._setup_ui()
@@ -62,30 +62,30 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         form = QFormLayout()
 
         self._id_edit = QLineEdit(self._step.get("id", ""))
-        self._id_edit.setPlaceholderText("예: my_step")
+        self._id_edit.setPlaceholderText("e.g. my_step")
         form.addRow("ID:", self._id_edit)
 
         self._name_edit = QLineEdit(self._step.get("name", ""))
-        self._name_edit.setPlaceholderText("예: 로그인")
-        form.addRow("이름:", self._name_edit)
+        self._name_edit.setPlaceholderText("e.g. Login")
+        form.addRow("Name:", self._name_edit)
 
         self._type_combo = QComboBox()
         self._type_combo.addItems(_STEP_TYPES)
         cur_type = self._step.get("type", "click")
         idx = _STEP_TYPES.index(cur_type) if cur_type in _STEP_TYPES else 0
         self._type_combo.setCurrentIndex(idx)
-        form.addRow("타입:", self._type_combo)
+        form.addRow("Type:", self._type_combo)
 
         self._desc_edit = QLineEdit(self._step.get("description", ""))
-        form.addRow("설명:", self._desc_edit)
+        form.addRow("Description:", self._desc_edit)
 
         self._target_edit = QLineEdit(self._step.get("target", ""))
-        self._target_edit.setPlaceholderText("click 타입의 타깃 이름")
+        self._target_edit.setPlaceholderText("Target name for click type")
         form.addRow("Target:", self._target_edit)
 
         self._enabled_chk = QCheckBox()
         self._enabled_chk.setChecked(self._step.get("enabled", True))
-        form.addRow("활성화:", self._enabled_chk)
+        form.addRow("Enabled:", self._enabled_chk)
 
         layout.addLayout(form)
 
@@ -100,10 +100,10 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
         if not self._id_edit.text().strip():
-            QMessageBox.warning(self, "입력 오류", "ID는 필수입니다.")
+            QMessageBox.warning(self, "Input Error", "ID is required.")
             return
         if not self._name_edit.text().strip():
-            QMessageBox.warning(self, "입력 오류", "이름은 필수입니다.")
+            QMessageBox.warning(self, "Input Error", "Name is required.")
             return
         self.accept()
 
@@ -160,13 +160,15 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        header = QLabel("📋 SOP 단계 편집기")
+        header = QLabel("📋 SOP Step Editor")
         header.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(header)
 
         # Table
         self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(["ID", "이름", "타입", "설명", "활성"])
+        self._table.setHorizontalHeaderLabels(
+            ["ID", "Name", "Type", "Description", "Enabled"]
+        )
         self._table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch
         )
@@ -178,22 +180,22 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         # Buttons
         btn_row = QHBoxLayout()
 
-        btn_add = QPushButton("➕ 추가")
+        btn_add = QPushButton("➕ Add")
         btn_add.clicked.connect(self._on_add)
 
-        btn_edit = QPushButton("✏ 편집")
+        btn_edit = QPushButton("✏ Edit")
         btn_edit.clicked.connect(self._on_edit)
 
-        btn_del = QPushButton("🗑 삭제")
+        btn_del = QPushButton("🗑 Delete")
         btn_del.clicked.connect(self._on_delete)
 
-        btn_up = QPushButton("⬆ 위로")
+        btn_up = QPushButton("⬆ Move Up")
         btn_up.clicked.connect(self._on_move_up)
 
-        btn_down = QPushButton("⬇ 아래로")
+        btn_down = QPushButton("⬇ Move Down")
         btn_down.clicked.connect(self._on_move_down)
 
-        self._btn_save = QPushButton("💾 저장")
+        self._btn_save = QPushButton("💾 Save")
         self._btn_save.setStyleSheet(
             "background-color: #2196f3; color: white; font-weight: bold; padding: 6px 16px;"
         )
@@ -227,7 +229,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         except Exception as exc:  # noqa: BLE001
             if _QT_AVAILABLE:
                 QMessageBox.warning(
-                    self, "로드 오류", f"sop_steps.json 로드 실패:\n{exc}"
+                    self, "Load Error", f"Failed to load sop_steps.json:\n{exc}"
                 )
 
     def _on_add(self) -> None:
@@ -260,8 +262,8 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         name = self._steps[row].get("name", "?")
         reply = QMessageBox.question(
             self,
-            "삭제 확인",
-            f"'{name}' 단계를 삭제하시겠습니까?",
+            "Confirm Delete",
+            f"Delete step '{name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -300,9 +302,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             self._dirty = False
-            QMessageBox.information(
-                self, "저장 완료", "sop_steps.json이 저장되었습니다."
-            )
+            QMessageBox.information(self, "Saved", "sop_steps.json has been saved.")
             # Notify MainWindow to reload steps
             parent = self.parent()
             while parent:
@@ -311,4 +311,4 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
                     break
                 parent = parent.parent() if hasattr(parent, "parent") else None
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "저장 오류", f"저장 실패:\n{exc}")
+            QMessageBox.critical(self, "Save Error", f"Save failed:\n{exc}")

@@ -1,25 +1,36 @@
 """
 Offline LLM integration for Connector Vision SOP Agent.
 
-지원 백엔드:
-- ``ollama``   : Ollama 로컬 서버 (권장). OpenAI 호환 HTTP API.
-                 설치: https://ollama.com  /  ollama pull phi4-mini-reasoning
-- ``http``     : LM Studio / Ollama 등 기존 OpenAI 호환 HTTP 서버 (직접 URL 지정).
+Supported backends:
+- ``ollama`` : Ollama local server (recommended). OpenAI-compatible HTTP API.
+               Install: https://ollama.com  /  ollama pull phi4-mini-reasoning
+- ``http``   : LM Studio / Ollama or any OpenAI-compatible HTTP server.
 
-모듈 import 시 무거운 의존성을 로드하지 않는다.
-백엔드가 없거나 설정이 잘못된 경우 친절한 RuntimeError만 발생하며 EXE가 종료되지 않는다.
+Heavy dependencies are NOT loaded at import time.
+If backend is missing/misconfigured, a clear RuntimeError is raised
+and the EXE continues running without LLM features.
+
+New in v3.0:
+- stream_chat()     : streaming token-by-token response (Ollama SSE)
+- recovery_action() : SOP exception recovery via JSON response
+- propose_sop_improvement() : analyze success patterns → sop_steps.proposed.json
+- brief_mode        : shorter max_output_tokens for faster responses
 """
 
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Type
+from typing import Any, Callable, Dict, List, Literal, Optional, Type
 
 BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
 _OLLAMA_DEFAULT_MODEL = "llama4:scout"
+
+# Brief mode: shorter token limit for fast responses (used when user requests quick answer)
+_BRIEF_MAX_TOKENS = 256
 
 
 @dataclass
@@ -67,20 +78,60 @@ class OfflineLLM:
     # 핵심 채팅 인터페이스
     # ------------------------------------------------------------------ #
 
-    def chat(self, system: str, history: List[Dict[str, str]]) -> str:
-        """단일 턴 채팅 완성. 백엔드에 따라 적절한 메서드로 라우팅한다."""
+    def chat(
+        self,
+        system: str,
+        history: List[Dict[str, str]],
+        brief: bool = False,
+    ) -> str:
+        """Single-turn chat completion routed to the configured backend.
 
+        Parameters
+        ----------
+        system  : System prompt string.
+        history : Conversation history (role/content dicts).
+        brief   : If True, use shorter max_output_tokens for faster response.
+        """
         if self.cfg.backend == "ollama":
-            return self._chat_ollama(system, history)
+            return self._chat_ollama(system, history, brief=brief)
         if self.cfg.backend == "http":
-            return self._chat_http(system, history)
+            return self._chat_http(system, history, brief=brief)
         raise RuntimeError(f"Unsupported LLM backend: {self.cfg.backend!r}")
+
+    def stream_chat(
+        self,
+        system: str,
+        history: List[Dict[str, str]],
+        on_token: Callable[[str], None],
+        on_done: Optional[Callable[[str, float], None]] = None,
+        brief: bool = False,
+    ) -> str:
+        """Streaming chat — calls on_token(chunk) for each token as it arrives.
+
+        Parameters
+        ----------
+        system   : System prompt.
+        history  : Conversation history.
+        on_token : Callback invoked with each token string chunk.
+        on_done  : Optional callback(full_text, elapsed_sec) on completion.
+        brief    : Use shorter token limit for faster response.
+
+        Returns the full assembled response string.
+        """
+        if self.cfg.backend in ("ollama", "http"):
+            return self._stream_ollama(system, history, on_token, on_done, brief=brief)
+        raise RuntimeError(f"Streaming not supported for backend: {self.cfg.backend!r}")
 
     # ------------------------------------------------------------------ #
     # Ollama 백엔드 (CP-1 신규, 권장)
     # ------------------------------------------------------------------ #
 
-    def _chat_ollama(self, system: str, history: List[Dict[str, str]]) -> str:
+    def _chat_ollama(
+        self,
+        system: str,
+        history: List[Dict[str, str]],
+        brief: bool = False,
+    ) -> str:
         """Ollama 로컬 서버에 OpenAI 호환 API로 요청한다.
 
         Ollama URL과 모델 태그에 합리적인 기본값을 적용하므로
@@ -108,15 +159,16 @@ class OfflineLLM:
             messages.append({"role": "system", "content": system})
         messages.extend(history)
 
+        max_tokens = _BRIEF_MAX_TOKENS if brief else self.cfg.max_output_tokens
         payload = {
             "model": model,
             "messages": messages,
-            "max_tokens": self.cfg.max_output_tokens,
+            "max_tokens": max_tokens,
             "stream": False,
         }
 
-        # Ollama는 모델 첫 로드 시 시간이 걸릴 수 있으므로 타임아웃을 길게 설정
-        resp = requests.post(url, json=payload, timeout=120)
+        # Ollama may take time on first model load — use long timeout
+        resp = requests.post(url, json=payload, timeout=180)
         resp.raise_for_status()
         data = resp.json()
 
@@ -129,8 +181,75 @@ class OfflineLLM:
     # HTTP 백엔드 (LM Studio / 커스텀 서버 등)
     # ------------------------------------------------------------------ #
 
-    def _chat_http(self, system: str, history: List[Dict[str, str]]) -> str:
-        """OpenAI 호환 HTTP 서버에 요청한다. http_url이 반드시 필요하다."""
+    def _stream_ollama(
+        self,
+        system: str,
+        history: List[Dict[str, str]],
+        on_token: Callable[[str], None],
+        on_done: Optional[Callable[[str, float], None]],
+        brief: bool = False,
+    ) -> str:
+        """Streaming SSE request to Ollama. Calls on_token(chunk) per token."""
+        try:
+            import requests  # type: ignore[import]
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError("requests package required for streaming") from exc
+
+        url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
+        model = self.cfg.model_path or _OLLAMA_DEFAULT_MODEL
+        max_tokens = _BRIEF_MAX_TOKENS if brief else self.cfg.max_output_tokens
+
+        messages: List[Dict[str, str]] = []
+        if not history or history[0].get("role") != "system":
+            messages.append({"role": "system", "content": system})
+        messages.extend(history)
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        t0 = time.perf_counter()
+        full_text = ""
+
+        try:
+            with requests.post(url, json=payload, stream=True, timeout=180) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    raw = line.decode("utf-8", errors="replace")
+                    if raw.startswith("data: "):
+                        raw = raw[6:]
+                    if raw.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(raw)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        token = delta.get("content", "")
+                        if token:
+                            full_text += token
+                            on_token(token)
+                    except (json.JSONDecodeError, IndexError, KeyError):
+                        continue
+
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError(f"Streaming error: {exc}") from exc
+
+        elapsed = time.perf_counter() - t0
+        if on_done:
+            on_done(full_text, elapsed)
+        return full_text
+
+    def _chat_http(
+        self,
+        system: str,
+        history: List[Dict[str, str]],
+        brief: bool = False,
+    ) -> str:
+        """Request to OpenAI-compatible HTTP server. http_url required."""
 
         try:
             import requests  # type: ignore[import]
@@ -147,13 +266,14 @@ class OfflineLLM:
             messages.append({"role": "system", "content": system})
         messages.extend(history)
 
+        max_tokens = _BRIEF_MAX_TOKENS if brief else self.cfg.max_output_tokens
         payload = {
             "model": self.cfg.model_path or "llama4:scout",
             "messages": messages,
-            "max_tokens": self.cfg.max_output_tokens,
+            "max_tokens": max_tokens,
         }
 
-        resp = requests.post(self.cfg.http_url, json=payload, timeout=60)
+        resp = requests.post(self.cfg.http_url, json=payload, timeout=180)
         resp.raise_for_status()
         data = resp.json()
 
@@ -216,3 +336,94 @@ class OfflineLLM:
             "sop_recommendations": sop_recs,
             "raw_text": raw_text,
         }
+
+    def recovery_action(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Determine recovery action for a failed SOP step.
+
+        Called ONLY when automatic heuristics (popup / freeze detection) fail.
+        Returns JSON: {action, target_text, reason}.
+
+        Parameters
+        ----------
+        context : dict with keys:
+            sop_step      : str  — current step ID
+            target_button : str  — expected button text
+            ocr_text      : str  — all text visible on screen (compressed)
+            error_type    : str  — "button_not_found" | "popup" | "frozen"
+            history       : list — last 3 step results
+        """
+        system = (
+            "You are an OLED connector SOP agent assistant running on a Windows "
+            "factory line PC. The automated SOP has encountered an exception. "
+            "Analyze the situation and respond ONLY with valid JSON — no explanation, "
+            "no markdown, no extra text. Use English only."
+        )
+        prompt = (
+            f"Current SOP step: {context.get('sop_step', 'unknown')}\n"
+            f"Expected button text: \"{context.get('target_button', '')}\"\n"
+            f"All text visible on screen: {context.get('ocr_text', '(none)')}\n"
+            f"Error type: {context.get('error_type', 'unknown')}\n"
+            f"Recent step history: {context.get('history', [])}\n\n"
+            "Respond with JSON only:\n"
+            '{"action": "dismiss_popup|wait|restart_step|skip_step|abort", '
+            '"target_text": "button text to click if action is dismiss_popup, else null", '
+            '"reason": "brief explanation in English"}'
+        )
+
+        raw = self.chat(
+            system=system,
+            history=[{"role": "user", "content": prompt}],
+            brief=True,
+        )
+
+        try:
+            # Strip possible markdown fences
+            clean = raw.strip()
+            if clean.startswith("```"):
+                clean = clean.split("```")[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            result = json.loads(clean.strip())
+            if not isinstance(result, dict):
+                raise ValueError("Not a dict")
+            return result
+        except Exception:
+            return {
+                "action": "wait",
+                "target_text": None,
+                "reason": f"LLM response could not be parsed: {raw[:100]}",
+            }
+
+    def propose_sop_improvement(self, summary: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze success patterns and propose SOP step improvements.
+
+        Input: summary dict from CycleDetector.build_improvement_summary().
+        Output: proposed changes to sop_steps.json for engineer review.
+
+        The result is saved as sop_steps.proposed.json — never auto-applied.
+        """
+        system = (
+            "You are an expert OLED connector SOP engineer. "
+            "Analyze the success/failure patterns below and suggest minimal improvements "
+            "to the SOP step configuration. "
+            "Respond ONLY with a JSON object. Use English only."
+        )
+        prompt = (
+            f"SOP run statistics (last {summary.get('sample_count', 0)} runs):\n"
+            f"{json.dumps(summary, indent=2, ensure_ascii=False)}\n\n"
+            "Suggest improvements as JSON:\n"
+            '{"step_changes": [{"step_id": "...", "field": "...", "new_value": "...", '
+            '"reason": "..."}], '
+            '"summary": "brief overall assessment in English"}'
+        )
+
+        raw = self.chat(
+            system=system,
+            history=[{"role": "user", "content": prompt}],
+        )
+
+        try:
+            clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+            return json.loads(clean)
+        except Exception:
+            return {"step_changes": [], "summary": raw[:500], "raw": raw}

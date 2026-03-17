@@ -20,3 +20,10 @@ pyautogui==0.9.54
 requests>=2.32.0
 huggingface_hub>=0.21.0
 datasets>=2.19.0
+
+# OCR (optional — loaded lazily at runtime)
+# PaddleOCR fallback when WinRT is unavailable (non-Windows or older builds)
+# Install manually if needed: pip install paddlepaddle paddleocr
+# paddlepaddle          # CPU paddle runtime (~200 MB); uncomment to install
+# paddleocr>=2.8.0      # PP-OCRv4 Lite engine; uncomment to install
+# winsdk>=1.0.0b9       # Windows.Media.Ocr WinRT wrapper (Windows 10 1803+ only)

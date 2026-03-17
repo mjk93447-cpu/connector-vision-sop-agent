@@ -1,12 +1,13 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "steps": [
     {
       "id": "login",
       "name": "Login",
       "type": "click",
       "target": "login_button",
-      "description": "Click the login button to authenticate",
+      "button_text": "LOGIN",
+      "description": "Click the LOGIN button to authenticate",
       "enabled": true
     },
     {
@@ -14,7 +15,8 @@
       "name": "Open Recipe",
       "type": "click",
       "target": "recipe_button",
-      "description": "Open the connector recipe file",
+      "button_text": "RECIPE",
+      "description": "Click RECIPE button to open the connector recipe file",
       "enabled": true
     },
     {
@@ -22,6 +24,7 @@
       "name": "Select Image Source",
       "type": "click",
       "target": "image_source",
+      "button_text": "IMAGE SOURCE",
       "description": "Select the image source for vision capture",
       "enabled": true
     },
@@ -30,7 +33,8 @@
       "name": "Mold Left Label",
       "type": "click",
       "target": "mold_left_label",
-      "description": "Click mold left label region",
+      "button_text": "MOLD LEFT",
+      "description": "Click the Mold Left label to activate left mold ROI selection",
       "enabled": true
     },
     {
@@ -39,7 +43,8 @@
       "type": "drag",
       "start": [100, 200],
       "end": [800, 350],
-      "description": "Drag to define mold left region of interest",
+      "description": "Drag to define the mold left region of interest. YOLO26x detects mold_left boundary for automatic start/end coordinates.",
+      "yolo_detect": "mold_left",
       "enabled": true
     },
     {
@@ -47,7 +52,8 @@
       "name": "Mold Right Label",
       "type": "click",
       "target": "mold_right_label",
-      "description": "Click mold right label region",
+      "button_text": "MOLD RIGHT",
+      "description": "Click the Mold Right label to activate right mold ROI selection",
       "enabled": true
     },
     {
@@ -56,7 +62,8 @@
       "type": "drag",
       "start": [100, 200],
       "end": [800, 350],
-      "description": "Drag to define mold right region of interest",
+      "description": "Drag to define the mold right region of interest. YOLO26x detects mold_right boundary for automatic start/end coordinates.",
+      "yolo_detect": "mold_right",
       "enabled": true
     },
     {
@@ -64,23 +71,28 @@
       "name": "Axis Marking",
       "type": "click",
       "target": "axis_mark",
-      "description": "Mark the axis reference points",
+      "button_text": "AXIS",
+      "description": "Mark the axis reference points for connector alignment",
       "enabled": true
     },
     {
       "id": "in_pin_up",
       "name": "Pin Up Check",
       "type": "validate_pins",
-      "description": "Validate top pins (20 pins expected)",
+      "description": "Validate top connector pins (20 pins expected). YOLO26x detects connector_pin in top ROI.",
       "pin_position": "top",
+      "pin_count_expected": 20,
+      "yolo_detect": "connector_pin",
       "enabled": true
     },
     {
       "id": "in_pin_down",
       "name": "Pin Down Check",
       "type": "validate_pins",
-      "description": "Validate bottom pins (20 pins expected)",
+      "description": "Validate bottom connector pins (20 pins expected). YOLO26x detects connector_pin in bottom ROI.",
       "pin_position": "bottom",
+      "pin_count_expected": 20,
+      "yolo_detect": "connector_pin",
       "enabled": true
     },
     {
@@ -88,7 +100,8 @@
       "name": "Save",
       "type": "click",
       "target": "save_button",
-      "description": "Save the current configuration",
+      "button_text": "SAVE",
+      "description": "Save the current SOP configuration",
       "enabled": true
     },
     {
@@ -96,7 +109,8 @@
       "name": "Apply & Open",
       "type": "click_sequence",
       "targets": ["apply_button", "open_icon"],
-      "description": "Apply settings and open the result viewer",
+      "button_texts": ["APPLY", "OPEN"],
+      "description": "Click APPLY to apply settings, then OPEN to view results",
       "enabled": true
     }
   ]

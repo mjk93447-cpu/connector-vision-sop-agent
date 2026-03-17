@@ -6,14 +6,16 @@ GUI stays responsive during SOP execution and LLM inference.
 
 Workers
 -------
-SopWorker       — executes the full 12-step SOP in a background thread
-LLMWorker       — sends a message to the LLM and emits the response
-AnalysisWorker  — runs LLM log analysis
-TrainingWorker  — runs YOLO fine-tuning
+SopWorker         — executes the full 12-step SOP in a background thread
+LLMWorker         — sends a message to the LLM and emits the response (non-streaming)
+LLMStreamWorker   — streaming LLM: emits token_ready per chunk + elapsed timer
+AnalysisWorker    — runs LLM log analysis
+TrainingWorker    — runs YOLO fine-tuning
 """
 
 from __future__ import annotations
 
+import time
 import traceback
 from typing import Any, Dict, List, Optional
 
@@ -76,22 +78,22 @@ class SopWorker(QThread):  # type: ignore[misc]
     def run(self) -> None:  # noqa: C901
         """Thread entry point — called by QThread.start()."""
         try:
-            self.log_message.emit("▶ SOP 실행 시작...")
+            self.log_message.emit("▶ Starting SOP execution...")
 
             steps = self._steps or self._executor.get_steps()
             total = len(steps)
 
             for idx, step in enumerate(steps):
                 if self._abort:
-                    self.log_message.emit("⏹ 사용자에 의해 중단됨")
-                    self.sop_finished.emit(False, "사용자 중단")
+                    self.log_message.emit("⏹ Aborted by user")
+                    self.sop_finished.emit(False, "User abort")
                     return
 
                 step_id = step.get("id", f"step_{idx}")
                 step_name = step.get("name", step_id)
 
                 self.step_started.emit(idx, step_name)
-                self.log_message.emit(f"  [{idx + 1}/{total}] {step_name} …")
+                self.log_message.emit(f"  [{idx + 1}/{total}] {step_name} ...")
 
                 try:
                     ok, msg = self._executor.run_step(step)
@@ -101,7 +103,7 @@ class SopWorker(QThread):  # type: ignore[misc]
                         f"  [{idx + 1}/{total}] {step_name} {status} — {msg}"
                     )
                 except Exception as exc:  # noqa: BLE001
-                    err = f"예외 발생: {exc}"
+                    err = f"Exception: {exc}"
                     self.step_finished.emit(idx, step_name, False, err)
                     self.log_message.emit(
                         f"  [{idx + 1}/{total}] {step_name} ✗ — {err}"
@@ -116,12 +118,12 @@ class SopWorker(QThread):  # type: ignore[misc]
                 except Exception:  # noqa: BLE001
                     pass  # headless / no display — skip silently
 
-            self.log_message.emit("✅ SOP 완료!")
-            self.sop_finished.emit(True, f"{total}단계 완료")
+            self.log_message.emit("✅ SOP complete!")
+            self.sop_finished.emit(True, f"{total} steps complete")
 
         except Exception as exc:  # noqa: BLE001
             tb = traceback.format_exc()
-            self.log_message.emit(f"❌ SOP 오류:\n{tb}")
+            self.log_message.emit(f"❌ SOP error:\n{tb}")
             self.sop_finished.emit(False, str(exc))
 
 
@@ -159,6 +161,75 @@ class LLMWorker(QThread):  # type: ignore[misc]
         try:
             reply = self._llm.chat(system=self._system, history=self._history)
             self.response_ready.emit(reply)
+        except Exception as exc:  # noqa: BLE001
+            self.error_occurred.emit(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# LLMStreamWorker — streaming token-by-token (ChatGPT-style)
+# ---------------------------------------------------------------------------
+
+
+class LLMStreamWorker(QThread):  # type: ignore[misc]
+    """Streaming LLM worker — emits each token as it arrives.
+
+    Signals
+    -------
+    token_ready(token_str)       — partial token chunk
+    elapsed_tick(elapsed_sec)    — progress tick every 0.5s
+    response_done(full_text)     — complete response assembled
+    error_occurred(error_text)   — exception during streaming
+    """
+
+    token_ready: Any = pyqtSignal(str)
+    elapsed_tick: Any = pyqtSignal(float)
+    response_done: Any = pyqtSignal(str)
+    error_occurred: Any = pyqtSignal(str)
+
+    def __init__(
+        self,
+        llm: Any,
+        system_prompt: str,
+        history: List[Dict[str, str]],
+        brief: bool = False,
+        parent: Any = None,
+    ) -> None:
+        super().__init__(parent)
+        self._llm = llm
+        self._system = system_prompt
+        self._history = history
+        self._brief = brief
+        self._t0: float = 0.0
+        self._running = True
+
+    def stop(self) -> None:
+        self._running = False
+
+    def run(self) -> None:
+        """Thread entry point — streams tokens and emits signals."""
+        self._t0 = time.perf_counter()
+        self._running = True
+
+        # Start elapsed ticker in this thread (simple loop between chunks)
+        try:
+
+            def _on_token(chunk: str) -> None:
+                if not self._running:
+                    return
+                self.token_ready.emit(chunk)
+                elapsed = time.perf_counter() - self._t0
+                self.elapsed_tick.emit(elapsed)
+
+            def _on_done(full_text: str, elapsed: float) -> None:
+                self.response_done.emit(full_text)
+
+            self._llm.stream_chat(
+                system=self._system,
+                history=self._history,
+                on_token=_on_token,
+                on_done=_on_done,
+                brief=self._brief,
+            )
         except Exception as exc:  # noqa: BLE001
             self.error_occurred.emit(str(exc))
 

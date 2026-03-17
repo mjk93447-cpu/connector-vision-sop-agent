@@ -4,6 +4,11 @@ PyAutoGUI control engine for Samsung OLED line SOP automation.
 Handles deterministic click, double-click, drag, and retry behavior for the
 12-step workflow, with emphasis on Mold ROI dragging and pin inspection setup.
 
+v3.0: OCR-first click strategy.
+  - click_target() tries OCR (button_text field from sop_steps.json) first.
+  - YOLO26x used as fallback and for visual-only tasks (ROI drag, pin detection).
+  - All log messages in English for Indian line engineers.
+
 v2.1: All timing parameters are now read from ``config['control']`` so that
 line engineers can tune them via config.json (or LLM suggestion) without
 rebuilding the EXE.
@@ -11,9 +16,10 @@ rebuilding the EXE.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import pyautogui
@@ -24,6 +30,8 @@ else:  # pragma: no cover - environment dependent branch.
     PYAUTOGUI_IMPORT_ERROR = None
 
 from src.vision_engine import VisionEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,6 +61,11 @@ def _read_control_cfg(config: Dict[str, Any]) -> Dict[str, Any]:
 class ControlEngine:
     """Controller for UI interactions with retry-aware execution.
 
+    OCR-first strategy (v3.0):
+      1. OCR: find button by text (button_text field in sop_steps.json)
+      2. YOLO26x fallback: detect by class label
+      3. Exception handler: popup / freeze / LLM recovery
+
     All timing parameters are configurable via ``config['control']``.
     Legacy keyword arguments (``retries``, ``move_duration``, ``click_pause``)
     are still accepted for backward compatibility, but values from ``config``
@@ -63,12 +76,29 @@ class ControlEngine:
         self,
         vision_agent: VisionEngine,
         config: Optional[Dict[str, Any]] = None,
+        ocr_engine: Optional[Any] = None,  # OCREngine instance
+        exception_handler: Optional[Any] = None,  # ExceptionHandler instance
+        sop_steps: Optional[List[Dict[str, Any]]] = None,  # full sop_steps list
         # Legacy kwargs (kept for backward compat / tests).
         retries: int = 3,
         move_duration: float = 0.30,
         click_pause: float = 0.50,
     ) -> None:
         self.vision = vision_agent
+        self._ocr = ocr_engine
+        self._exception_handler = exception_handler
+        # Build button_text lookup: target → button_text
+        self._button_text_map: Dict[str, str] = {}
+        if sop_steps:
+            for step in sop_steps:
+                tgt = step.get("target", "")
+                btn_txt = step.get("button_text", "")
+                if tgt and btn_txt:
+                    self._button_text_map[tgt] = btn_txt
+                # Also index by step id
+                sid = step.get("id", "")
+                if sid and btn_txt:
+                    self._button_text_map[sid] = btn_txt
 
         if config is not None:
             cfg = _read_control_cfg(config)
@@ -99,14 +129,33 @@ class ControlEngine:
         x1, y1, x2, y2 = bbox
         return (x1 + x2) // 2, (y1 + y2) // 2
 
+    def _get_button_text(self, target_name: str) -> Optional[str]:
+        """Look up button_text for a target name from sop_steps.json."""
+        return self._button_text_map.get(target_name)
+
     def _resolve_target_coordinates(
-        self, target_name: str
+        self,
+        target_name: str,
+        image: Optional[Any] = None,
     ) -> Optional[Tuple[int, int]]:
-        """Use YOLO26x to find the target on screen."""
+        """OCR-first target resolution.
 
-        image = self.vision.capture_screen()
+        1. OCR: find button by text label (fast, ~95-99% accuracy)
+        2. YOLO26x: detect by class label (fallback)
+        """
+        if image is None:
+            image = self.vision.capture_screen()
 
-        # YOLO label-based detection (CP-3: OCR fallback removed).
+        # --- Priority 1: OCR (primary) ---
+        if self._ocr is not None:
+            button_text = self._get_button_text(target_name)
+            if button_text:
+                region = self._ocr.find_text(image, button_text, fuzzy=True)
+                if region is not None:
+                    logger.debug("OCR found '%s' at %s", button_text, region.center)
+                    return region.center
+
+        # --- Priority 2: YOLO26x (fallback / visual targets) ---
         detection = self.vision.find_detection(image, label=target_name)
         if detection is not None:
             return self._center_of_bbox(detection.bbox)
@@ -143,15 +192,78 @@ class ControlEngine:
         start = time.perf_counter()
         last_error = ""
         coords: Optional[Tuple[int, int]] = None
+        _recent_history: list = []
 
         for attempt in range(1, self.retries + 1):
             try:
-                coords = self._resolve_target_coordinates(target_name)
+                screenshot = self.vision.capture_screen()
+
+                # Record for freeze detection
+                if self._exception_handler is not None:
+                    self._exception_handler.record_screenshot(screenshot)
+
+                coords = self._resolve_target_coordinates(target_name, image=screenshot)
                 if coords is None:
                     last_error = (
-                        f"target '{target_name}' not found "
+                        f"Target '{target_name}' not found "
                         f"(attempt {attempt}/{self.retries})"
                     )
+                    logger.warning(last_error)
+
+                    # Try exception handler
+                    if self._exception_handler is not None:
+                        try:
+                            from src.exception_handler import (
+                                ExceptionContext,
+                            )  # noqa: PLC0415
+
+                            ocr_text = ""
+                            if self._ocr is not None:
+                                regions = self._ocr.scan_all(screenshot)
+                                from src.exception_handler import (
+                                    ExceptionHandler,
+                                )  # noqa: PLC0415
+
+                                ocr_text = ExceptionHandler.compress_ocr_text(regions)
+
+                            context = ExceptionContext(
+                                sop_step_id=target_name,
+                                target_button=self._get_button_text(target_name)
+                                or target_name,
+                                ocr_text_on_screen=ocr_text,
+                                error_type="button_not_found",
+                                recent_history=_recent_history[-3:],
+                            )
+                            recovery = self._exception_handler.handle_exception(
+                                context, img_np=screenshot
+                            )
+                            _recent_history.append(
+                                f"attempt {attempt}: recovery={recovery.action}"
+                            )
+                            logger.info(
+                                "Exception recovery: action=%s reason=%s",
+                                recovery.action,
+                                recovery.reason,
+                            )
+                            if recovery.action == "abort":
+                                break
+                            if (
+                                recovery.action == "dismiss_popup"
+                                and recovery.target_text
+                            ):
+                                # Try to click the dismiss button
+                                if self._ocr is not None:
+                                    fresh = self.vision.capture_screen()
+                                    dismiss_region = self._ocr.find_text(
+                                        fresh, recovery.target_text
+                                    )
+                                    if dismiss_region:
+                                        self._ensure_pyautogui_available()
+                                        pyautogui.click(*dismiss_region.center)
+                                        time.sleep(1.0)
+                        except Exception as exc_inner:
+                            logger.warning("Exception handler error: %s", exc_inner)
+
                     time.sleep(self.retry_delay)
                     continue
 
@@ -162,6 +274,7 @@ class ControlEngine:
                 time.sleep(self.click_pause)
 
                 duration = time.perf_counter() - start
+                _recent_history.append(f"attempt {attempt}: success at {coords}")
                 return ControlResult(
                     success=True,
                     coords=coords,

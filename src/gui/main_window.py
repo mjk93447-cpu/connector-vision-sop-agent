@@ -97,13 +97,13 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         """Start LLMWorker for a chat turn."""
         if self._llm is None:
             self._llm_panel.on_llm_error(
-                "LLM이 설정되지 않았습니다. config.json의 llm 설정을 확인하세요."
+                "LLM is not configured. Please check the llm settings in config.json."
             )
             return
         system = (
-            "당신은 삼성 OLED 커넥터 라인 SOP 전문가입니다. "
-            "엔지니어가 SOP 실행 문제를 해결할 수 있도록 친절하고 정확하게 도와주세요. "
-            "한국어로 응답하되, 필요하면 영어 기술 용어를 사용하세요."
+            "You are an expert in Samsung OLED connector line SOP procedures. "
+            "Help the engineer diagnose and resolve SOP execution issues clearly and accurately. "
+            "Respond in English, using technical terms where appropriate."
         )
         self._llm_worker = LLMWorker(self._llm, system_prompt=system, history=history)
         self._llm_worker.response_ready.connect(self._llm_panel.on_llm_response)
@@ -113,11 +113,11 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
     def on_llm_analyze(self) -> None:
         """Start AnalysisWorker using the latest log payload."""
         if self._llm is None:
-            self._llm_panel.on_llm_error("LLM이 설정되지 않았습니다.")
+            self._llm_panel.on_llm_error("LLM is not configured.")
             return
         if self._log_manager is None:
             self._llm_panel.on_llm_error(
-                "아직 SOP 실행 기록이 없습니다. ▶ Run SOP 탭에서 실행 후 다시 시도하세요."
+                "No SOP run history yet. Please run the SOP from the ▶ Run SOP tab first."
             )
             return
         # Use real LogManager payload (Phase 2)
@@ -231,7 +231,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         if self._sop_executor is None:
             if _QT_AVAILABLE:
                 QMessageBox.warning(
-                    self, "SOP 실행 불가", "SopExecutor가 초기화되지 않았습니다."
+                    self, "Cannot Run SOP", "SopExecutor is not initialized."
                 )
             return
 
@@ -327,21 +327,21 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         if not allow_write:
             QMessageBox.warning(
                 self,
-                "직접 수정 비활성화",
-                "config.json의 llm.allow_config_write가 false입니다.\n"
-                "대신 config.proposed.json으로 저장합니다.",
+                "Direct Edit Disabled",
+                "llm.allow_config_write is false in config.json.\n"
+                "Saving as config.proposed.json instead.",
             )
             try:
                 from src.sop_advisor import apply_config_patch, write_proposed_config
 
                 new_cfg, warnings = apply_config_patch(self._config, patch)
                 proposed = write_proposed_config(self._config_path, new_cfg)
-                msg = f"config.proposed.json 저장 완료:\n{proposed}"
+                msg = f"config.proposed.json saved:\n{proposed}"
                 if warnings:
-                    msg += "\n\n경고:\n" + "\n".join(warnings)
-                QMessageBox.information(self, "저장 완료", msg)
+                    msg += "\n\nWarnings:\n" + "\n".join(warnings)
+                QMessageBox.information(self, "Saved", msg)
             except Exception as exc:  # noqa: BLE001
-                QMessageBox.critical(self, "저장 오류", str(exc))
+                QMessageBox.critical(self, "Save Error", str(exc))
             return
 
         try:
@@ -358,14 +358,14 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             )
             self._config = new_cfg
             self._config_panel.set_config(new_cfg)
-            msg = "config.json 직접 수정 완료!"
+            msg = "config.json updated successfully!"
             if warnings:
-                msg += "\n\n경고:\n" + "\n".join(warnings)
-            QMessageBox.information(self, "적용 완료", msg)
+                msg += "\n\nWarnings:\n" + "\n".join(warnings)
+            QMessageBox.information(self, "Applied", msg)
             self._audit_panel.refresh()
             self._update_status()
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "적용 오류", str(exc))
+            QMessageBox.critical(self, "Apply Error", str(exc))
 
     def _on_screenshot_for_training(self, img: Any) -> None:
         """Forward the latest SOP screenshot to the Training panel for annotation."""

@@ -65,7 +65,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
             return
         self._pixmap = None
         self._detections = []
-        self._canvas.setText("📷 스크린샷 없음 — [캡처] 버튼을 눌러 촬영하세요")
+        self._canvas.setText("📷 No screenshot — press [Capture] to take one")
 
     # ------------------------------------------------------------------
     # Private — UI
@@ -79,7 +79,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        header = QLabel("👁 비전 캔버스")
+        header = QLabel("👁 Vision Canvas")
         header.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(header)
 
@@ -88,7 +88,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
         scroll.setWidgetResizable(True)
         self._canvas = QLabel()
         self._canvas.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._canvas.setText("📷 스크린샷 없음 — [캡처] 버튼을 눌러 촬영하세요")
+        self._canvas.setText("📷 No screenshot — press [Capture] to take one")
         self._canvas.setStyleSheet(
             "background: #263238; color: #90a4ae; font-size: 14px;"
         )
@@ -100,18 +100,18 @@ class VisionPanel(QWidget):  # type: ignore[misc]
 
         # Buttons
         btn_row = QHBoxLayout()
-        btn_capture = QPushButton("📷 캡처")
-        btn_capture.setToolTip("현재 화면을 캡처하여 YOLO 분석")
+        btn_capture = QPushButton("📷 Capture")
+        btn_capture.setToolTip("Capture the current screen and run YOLO detection")
         btn_capture.clicked.connect(self._on_capture)
 
-        btn_open = QPushButton("📁 파일 열기")
-        btn_open.setToolTip("이미지 파일을 불러와 YOLO 분석")
+        btn_open = QPushButton("📁 Open File")
+        btn_open.setToolTip("Load an image file and run YOLO detection")
         btn_open.clicked.connect(self._on_open_file)
 
-        btn_clear = QPushButton("🗑 지우기")
+        btn_clear = QPushButton("🗑 Clear")
         btn_clear.clicked.connect(self.clear)
 
-        self._lbl_status = QLabel("검출: 0개")
+        self._lbl_status = QLabel("Detections: 0")
         self._lbl_status.setStyleSheet("color: #607d8b;")
 
         btn_row.addWidget(btn_capture)
@@ -151,7 +151,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
         )
         self._canvas.setPixmap(scaled)
         n = len(self._detections)
-        self._lbl_status.setText(f"검출: {n}개")
+        self._lbl_status.setText(f"Detections: {n}")
 
     def _on_capture(self) -> None:
         """Capture current screen and run YOLO detection."""
@@ -175,7 +175,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
             # Run YOLO if engine available
             self._run_yolo(bgr_arr)
         except Exception as exc:  # noqa: BLE001
-            self._canvas.setText(f"캡처 실패: {exc}")
+            self._canvas.setText(f"Capture failed: {exc}")
 
     def _on_open_file(self) -> None:
         """Open an image file from disk and run YOLO detection."""
@@ -183,7 +183,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
             return
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "이미지 파일 열기",
+            "Open Image File",
             "",
             "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.webp)",
         )
@@ -191,7 +191,7 @@ class VisionPanel(QWidget):  # type: ignore[misc]
             return
         pmap = QPixmap(path)
         if pmap.isNull():
-            self._canvas.setText(f"이미지 로드 실패: {path}")
+            self._canvas.setText(f"Failed to load image: {path}")
             return
         self.set_screenshot(pmap)
 

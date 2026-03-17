@@ -108,7 +108,7 @@ class SopPanel(QWidget):  # type: ignore[misc]
         layout.setSpacing(6)
 
         # Header label
-        header = QLabel("📋 SOP 실행")
+        header = QLabel("📋 Run SOP")
         header.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(header)
 
@@ -119,7 +119,7 @@ class SopPanel(QWidget):  # type: ignore[misc]
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.addWidget(QLabel("SOP 단계:"))
+        left_layout.addWidget(QLabel("SOP Steps:"))
         self._step_list = QListWidget()
         self._step_list.setFixedWidth(220)
         left_layout.addWidget(self._step_list)
@@ -129,7 +129,7 @@ class SopPanel(QWidget):  # type: ignore[misc]
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.addWidget(QLabel("실행 로그:"))
+        right_layout.addWidget(QLabel("Execution Log:"))
         self._log = QTextEdit()
         self._log.setReadOnly(True)
         self._log.setStyleSheet(
@@ -143,17 +143,17 @@ class SopPanel(QWidget):  # type: ignore[misc]
 
         # Buttons
         btn_layout = QHBoxLayout()
-        self._btn_run = QPushButton("▶ SOP 실행")
+        self._btn_run = QPushButton("▶ Run SOP")
         self._btn_run.setStyleSheet(
             "background-color: #4caf50; color: white; font-weight: bold; padding: 8px 20px;"
         )
-        self._btn_stop = QPushButton("⏹ 중지")
+        self._btn_stop = QPushButton("⏹ Stop")
         self._btn_stop.setStyleSheet(
             "background-color: #f44336; color: white; padding: 8px 20px;"
         )
         self._btn_stop.setEnabled(False)
 
-        btn_clear = QPushButton("🗑 로그 지우기")
+        btn_clear = QPushButton("🗑 Clear Log")
         btn_clear.clicked.connect(self._log.clear)
 
         btn_layout.addWidget(self._btn_run)
@@ -197,5 +197,5 @@ class SopPanel(QWidget):  # type: ignore[misc]
     @pyqtSlot(bool, str)
     def on_sop_finished(self, success: bool, summary: str) -> None:
         self.set_running(False)
-        status = "✅ 완료" if success else "❌ 실패"
+        status = "✅ Complete" if success else "❌ Failed"
         self.append_log(f"\n{status}: {summary}")

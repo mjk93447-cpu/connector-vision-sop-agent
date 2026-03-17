@@ -72,7 +72,7 @@ class AuditPanel(QWidget):  # type: ignore[misc]
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        header = QLabel("📊 Audit 이력 — Config 변경 기록")
+        header = QLabel("📊 Audit Log — Config Change History")
         header.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(header)
 
@@ -82,7 +82,7 @@ class AuditPanel(QWidget):  # type: ignore[misc]
         # Table
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(
-            ["시간", "라인ID", "사용자", "액션", "변경 키"]
+            ["Timestamp", "Line ID", "User", "Action", "Changed Keys"]
         )
         self._table.horizontalHeader().setSectionResizeMode(
             4, QHeaderView.ResizeMode.Stretch
@@ -104,11 +104,11 @@ class AuditPanel(QWidget):  # type: ignore[misc]
 
         # Buttons
         btn_row = QHBoxLayout()
-        btn_refresh = QPushButton("🔄 새로 고침")
+        btn_refresh = QPushButton("🔄 Refresh")
         btn_refresh.clicked.connect(self.refresh)
         btn_row.addWidget(btn_refresh)
         btn_row.addStretch()
-        self._lbl_count = QLabel("0개 기록")
+        self._lbl_count = QLabel("0 records")
         self._lbl_count.setStyleSheet("color: #607d8b;")
         btn_row.addWidget(self._lbl_count)
         layout.addLayout(btn_row)
@@ -131,7 +131,7 @@ class AuditPanel(QWidget):  # type: ignore[misc]
             self._table.setItem(row, 3, QTableWidgetItem(action))
             self._table.setItem(row, 4, QTableWidgetItem(keys))
 
-        self._lbl_count.setText(f"{len(self._entries)}개 기록")
+        self._lbl_count.setText(f"{len(self._entries)} records")
         self._detail.clear()
 
     def _on_selection_changed(self) -> None:
@@ -147,4 +147,4 @@ class AuditPanel(QWidget):  # type: ignore[misc]
 
     def _show_error(self, msg: str) -> None:
         if _QT_AVAILABLE:
-            self._detail.setPlainText(f"오류: {msg}")
+            self._detail.setPlainText(f"Error: {msg}")

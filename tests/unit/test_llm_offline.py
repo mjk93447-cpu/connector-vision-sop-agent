@@ -213,14 +213,14 @@ class TestOllamaBackend:
         payload = mock_post.call_args[1]["json"]
         assert payload.get("stream") is False
 
-    def test_timeout_is_120s(self) -> None:
-        """Ollama는 모델 로딩 지연을 위해 더 긴 타임아웃 사용."""
+    def test_timeout_is_180s(self) -> None:
+        """Ollama uses 180s timeout to handle model loading + recovery_action() latency."""
         llm = OfflineLLM.from_config({})
         with patch(
             "requests.post", return_value=self._mock_response("ok")
         ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
-        assert mock_post.call_args[1]["timeout"] == 120
+        assert mock_post.call_args[1]["timeout"] == 180
 
     def test_no_duplicate_system_message(self) -> None:
         """history에 이미 system이 있으면 중복 추가하지 않는다."""

@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-17 (YOLO26x 전용 규칙 확정 + GUI 프리트레인 CI 워크플로우 추가)_
+_최종 갱신: 2026-03-17 (OCR-First 파이프라인 완성 — 336 pass)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -21,12 +21,17 @@ _최종 갱신: 2026-03-17 (YOLO26x 전용 규칙 확정 + GUI 프리트레인 C
 | **YOLO26x 확정** | **yolo26n/yolov8 잔재 전부 제거, 문서 업데이트** | **242 pass** | — |
 | **프리트레인 파이프라인** | **PretrainPipeline+DatasetConverter+run_pretrain.py + mAP50 실측** | **242 pass** | — |
 | **YOLO26x 전용 규칙** | **CLAUDE.md MANDATORY 규칙 + GUI Pretrain CI 워크플로우** | **254 pass** | — |
+| **OCR-First 파이프라인** | **OCREngine+ExceptionHandler+CycleDetector+LLM 스트리밍+영어 GUI 전환** | **336 pass** | — |
 
-## 현재 스택 (v3.0.0)
+## 현재 스택 (v3.1.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
-- LLM: phi4-mini-reasoning via Ollama (`http://localhost:11434`)
-- OCR: 완전 제거 / 테스트: 242개
-- GUI: PyQt6 7탭 (Vision Canvas 실시간 + LLM 채팅 + 감사 로그 + Tab7 Training)
+- LLM: phi4-mini-reasoning via Ollama (`http://localhost:11434`) — 스트리밍 출력 + Brief 모드
+- **OCR: WinRT (primary) → PaddleOCR fallback** / `src/ocr_engine.py` (TextRegion, fuzzy match)
+- GUI: PyQt6 7탭 (완전 영어 UI — 인도 엔지니어 대응)
+- 예외처리: ExceptionHandler (팝업 감지→freeze→LLM 3단계 체인)
+- 주기 분석: CycleDetector (성공 패턴 JSONL 기록+분석)
+- 배포 스크립트: `start_agent.bat`, `install_first_time.bat`
+- 문서: `README_INSTALL_EN.md`, `QUICK_START_EN.md` (인도 엔지니어 영문 가이드)
 
 ## GUI Phase 2 완료 내용
 - **SopWorker**: `screenshot_ready` 시그널 — 매 스텝 후 BGR ndarray emit
@@ -102,6 +107,8 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 - [ ] 생성된 `yolo26x_pretrained.pt` 아티팩트 → `assets/models/` 배치 → 통팩 재빌드
 - [ ] `yolo26x_pretrained.pt` → Tab7 Training Panel에서 OLED 파인튜닝 실행
 - [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제)
+- [ ] build_exe.spec에 paddleocr/winrt hidden imports 추가
+- [ ] build-allinone.yml에 OCR deps 포함 → 통팩 재빌드
 - [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
