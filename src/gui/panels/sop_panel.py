@@ -37,11 +37,15 @@ class SopPanel(QWidget):  # type: ignore[misc]
     def __init__(
         self,
         steps: Optional[List[Dict[str, Any]]] = None,
+        ocr_engine: Any = None,
+        vision_engine: Any = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self._steps: List[Dict[str, Any]] = steps or []
         self._worker: Any = None
+        self._ocr_engine: Any = ocr_engine
+        self._vision_engine: Any = vision_engine
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -52,6 +56,14 @@ class SopPanel(QWidget):  # type: ignore[misc]
         """Reload step list (called when sop_steps.json changes)."""
         self._steps = steps
         self._refresh_step_list()
+
+    def set_ocr_engine(self, ocr: Any) -> None:
+        """Inject an OCREngine instance for the Test OCR button."""
+        self._ocr_engine = ocr
+
+    def set_vision_engine(self, vision: Any) -> None:
+        """Inject a VisionEngine instance for screen capture in OCR test."""
+        self._vision_engine = vision
 
     def append_log(self, text: str) -> None:
         """Append a line to the log area."""
@@ -156,13 +168,51 @@ class SopPanel(QWidget):  # type: ignore[misc]
         btn_clear = QPushButton("🗑 Clear Log")
         btn_clear.clicked.connect(self._log.clear)
 
+        btn_test_ocr = QPushButton("🔍 Test OCR")
+        btn_test_ocr.setToolTip("Capture screen and run OCR to verify detection")
+        btn_test_ocr.clicked.connect(self._on_test_ocr)
+
         btn_layout.addWidget(self._btn_run)
         btn_layout.addWidget(self._btn_stop)
         btn_layout.addStretch()
+        btn_layout.addWidget(btn_test_ocr)
         btn_layout.addWidget(btn_clear)
         layout.addLayout(btn_layout)
 
         self._refresh_step_list()
+
+    def _on_test_ocr(self) -> None:
+        """Capture current screen and run OCR, display results in log."""
+        self.append_log("[OCR Test] Capturing screen...")
+        try:
+            if self._vision_engine is not None:
+                img = self._vision_engine.capture_screen()
+            else:
+                import numpy as np  # noqa: PLC0415
+                import pyautogui  # noqa: PLC0415
+                import cv2  # noqa: PLC0415
+
+                img = np.array(pyautogui.screenshot())
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            if self._ocr_engine is not None:
+                regions = self._ocr_engine.scan_all(img)
+                backend = getattr(self._ocr_engine, "_backend", "unknown")
+                self.append_log(
+                    f"[OCR Test] Backend: {backend} | "
+                    f"Detected {len(regions)} region(s)"
+                )
+                for r in regions[:20]:
+                    self.append_log(f"  '{r.text}' at {r.center}")
+                if not regions:
+                    self.append_log(
+                        "[OCR Test] FAILED: 0 regions — OCR non-functional. "
+                        "Check console for details."
+                    )
+            else:
+                self.append_log("[OCR Test] OCR engine not available.")
+        except Exception as exc:  # noqa: BLE001
+            self.append_log(f"[OCR Test] Error: {exc}")
 
     def _refresh_step_list(self) -> None:
         if not _QT_AVAILABLE:

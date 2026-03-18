@@ -206,7 +206,23 @@ class OCREngine:
 
             ocr_engine = wocr.OcrEngine.try_create_from_user_profile_languages()
             if ocr_engine is None:
-                raise RuntimeError("WinRT OcrEngine returned None")
+                # Fallback: explicitly request English OCR (available on most Windows 10/11)
+                try:
+                    import winrt.windows.globalization as wg  # noqa: PLC0415
+
+                    lang = wg.Language("en-US")
+                    ocr_engine = wocr.OcrEngine.try_create_from_language(lang)
+                    if ocr_engine is not None:
+                        logger.debug("WinRT OCR: using en-US language fallback")
+                except Exception as _e:
+                    logger.debug("WinRT OCR en-US fallback failed: %s", _e)
+                    ocr_engine = None
+            if ocr_engine is None:
+                raise RuntimeError(
+                    "WinRT OcrEngine: no OCR language pack available "
+                    "(tried user profile + en-US). "
+                    "Install English language pack or enable PaddleOCR."
+                )
 
             loop = asyncio.new_event_loop()
             result = loop.run_until_complete(ocr_engine.recognize_async(bmp))

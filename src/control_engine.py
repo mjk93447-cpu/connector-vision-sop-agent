@@ -198,6 +198,20 @@ class ControlEngine:
                     )
                     return region.center
 
+        # OCR が存在したが全候補で失敗した場合の診断ログ
+        if self._ocr is not None:
+            try:
+                all_regions = self._ocr.scan_all(image)
+                detected = [r.text for r in all_regions[:10]]
+                logger.warning(
+                    "[OCR] '%s' not found. scan_all=%d region(s): %s",
+                    target_name,
+                    len(all_regions),
+                    detected if detected else "(empty — OCR may be non-functional)",
+                )
+            except Exception as _diag_exc:
+                logger.debug("[OCR] diagnostic scan failed: %s", _diag_exc)
+
         # --- Priority 3: YOLO26x (fallback / visual targets) ---
         detection = self.vision.find_detection(image, label=target_name)
         if detection is not None:

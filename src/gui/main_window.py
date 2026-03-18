@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         audit_log: Optional[Any] = None,
         log_manager: Optional[Any] = None,
         vision: Optional[Any] = None,
+        ocr: Optional[Any] = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -74,6 +75,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._vision: Optional[Any] = vision or (
             getattr(sop_executor, "vision", None) if sop_executor else None
         )
+        self._ocr: Optional[Any] = ocr
         self._steps: List[Dict[str, Any]] = []
         self._worker: Optional[Any] = None
         self._llm_worker: Optional[Any] = None
@@ -209,7 +211,11 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._tabs.setDocumentMode(True)
 
         # Instantiate panels
-        self._sop_panel = SopPanel(steps=self._steps)
+        self._sop_panel = SopPanel(
+            steps=self._steps,
+            ocr_engine=self._ocr,
+            vision_engine=self._vision,
+        )
         self._vision_panel = VisionPanel()
         self._llm_panel = LlmPanel()
         self._sop_editor_panel = SopEditorPanel(sop_path=self._sop_steps_path)
@@ -236,8 +242,15 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._lbl_steps = QLabel("0 steps")
         self._lbl_pins = QLabel("Pins: –/–")
         self._lbl_llm = QLabel("LLM: –")
+        self._lbl_ocr = QLabel("OCR: –")
 
-        for lbl in [self._lbl_status, self._lbl_steps, self._lbl_pins, self._lbl_llm]:
+        for lbl in [
+            self._lbl_status,
+            self._lbl_steps,
+            self._lbl_pins,
+            self._lbl_llm,
+            self._lbl_ocr,
+        ]:
             self._status_bar.addPermanentWidget(lbl)
 
         # Refresh audit every time the Audit tab is shown
@@ -268,6 +281,13 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._lbl_steps.setText(f"{n_steps} steps")
         self._lbl_pins.setText(f"Pins: {pin_min}/{pin_max}")
         self._lbl_llm.setText(f"LLM: {'✓' if llm_enabled else '✗'}")
+
+        # OCR status
+        if self._ocr is not None:
+            backend = getattr(self._ocr, "_backend", "?")
+            self._lbl_ocr.setText(f"OCR: {backend}")
+        else:
+            self._lbl_ocr.setText("OCR: ✗")
 
     # ------------------------------------------------------------------
     # Slots

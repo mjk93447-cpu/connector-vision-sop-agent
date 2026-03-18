@@ -105,6 +105,23 @@ def _load_sop_steps(sop_steps_path: Optional[Path] = None) -> List[Dict[str, Any
     return []
 
 
+def _check_ocr_health(ocr: Any) -> str:
+    """Quick self-test: render 'Login' text and verify OCR detects it."""
+    try:
+        import cv2  # noqa: PLC0415
+        import numpy as np  # noqa: PLC0415
+
+        img = np.ones((60, 200, 3), dtype=np.uint8) * 255
+        cv2.putText(img, "Login", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 2)
+        regions = ocr.scan_all(img)
+        backend = getattr(ocr, "_backend", "unknown")
+        if regions:
+            return f"OK ({backend}, {len(regions)} region(s))"
+        return f"WARN ({backend}, 0 regions — OCR may be non-functional)"
+    except Exception as exc:
+        return f"ERROR: {exc}"
+
+
 def _build_services(
     config: Optional[Dict[str, Any]] = None,
     speed: SpeedPreset = "normal",
@@ -123,12 +140,19 @@ def _build_services(
 
     # Create OCR engine — graceful fail so GUI still opens without OCR deps
     ocr: Optional[Any] = None
+    ocr_cfg = config.get("ocr", {}) if config else {}
+    ocr_backend = str(ocr_cfg.get("backend", "auto"))
+    ocr_threshold = float(ocr_cfg.get("threshold", 0.80))
     try:
-        ocr = OCREngine(backend="auto")
+        ocr = OCREngine(backend=ocr_backend, threshold=ocr_threshold)
     except Exception as exc:
         print(
             f"[WARN] OCREngine init failed: {exc!r} — OCR-first target resolution disabled."
         )
+
+    if ocr is not None:
+        status = _check_ocr_health(ocr)
+        print(f"[OCR] Health check: {status}")
 
     # Load sop_steps for button_text_map
     steps = _load_sop_steps(sop_steps_path)
@@ -640,12 +664,15 @@ def run_gui() -> None:
     # Build vision/control/executor (graceful fail — GUI still opens)
     executor = None
     vision = None
+    ocr = None
     try:
-        vision, _, executor = _build_services(
+        vision, control, executor = _build_services(
             config=cfg, speed="normal", sop_steps_path=sop_steps_path
         )
         # Attach sop_steps_path for dynamic step loading
         executor._sop_steps_path = sop_steps_path
+        # Extract OCR engine from control for statusbar display
+        ocr = getattr(control, "_ocr", None)
     except Exception as exc:
         print(f"[WARN] Service init failed: {exc!r} — SOP tab will show warning.")
 
@@ -663,6 +690,7 @@ def run_gui() -> None:
         llm=llm,
         audit_log=audit_log,
         vision=vision,
+        ocr=ocr,
     )
     # Wire vision engine into Vision Panel for file-open YOLO
     if vision is not None:

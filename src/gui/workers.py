@@ -15,6 +15,7 @@ TrainingWorker    — runs YOLO fine-tuning
 
 from __future__ import annotations
 
+import logging as _logging
 import time
 import traceback
 from typing import Any, Dict, List, Optional
@@ -35,6 +36,25 @@ except ImportError:  # pragma: no cover — GUI not required in CI
             pass
 
     pyqtSignal = _FakeSig  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
+# _GuiLogHandler — routes WARNING+ log records from control_engine to GUI
+# ---------------------------------------------------------------------------
+
+
+class _GuiLogHandler(_logging.Handler):
+    """Routes WARNING+ log records from control_engine to the GUI log signal."""
+
+    def __init__(self, signal: Any) -> None:
+        super().__init__()
+        self._signal = signal
+
+    def emit(self, record: _logging.LogRecord) -> None:
+        try:
+            self._signal.emit(self.format(record))
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +97,10 @@ class SopWorker(QThread):  # type: ignore[misc]
 
     def run(self) -> None:  # noqa: C901
         """Thread entry point — called by QThread.start()."""
+        _handler = _GuiLogHandler(self.log_message)
+        _handler.setLevel(_logging.WARNING)
+        _ctrl_logger = _logging.getLogger("src.control_engine")
+        _ctrl_logger.addHandler(_handler)
         try:
             self.log_message.emit("▶ Starting SOP execution...")
 
@@ -125,6 +149,8 @@ class SopWorker(QThread):  # type: ignore[misc]
             tb = traceback.format_exc()
             self.log_message.emit(f"❌ SOP error:\n{tb}")
             self.sop_finished.emit(False, str(exc))
+        finally:
+            _ctrl_logger.removeHandler(_handler)
 
 
 # ---------------------------------------------------------------------------
