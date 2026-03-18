@@ -50,6 +50,7 @@ from src.config_loader import load_config
 from src.config_audit import ConfigAuditLog
 from src.control_engine import ControlEngine
 from src.log_manager import LogManager
+from src.ocr_engine import OCREngine
 from src.sop_advisor import (
     apply_config_patch,
     apply_config_direct,
@@ -92,9 +93,22 @@ def _get_audit_log(config: dict) -> ConfigAuditLog:
 # ---------------------------------------------------------------------------
 
 
+def _load_sop_steps(sop_steps_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Load SOP steps from sop_steps.json.  Returns empty list on failure."""
+    path = sop_steps_path or Path("assets/sop_steps.json")
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return [s for s in data.get("steps", []) if s.get("enabled", True)]
+    except Exception as exc:
+        print(f"[WARN] Could not load sop_steps.json: {exc!r}")
+    return []
+
+
 def _build_services(
     config: Optional[Dict[str, Any]] = None,
     speed: SpeedPreset = "normal",
+    sop_steps_path: Optional[Path] = None,
 ) -> tuple[VisionEngine, ControlEngine, SopExecutor]:
     """Construct core services.  All timing comes from config when provided."""
 
@@ -107,11 +121,28 @@ def _build_services(
         )
     )
 
+    # Create OCR engine — graceful fail so GUI still opens without OCR deps
+    ocr: Optional[Any] = None
+    try:
+        ocr = OCREngine(backend="auto")
+    except Exception as exc:
+        print(
+            f"[WARN] OCREngine init failed: {exc!r} — OCR-first target resolution disabled."
+        )
+
+    # Load sop_steps for button_text_map
+    steps = _load_sop_steps(sop_steps_path)
+
     # Speed preset overrides only if config has no control section.
     has_control_cfg = bool(config.get("control"))
 
     if has_control_cfg:
-        control = ControlEngine(vision_agent=vision, config=config)
+        control = ControlEngine(
+            vision_agent=vision,
+            config=config,
+            ocr_engine=ocr,
+            sop_steps=steps,
+        )
     else:
         # Legacy speed-preset mapping (backward compat).
         if speed == "slow":
@@ -125,6 +156,8 @@ def _build_services(
             retries=int(config.get("control", {}).get("retries", 3)),
             move_duration=move_duration,
             click_pause=click_pause,
+            ocr_engine=ocr,
+            sop_steps=steps,
         )
 
     executor = SopExecutor(vision=vision, control=control, config=config)
@@ -608,7 +641,9 @@ def run_gui() -> None:
     executor = None
     vision = None
     try:
-        vision, _, executor = _build_services(config=cfg, speed="normal")
+        vision, _, executor = _build_services(
+            config=cfg, speed="normal", sop_steps_path=sop_steps_path
+        )
         # Attach sop_steps_path for dynamic step loading
         executor._sop_steps_path = sop_steps_path
     except Exception as exc:

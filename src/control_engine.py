@@ -133,6 +133,36 @@ class ControlEngine:
         """Look up button_text for a target name from sop_steps.json."""
         return self._button_text_map.get(target_name)
 
+    @staticmethod
+    def _normalize_target_name(target_name: str) -> List[str]:
+        """Convert a snake_case target name into OCR search candidates.
+
+        Examples
+        --------
+        "login_button"    → ["login", "login button"]
+        "submit_btn"      → ["submit", "submit button"]
+        "password_field"  → ["password"]
+        "recipe_button"   → ["recipe", "recipe button"]
+        "save_button"     → ["save", "save button"]
+        """
+        # Remove known suffixes that represent widget type rather than label text
+        _WIDGET_SUFFIXES = ("_button", "_btn", "_field", "_label", "_icon", "_box")
+        stripped = target_name
+        for suffix in _WIDGET_SUFFIXES:
+            if target_name.endswith(suffix):
+                stripped = target_name[: -len(suffix)]
+                break
+
+        # Replace remaining underscores with spaces for multi-word labels
+        readable = stripped.replace("_", " ")
+
+        candidates: List[str] = [readable]
+        # For _button / _btn suffixes also try "word button" phrasing
+        if target_name.endswith(("_button", "_btn")):
+            candidates.append(readable + " button")
+
+        return candidates
+
     def _resolve_target_coordinates(
         self,
         target_name: str,
@@ -140,13 +170,14 @@ class ControlEngine:
     ) -> Optional[Tuple[int, int]]:
         """OCR-first target resolution.
 
-        1. OCR: find button by text label (fast, ~95-99% accuracy)
-        2. YOLO26x: detect by class label (fallback)
+        1. OCR via button_text_map (explicit label from sop_steps.json)
+        2. OCR via normalized target_name (e.g. "login_button" → "login")
+        3. YOLO26x: detect by class label (fallback / visual targets)
         """
         if image is None:
             image = self.vision.capture_screen()
 
-        # --- Priority 1: OCR (primary) ---
+        # --- Priority 1: OCR with explicit button_text from sop_steps.json ---
         if self._ocr is not None:
             button_text = self._get_button_text(target_name)
             if button_text:
@@ -155,7 +186,19 @@ class ControlEngine:
                     logger.debug("OCR found '%s' at %s", button_text, region.center)
                     return region.center
 
-        # --- Priority 2: YOLO26x (fallback / visual targets) ---
+            # --- Priority 2: OCR with normalized target_name candidates ---
+            for candidate in self._normalize_target_name(target_name):
+                region = self._ocr.find_text(image, candidate, fuzzy=True)
+                if region is not None:
+                    logger.debug(
+                        "OCR found '%s' (normalized from '%s') at %s",
+                        candidate,
+                        target_name,
+                        region.center,
+                    )
+                    return region.center
+
+        # --- Priority 3: YOLO26x (fallback / visual targets) ---
         detection = self.vision.find_detection(image, label=target_name)
         if detection is not None:
             return self._center_of_bbox(detection.bbox)
