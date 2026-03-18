@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-18 (v3.0.0 현장 테스트 버그 3건 수정 완료 + 통팩 빌드 트리거)_
+_최종 갱신: 2026-03-18 (OCR winrt→winsdk 수정 + EasyOCR fallback 추가 + Login 감지 실 테스트 완료)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -26,11 +26,12 @@ _최종 갱신: 2026-03-18 (v3.0.0 현장 테스트 버그 3건 수정 완료 + 
 | **Gemini CLI 세팅** | **인증 완료 + GEMINI.md + gemini-helpers.sh + preflight 강화** | **337 pass** | — |
 | **YOLO26x 위반 수정** | **pretrain_pipeline.py:310 yolov8→yolov5pytorch + 규칙 준수 테스트** | **337 pass** | — |
 | **v3.0.0 버그 3건 수정** | **Bug1 OCR연동+Bug2 LLM응답성+Bug3 Training절대경로/오프라인 + get_base_dir()** | **388 pass** | — |
+| **OCR winrt→winsdk 수정** | **winsdk 임포트 수정 + EasyOCR fallback 추가 + Login 감지 실 테스트** | **413 pass** | — |
 
 ## 현재 스택 (v3.1.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
 - LLM: phi4-mini-reasoning via Ollama (`http://localhost:11434`) — 스트리밍 출력 + Brief 모드
-- **OCR: WinRT (primary) → PaddleOCR fallback** / `src/ocr_engine.py` (TextRegion, fuzzy match)
+- **OCR: WinRT/winsdk (primary) → EasyOCR fallback → PaddleOCR** / `src/ocr_engine.py` (TextRegion, fuzzy match)
 - GUI: PyQt6 7탭 (완전 영어 UI — 인도 엔지니어 대응)
 - 예외처리: ExceptionHandler (팝업 감지→freeze→LLM 3단계 체인)
 - 주기 분석: CycleDetector (성공 패턴 JSONL 기록+분석)
@@ -115,9 +116,14 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 
 ## ★ 다음 작업
 
-### 통팩 빌드 확인 (진행 중)
-- `Build Full Package v3.1 (OCR-First)` run #23231977626 — 🔄 진행 중
-- 완료 후 `connector-agent-v3.1-allinone` 아티팩트 다운로드하여 현장 재배포
+### OCR 수정 완료 (2026-03-18)
+- `winrt` → `winsdk` 임포트 수정으로 WinRT OCR 정상 동작 확인
+- EasyOCR fallback 추가 (WinRT 미지원 환경용)
+- 실 테스트: Notepad "Login" 텍스트 → `login_button` 좌표 `(958, 221)` 정상 감지
+- **Windows 7 지원 불가**: Python 3.12 + PyQt6 = Win10 최소 요구. Win7은 Python 3.8 + PyQt5 재작성 필요
+
+### 통팩 빌드 (추후)
+- OCR 수정 포함 재빌드 권장: `gh workflow run "Build Portable Offline Bundle (Split)"`
 
 ## 이전 다음 작업 후보 (홀드)
 - [ ] `YOLO26x GUI Pretrain` 결과(yolo26x_pretrained.pt) 아티팩트 다운로드 → `assets/models/` 배치
