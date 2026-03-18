@@ -148,11 +148,6 @@ class OfflineLLM:
             options["num_gpu"] = 0
             options["num_thread"] = max(1, cpu_count - 1)  # 물리 코어 수 - 1
 
-        if brief:
-            # Ollama 0.7+: phi4-mini-reasoning thinking 비활성화
-            # think 토큰이 max_tokens를 소진해 답변이 빈 문자열이 되는 문제 방지
-            options["think"] = False
-
         return options
 
     # ------------------------------------------------------------------ #
@@ -329,8 +324,12 @@ class OfflineLLM:
             "stream": False,
             "options": self._get_optimized_options(brief=brief),
         }
+        # Ollama 0.7+: think=False는 options{} 안이 아니라 payload 최상위에 위치해야 함
+        # options 안에 넣으면 llama.cpp 파라미터로 오인되어 완전히 무시됨
+        if brief:
+            payload["think"] = False
 
-        # connect 10s, read 30s per chunk (non-streaming: total response timeout)
+        # connect 10s, read 120s (non-streaming: total response timeout)
         resp = requests.post(url, json=payload, timeout=(10, 120))
         resp.raise_for_status()
         data = resp.json()
@@ -376,6 +375,10 @@ class OfflineLLM:
             "stream": True,
             "options": self._get_optimized_options(brief=brief),
         }
+        # Ollama 0.7+: think=False는 payload 최상위에 위치해야 함
+        # options{} 안에 넣으면 llama.cpp 파라미터로 오인 → Ollama가 무시 → 무제한 thinking 발생
+        if brief:
+            payload["think"] = False
 
         t0 = time.perf_counter()
         answer_text = ""  # text outside <think> blocks
@@ -383,9 +386,8 @@ class OfflineLLM:
         _in_think = False  # True while inside a <think> block
 
         session = self._get_session()
-        # 120s 데드라인 타이머: 총 스트리밍 시간이 120s를 초과하면 session 닫기
-        _deadline = threading.Timer(120.0, self.cancel)
-        _deadline.start()
+        # 타임아웃은 workers.py의 concurrent.futures(120s)가 담당.
+        # timeout=(10, 30): TCP 연결 10s + 첫 응답 헤더 수신 30s
         try:
             with session.post(url, json=payload, stream=True, timeout=(10, 30)) as resp:
                 resp.raise_for_status()
@@ -446,8 +448,6 @@ class OfflineLLM:
 
         except Exception as exc:
             raise RuntimeError(f"Streaming error: {exc}") from exc
-        finally:
-            _deadline.cancel()  # 정상 완료 시 타이머 취소
 
         elapsed = time.perf_counter() - t0
         if on_done:

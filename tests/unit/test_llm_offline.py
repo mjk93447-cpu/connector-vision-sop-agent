@@ -613,12 +613,18 @@ class TestOptimizedOptions:
         assert opts["num_gpu"] == 0
         assert opts["num_thread"] >= 1
 
-    def test_brief_mode_sets_think_false(self) -> None:
-        """brief=True 시 options.think=False 포함 확인."""
+    def test_brief_mode_no_think_in_options(self) -> None:
+        """brief=True 시 options{}에 think 키 없음 확인.
+
+        think=False는 payload 최상위에 위치해야 하므로 options{}에는 포함되지 않아야 함.
+        options{} 안에 think를 넣으면 Ollama가 llama.cpp 파라미터로 오인해 무시한다.
+        """
         llm = OfflineLLM.from_config({})
         with patch("torch.cuda.is_available", return_value=False):
             opts = llm._get_optimized_options(brief=True)
-        assert opts.get("think") is False
+        assert (
+            "think" not in opts
+        ), "think must NOT be inside options{} — it must be at payload top level"
 
     def test_brief_mode_num_ctx_4096(self) -> None:
         """brief=True 시 num_ctx=4096 (컨텍스트 단축) 확인."""
@@ -633,6 +639,97 @@ class TestOptimizedOptions:
         with patch("torch.cuda.is_available", return_value=False):
             opts = llm._get_optimized_options(brief=False)
         assert "think" not in opts
+
+
+# ---------------------------------------------------------------------------
+# Bug2 v2 fixes — think=False at payload top level (not inside options)
+# ---------------------------------------------------------------------------
+
+
+class TestThinkPayloadTopLevel:
+    """think=False는 payload 최상위에 위치해야 함 (Ollama API 스펙)."""
+
+    def _make_streaming_resp(self, tokens: list[str]) -> MagicMock:
+        import json as _json
+
+        lines = []
+        for t in tokens:
+            chunk = {"choices": [{"delta": {"content": t}}]}
+            lines.append(f"data: {_json.dumps(chunk)}".encode())
+        lines.append(b"data: [DONE]")
+        resp = MagicMock()
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        resp.raise_for_status.return_value = None
+        resp.iter_lines.return_value = lines
+        return resp
+
+    def test_think_false_at_top_level_in_stream_payload(self) -> None:
+        """brief=True 시 _stream_ollama payload['think']==False 확인 (최상위)."""
+        llm = OfflineLLM.from_config({})
+        mock_sess = MagicMock()
+        mock_sess.post.return_value = self._make_streaming_resp(["hi"])
+        llm._session = mock_sess
+
+        llm.stream_chat(
+            "sys",
+            [{"role": "user", "content": "say hi"}],
+            on_token=lambda t: None,
+            brief=True,
+        )
+
+        payload = mock_sess.post.call_args[1]["json"]
+        assert (
+            payload.get("think") is False
+        ), "think=False must be at payload top level for Ollama to honor it"
+
+    def test_think_not_at_top_level_non_brief_stream(self) -> None:
+        """brief=False 시 payload에 think 키 없음 확인."""
+        llm = OfflineLLM.from_config({})
+        mock_sess = MagicMock()
+        mock_sess.post.return_value = self._make_streaming_resp(["hi"])
+        llm._session = mock_sess
+
+        llm.stream_chat(
+            "sys",
+            [{"role": "user", "content": "say hi"}],
+            on_token=lambda t: None,
+            brief=False,
+        )
+
+        payload = mock_sess.post.call_args[1]["json"]
+        assert "think" not in payload
+
+    def test_think_false_at_top_level_in_chat_payload(self) -> None:
+        """brief=True 시 _chat_ollama payload['think']==False 확인 (최상위)."""
+        llm = OfflineLLM.from_config({})
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "hi"}}]}
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            llm.chat("sys", [{"role": "user", "content": "say hi"}], brief=True)
+
+        payload = mock_post.call_args[1]["json"]
+        assert (
+            payload.get("think") is False
+        ), "think=False must be at payload top level in _chat_ollama for Ollama to honor it"
+
+    def test_think_not_in_options_dict_for_brief(self) -> None:
+        """brief=True 시 options{} 안에 think 키 없음 확인 (최상위 전용)."""
+        llm = OfflineLLM.from_config({})
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "hi"}}]}
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            llm.chat("sys", [{"role": "user", "content": "say hi"}], brief=True)
+
+        payload = mock_post.call_args[1]["json"]
+        options = payload.get("options", {})
+        assert (
+            "think" not in options
+        ), "think must NOT be inside options{} — Ollama would ignore it there"
 
 
 # ---------------------------------------------------------------------------

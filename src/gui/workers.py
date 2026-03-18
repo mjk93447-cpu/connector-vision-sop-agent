@@ -18,6 +18,8 @@ from __future__ import annotations
 import logging as _logging
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Dict, List, Optional
 
 try:
@@ -241,31 +243,42 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
             except Exception:  # noqa: BLE001
                 pass
 
+    # Hard cutoff for streaming LLM requests (seconds).
+    # concurrent.futures.future.result(timeout=...) guarantees the UI thread
+    # is unblocked after this duration even if iter_lines() is still blocking.
+    _STREAM_TIMEOUT_SECS: int = 120
+
     def run(self) -> None:
-        """Thread entry point — streams tokens and emits signals."""
+        """Thread entry point — streams tokens and emits signals.
+
+        Uses concurrent.futures so the 120s wall-clock timeout is guaranteed:
+        future.result(timeout=120) raises FuturesTimeoutError regardless of
+        whether the underlying requests.iter_lines() is still blocked.
+        The background executor thread continues until Ollama finishes or the
+        session is closed by self._llm.cancel().
+        """
         self._t0 = time.perf_counter()
         self._running = True
 
-        try:
+        def _on_token(chunk: str) -> None:
+            if not self._running:
+                return
+            self.token_ready.emit(chunk)
+            self.elapsed_tick.emit(time.perf_counter() - self._t0)
 
-            def _on_token(chunk: str) -> None:
-                if not self._running:
-                    return
-                self.token_ready.emit(chunk)
-                elapsed = time.perf_counter() - self._t0
-                self.elapsed_tick.emit(elapsed)
+        def _on_think_token(chunk: str) -> None:
+            if not self._running:
+                return
+            self.think_token_ready.emit(chunk)
+            self.elapsed_tick.emit(time.perf_counter() - self._t0)
 
-            def _on_think_token(chunk: str) -> None:
-                if not self._running:
-                    return
-                self.think_token_ready.emit(chunk)
-                elapsed = time.perf_counter() - self._t0
-                self.elapsed_tick.emit(elapsed)
-
-            def _on_done(full_text: str, elapsed: float) -> None:
+        def _on_done(full_text: str, elapsed: float) -> None:
+            # Guard: don't emit if already timed out / cancelled
+            if self._running:
                 self.response_done.emit(full_text)
 
-            self._llm.stream_chat(
+        def _stream_fn() -> str:
+            return self._llm.stream_chat(  # type: ignore[no-any-return]
                 system=self._system,
                 history=self._history,
                 on_token=_on_token,
@@ -273,9 +286,32 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
                 brief=self._brief,
                 on_think_token=_on_think_token,
             )
+
+        # executor.shutdown(wait=False): background thread is not joined —
+        # the UI thread is freed immediately on timeout without waiting for
+        # Ollama to finish generating.
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_stream_fn)
+        executor.shutdown(wait=False)
+
+        try:
+            future.result(timeout=self._STREAM_TIMEOUT_SECS)
+        except FuturesTimeoutError:
+            # UI unblocked after 120s — suppress any late signals from the
+            # background thread, then try to close the HTTP session.
+            self._running = False
+            cancel = getattr(self._llm, "cancel", None)
+            if callable(cancel):
+                try:
+                    cancel()
+                except Exception:  # noqa: BLE001
+                    pass
+            self.error_occurred.emit(
+                f"LLM request timed out ({self._STREAM_TIMEOUT_SECS}s limit reached)"
+            )
         except Exception as exc:  # noqa: BLE001
             err_msg = str(exc)
-            # session.close() (cancel/deadline) 에 의한 종료인지 판별
+            # session.close() (user Stop) 에 의한 종료인지 판별
             is_cancel = any(
                 k in err_msg.lower()
                 for k in ("cancel", "connection aborted", "connection reset", "closed")
@@ -283,7 +319,9 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
             if is_cancel and not self._running:
                 return  # 사용자 ⏹ Stop — 에러 메시지 불필요
             elif is_cancel:
-                self.error_occurred.emit("LLM request timed out (120s limit reached)")
+                self.error_occurred.emit(
+                    f"LLM request timed out ({self._STREAM_TIMEOUT_SECS}s limit reached)"
+                )
             else:
                 self.error_occurred.emit(err_msg)
 

@@ -504,9 +504,11 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         is_timeout = "timed out" in error.lower() or "120s" in error
         if is_timeout:
             self._append_system(
-                "⏱ Request timed out (120s). CPU-only mode에서 phi4-mini-reasoning이 "
-                "너무 느립니다. 해결책: 1) GPU 설치 (권장) "
-                "2) 더 빠른 모델 사용 (llama3.2:3b 등) 3) Brief mode 확인"
+                "⏱ Request timed out (120s). "
+                "CPU-only mode: phi4-mini-reasoning is too slow to respond in time. "
+                "Solutions: 1) Install GPU (recommended) "
+                "2) Use a faster model (e.g. llama3.2:3b) "
+                "3) Ensure Brief mode is ON"
             )
         else:
             self._append_bubble("assistant", f"❌ Error: {error}")
