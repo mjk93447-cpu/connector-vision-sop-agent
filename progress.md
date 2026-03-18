@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-18 (OCR winrt→winsdk 수정 + EasyOCR fallback 추가 + Login 감지 실 테스트 완료)_
+_최종 갱신: 2026-03-18 (워크플로우 8개 → build.yml 단일 통팩 빌드로 통합 완료)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -27,6 +27,7 @@ _최종 갱신: 2026-03-18 (OCR winrt→winsdk 수정 + EasyOCR fallback 추가 
 | **YOLO26x 위반 수정** | **pretrain_pipeline.py:310 yolov8→yolov5pytorch + 규칙 준수 테스트** | **337 pass** | — |
 | **v3.0.0 버그 3건 수정** | **Bug1 OCR연동+Bug2 LLM응답성+Bug3 Training절대경로/오프라인 + get_base_dir()** | **388 pass** | — |
 | **OCR winrt→winsdk 수정** | **winsdk 임포트 수정 + EasyOCR fallback 추가 + Login 감지 실 테스트** | **413 pass** | — |
+| **워크플로우 통합** | **8개 yml → build.yml 단일 파일 (build-app + build-llm 2-job)** | **413 pass** | — |
 
 ## 현재 스택 (v3.1.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
@@ -56,8 +57,8 @@ _최종 갱신: 2026-03-18 (OCR winrt→winsdk 수정 + EasyOCR fallback 추가 
 |-----------|--------|------|---------|
 | Build & Release EXE | 23175357680 | ✅ 완료 | `connector_vision_agent-v3` |
 | Build All-in-One (통팩) | 23176720634 | ❌ dispatch 불가 | GitHub YAML 오류 (히어독) |
-| **Build Full v3.1 (OCR-First)** | **23225700565** | 🔄 **진행 중** | **`connector-agent-v3.1-allinone`** |
-| YOLO26x GUI Pretrain | 23224811871 | 🔄 진행 중 | `yolo26x-gui-pretrained-*` (showui_desktop, epochs=20) |
+| **Build Full v3.1 (OCR-First)** | **23225700565** | ❌ 실패 | — |
+| **Build Connector Vision Agent (All-in-One)** | **23237420818** | 🔄 **진행 중** | **`connector-agent-app` + `connector-agent-llm`** |
 | Portable Bundle Part2 (phi4-mini) | 23139568715 | ✅ 재활용 | `portable-part2-phi4-mini` (2.7 GB) |
 
 ### 워크플로우 YAML 이슈 근본 원인 (2026-03-18 해결)
@@ -122,8 +123,10 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 - 실 테스트: Notepad "Login" 텍스트 → `login_button` 좌표 `(958, 221)` 정상 감지
 - **Windows 7 지원 불가**: Python 3.12 + PyQt6 = Win10 최소 요구. Win7은 Python 3.8 + PyQt5 재작성 필요
 
-### 통팩 빌드 (추후)
-- OCR 수정 포함 재빌드 권장: `gh workflow run "Build Portable Offline Bundle (Split)"`
+### 통팩 빌드 (2026-03-18 진행 중)
+- run #23237420818: `gh workflow run "Build Connector Vision Agent (All-in-One)"`
+- build-app: EXE + Ollama + YOLO26x + OCR(winsdk/easyocr) + config
+- build-llm: phi4-mini-reasoning ~2.5 GB 별도 아티팩트
 
 ## 이전 다음 작업 후보 (홀드)
 - [ ] `YOLO26x GUI Pretrain` 결과(yolo26x_pretrained.pt) 아티팩트 다운로드 → `assets/models/` 배치
