@@ -1,41 +1,59 @@
-# Build outputs
+# ── 빌드/배포 아티팩트 ──
 dist/
-dist_build/
 dist-ci/
 build/
-pkg_part1/
-pkg_part2/
-*.egg-info/
-
-# Models & large binaries (절대 수정 금지 경로)
-assets/models/
-/data/models/
-*.pt
-*.gguf
-*.bin
-ollama_models/
+connector_agent/
 ollama_bin/
-
-# Logs & runtime
-logs/
-*.jsonl
-*.png
-screens/
-
-# Python cache
+ollama_models/
 __pycache__/
 *.pyc
 *.pyo
-.pytest_cache/
+*.pyd
+*.egg-info/
+*.zip
+*.spec
+
+# ── ML 모델 & 바이너리 (컨텍스트 유입 금지) ──
+*.pt
+*.gguf
+*.onnx
+*.bin
+assets/models/
+
+# ── 커버리지 & 테스트 산출물 ──
 .coverage
 htmlcov/
+.pytest_cache/
+coverage.xml
 
-# Secrets
-/config/secrets.yaml
-assets/config.proposed.json
+# ── 실험/개발 데이터 ──
+pretrain_data_test/
+docs/mockup/
+data/
 
-# Node / misc
-node_modules/
+# ── 워크트리 & IDE ──
+.claude/worktrees/
 .cursor/
-.venv/
-venv/
+
+# ── 이미지/미디어 ──
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.gif
+*.bmp
+
+# ── 로그 & 런타임 산출물 ──
+logs/
+*.jsonl
+
+# ── 대용량 문서 (필요 시 @참조) ──
+ROADMAP.md
+CHANGELOG.md
+TEST_REPORT.md
+PRETRAIN_REPORT.md
+docs/
+
+# ── Gemini/Tools 스크립트 (빈번히 참조 불필요) ──
+tools/
+gemini-quick-test.sh
