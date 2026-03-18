@@ -322,6 +322,9 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._worker.screenshot_ready.connect(self._on_screenshot_for_training)
         self._worker.sop_finished.connect(self._on_sop_finished)
         self._worker.start()
+        # Minimize window during SOP execution to prevent GUI elements
+        # (buttons, log text) from interfering with OCR screen recognition.
+        self.showMinimized()
 
     def _on_stop_sop(self) -> None:
         if self._worker and self._worker.isRunning():
@@ -382,6 +385,10 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
                 pass
         if self._audit_panel:
             self._audit_panel.refresh()
+        # Restore window after SOP completes (was minimized to avoid OCR interference).
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
 
     def _on_apply_patch(
         self, patch: Dict[str, Any], username: str, reason: str
