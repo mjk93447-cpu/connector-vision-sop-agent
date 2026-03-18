@@ -24,11 +24,12 @@ import shutil
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.config_loader import get_base_dir
 
 _DEFAULT_BASE_MODEL = (
     "yolo26x.pt"  # YOLO26x: NMS-free, highest mAP in YOLO26 family (ultralytics>=8.4.0)
 )
-_TARGET_WEIGHTS = Path("assets/models/yolo26x.pt")
+_TARGET_WEIGHTS = get_base_dir() / "assets/models/yolo26x.pt"
 
 
 class TrainingManager:

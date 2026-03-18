@@ -311,7 +311,7 @@ class TrainingWorker(QThread):  # type: ignore[misc]
         dataset_yaml: str,
         epochs: int = 10,
         batch: int = 4,
-        base_model: str = "",
+        base_model: Optional[str] = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -334,7 +334,7 @@ class TrainingWorker(QThread):  # type: ignore[misc]
                 dataset_yaml=self._dataset_yaml,
                 epochs=self._epochs,
                 batch=self._batch,
-                base_model=self._base_model or None,
+                base_model=self._base_model,
                 progress_cb=_progress_cb,
             )
             self.finished_ok.emit(str(weights))

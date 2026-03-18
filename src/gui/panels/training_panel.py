@@ -474,6 +474,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             return
         self._log(f"❌ Training error: {err}")
         self._btn_train.setEnabled(True)
+        self._btn_reload.setEnabled(True)
 
     # ------------------------------------------------------------------
     # Private — UI
