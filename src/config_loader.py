@@ -44,6 +44,17 @@ def _resolve_config_path(config_path: Path) -> Path:
     return config_path
 
 
+def get_base_dir() -> Path:
+    """EXE/소스 양 환경에서 프로젝트 루트(base) 경로를 반환한다.
+
+    - PyInstaller EXE: sys.executable 의 부모 디렉터리
+    - 소스 실행: 이 파일(src/config_loader.py)의 상위 상위 디렉터리
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
+
+
 def load_config(config_path: str | Path = "assets/config.json") -> dict[str, Any]:
     """Load and return the project configuration JSON file.
 
