@@ -49,8 +49,17 @@ class TestBackendResolution:
         engine = OCREngine(backend="paddleocr")
         assert engine.backend == "paddleocr"
 
-    def test_auto_falls_back_to_paddleocr_when_winrt_unavailable(self) -> None:
-        with patch("src.ocr_engine._check_winrt", return_value=False):
+    def test_auto_falls_back_to_easyocr_when_winrt_unavailable(self) -> None:
+        with patch("src.ocr_engine._check_winrt", return_value=False), patch(
+            "src.ocr_engine._check_easyocr", return_value=True
+        ):
+            engine = OCREngine(backend="auto")
+        assert engine.backend == "easyocr"
+
+    def test_auto_falls_back_to_paddleocr_when_both_unavailable(self) -> None:
+        with patch("src.ocr_engine._check_winrt", return_value=False), patch(
+            "src.ocr_engine._check_easyocr", return_value=False
+        ):
             engine = OCREngine(backend="auto")
         assert engine.backend == "paddleocr"
 

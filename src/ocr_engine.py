@@ -29,6 +29,21 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 _WINRT_AVAILABLE: Optional[bool] = None  # cached after first check
+_EASYOCR_AVAILABLE: Optional[bool] = None  # cached after first check
+
+
+def _check_easyocr() -> bool:
+    """Return True if EasyOCR is importable."""
+    global _EASYOCR_AVAILABLE  # noqa: PLW0603
+    if _EASYOCR_AVAILABLE is not None:
+        return _EASYOCR_AVAILABLE
+    try:
+        import easyocr as _  # noqa: F401
+
+        _EASYOCR_AVAILABLE = True
+    except Exception:
+        _EASYOCR_AVAILABLE = False
+    return _EASYOCR_AVAILABLE
 
 
 def _check_winrt() -> bool:
@@ -92,6 +107,8 @@ class OCREngine:
         try:
             if self._backend == "winrt":
                 return self._scan_winrt(img_np)
+            if self._backend == "easyocr":
+                return self._scan_easyocr(img_np)
             return self._scan_paddleocr(img_np)
         except Exception as exc:
             logger.warning("OCR scan_all error (%s): %s", self._backend, exc)
@@ -151,12 +168,14 @@ class OCREngine:
 
     @staticmethod
     def _resolve_backend(requested: str) -> str:
-        if requested == "winrt":
+        if requested in ("winrt", "paddleocr", "easyocr"):
+            return requested
+        # "auto": winrt → easyocr → paddleocr
+        if _check_winrt():
             return "winrt"
-        if requested == "paddleocr":
-            return "paddleocr"
-        # "auto": prefer WinRT on Windows
-        return "winrt" if _check_winrt() else "paddleocr"
+        if _check_easyocr():
+            return "easyocr"
+        return "paddleocr"
 
     # ------------------------------------------------------------------
     # WinRT backend (Windows 10 1803+ built-in OCR)
@@ -344,6 +363,65 @@ class OCREngine:
         except Exception as exc:
             logger.warning("PaddleOCR initialization failed: %s", exc)
             self._paddle = None
+        return self._paddle
+
+    # ------------------------------------------------------------------
+    # EasyOCR backend (PyTorch-based, works without WinRT)
+    # ------------------------------------------------------------------
+
+    def _scan_easyocr(self, img_np: np.ndarray) -> List[TextRegion]:
+        """Use EasyOCR for text detection (non-WinRT fallback)."""
+        reader = self._get_easyocr()
+        if reader is None:
+            logger.warning("EasyOCR not available — returning empty OCR result")
+            return []
+
+        try:
+            raw = reader.readtext(img_np)
+        except Exception as exc:
+            logger.warning("EasyOCR inference error: %s", exc)
+            return []
+
+        regions: List[TextRegion] = []
+        for bbox_pts, text, conf in raw or []:
+            # bbox_pts: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
+            xs = [int(p[0]) for p in bbox_pts]
+            ys = [int(p[1]) for p in bbox_pts]
+            x_min, y_min = min(xs), min(ys)
+            bw = max(xs) - x_min
+            bh = max(ys) - y_min
+            cx = x_min + bw // 2
+            cy = y_min + bh // 2
+            regions.append(
+                TextRegion(
+                    text=str(text),
+                    bbox=(x_min, y_min, bw, bh),
+                    confidence=float(conf),
+                    center=(cx, cy),
+                    source="easyocr",
+                )
+            )
+        return regions
+
+    def _get_easyocr(self) -> Optional[object]:
+        """Lazy-load EasyOCR Reader instance."""
+        if self._paddle is not None and hasattr(self._paddle, "readtext"):
+            return self._paddle  # reuse slot for easyocr reader
+        if self._backend == "easyocr" and self._paddle is None:
+            try:
+                import easyocr  # noqa: PLC0415
+
+                self._paddle = easyocr.Reader(["en"], gpu=False, verbose=False)
+                logger.info("EasyOCR Reader initialized (CPU, en)")
+            except ImportError:
+                logger.warning(
+                    "easyocr package not installed. "
+                    "Install with: pip install easyocr"
+                )
+                self._paddle = None
+            except Exception as exc:
+                logger.warning("EasyOCR initialization failed: %s", exc)
+                self._paddle = None
         return self._paddle
 
     # ------------------------------------------------------------------
