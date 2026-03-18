@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-18 (v3.2.0 — Bug2 LLM 무한 대기 완전 수정 + reasoning_content 호환 + push + 빌드 트리거)_
+_최종 갱신: 2026-03-18 (v3.2.1 — Bug2 v2 재수정: think=False payload 최상위 이동 + concurrent.futures 실제 타임아웃)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -30,6 +30,7 @@ _최종 갱신: 2026-03-18 (v3.2.0 — Bug2 LLM 무한 대기 완전 수정 + re
 | **워크플로우 통합** | **8개 yml → build.yml 단일 파일 (build-app + build-llm 2-job)** | **413 pass** | — |
 | **Bug2 LLM 수정** | **_get_optimized_options (GPU/CPU 자동) + think=False + 120s deadline + timeout=(10,30)** | **399 pass** | — |
 | **Bug2 호환성 보강** | **reasoning_content 별도 필드 처리 (Ollama 0.7+ phi4-mini-reasoning)** | **399 pass** | — |
+| **Bug2 v2 재수정** | **think=False payload 최상위 이동 + concurrent.futures 실제 타임아웃** | **403 pass** | — |
 
 ## 현재 스택 (v3.2.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
@@ -61,7 +62,8 @@ _최종 갱신: 2026-03-18 (v3.2.0 — Bug2 LLM 무한 대기 완전 수정 + re
 | Build All-in-One (통팩) | 23176720634 | ❌ dispatch 불가 | GitHub YAML 오류 (히어독) |
 | **Build Full v3.1 (OCR-First)** | **23225700565** | ❌ 실패 | — |
 | Build Connector Vision Agent v3.1 | 23237420818 | ❓ 확인 필요 | `connector-agent-app` + `connector-agent-llm` |
-| **Build Connector Vision Agent v3.2** | **TBD** | 🔄 **트리거 예정** | **`connector-agent-app` + `connector-agent-llm`** |
+| **Build Connector Vision Agent v3.2.0** | **23239456447** | ❓ 확인 필요 | `connector-agent-app` + `connector-agent-llm` |
+| **Build Connector Vision Agent v3.2.1** | **23242119709** | 🔄 트리거 완료 | `connector-agent-app` + `connector-agent-llm` |
 | Portable Bundle Part2 (phi4-mini) | 23139568715 | ✅ 재활용 | `portable-part2-phi4-mini` (2.7 GB) |
 
 ### 워크플로우 YAML 이슈 근본 원인 (2026-03-18 해결)
@@ -120,17 +122,17 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 
 ## ★ 다음 작업
 
-### Bug2 LLM 무한 대기 수정 완료 (2026-03-18) — v3.2.0
-- **근본 원인 A**: brief `max_tokens=256`이 thinking 토큰 소진 → 답변 0토큰 → 512로 상향
-- **근본 원인 B**: GPU/CPU 코어 미활용 → `_get_optimized_options()` 자동 감지
-  - GPU: `num_gpu=99` (전 레이어 오프로딩)
-  - CPU: `num_thread=cpu_count-1`, `use_mlock=True`
-- brief=True 시 `options.think=False` + `num_ctx=4096` + system prompt 힌트
-- 120s 데드라인 타이머 (threading.Timer → session.cancel())
-- `timeout=(10,30)`: connect 10s / read 30s per chunk
-- `reasoning_content` 별도 필드 처리 (Ollama 0.7+)
-- **기대 성능**: GPU ~수초 / CPU 8코어 ~30-90초 (기존 800초+)
-- 커밋: ee0dc4a, 0fe9957, 80f835f
+### Bug2 LLM 무한 대기 재수정 완료 (2026-03-18) — v3.2.1
+- **이전 수정 실패 원인**: `think=False`를 `options{}` 안에 넣었으나 Ollama는 이를 llama.cpp 파라미터로 오인해 완전히 무시 → phi4-mini-reasoning 무제한 thinking 지속
+- **근본 원인 A (v2)**: `think=False`를 payload **최상위**로 이동 → Ollama가 올바르게 인식
+- **근본 원인 B (v2)**: `session.close()`는 활성 `iter_lines()` 블록 미중단 (urllib3 한계) → `concurrent.futures.ThreadPoolExecutor` + `future.result(timeout=120)` 교체
+  - UI 스레드가 120s 후 반드시 해제됨 (iter_lines() 상태 무관)
+  - `executor.shutdown(wait=False)` → 백그라운드 스트림 스레드는 계속 실행하되 UI 차단 없음
+- `_get_optimized_options()`에서 `think` 제거 (payload 최상위 전담)
+- `threading.Timer` 제거 (concurrent.futures가 타임아웃 담당)
+- 에러 메시지 완전 영문화 (인도 엔지니어 대응)
+- **기대 성능**: brief=True + think=False → CPU 8코어 ~5-30초, GPU ~1-5초
+- 커밋: 2739899
 
 ### OCR 수정 완료 (2026-03-18)
 - `winrt` → `winsdk` 임포트 수정으로 WinRT OCR 정상 동작 확인
