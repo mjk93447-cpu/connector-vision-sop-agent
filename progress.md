@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-18 (워크플로우 8개 → build.yml 단일 통팩 빌드로 통합 완료)_
+_최종 갱신: 2026-03-18 (Bug2 LLM 800초 무한 대기 수정 — 하드웨어 최적화 + 120s 타임아웃)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -28,6 +28,7 @@ _최종 갱신: 2026-03-18 (워크플로우 8개 → build.yml 단일 통팩 빌
 | **v3.0.0 버그 3건 수정** | **Bug1 OCR연동+Bug2 LLM응답성+Bug3 Training절대경로/오프라인 + get_base_dir()** | **388 pass** | — |
 | **OCR winrt→winsdk 수정** | **winsdk 임포트 수정 + EasyOCR fallback 추가 + Login 감지 실 테스트** | **413 pass** | — |
 | **워크플로우 통합** | **8개 yml → build.yml 단일 파일 (build-app + build-llm 2-job)** | **413 pass** | — |
+| **Bug2 LLM 수정** | **_get_optimized_options (GPU/CPU 자동) + think=False + 120s deadline + timeout=(10,30)** | **399 pass** | — |
 
 ## 현재 스택 (v3.1.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
@@ -116,6 +117,14 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
 
 ## ★ 다음 작업
+
+### Bug2 LLM 무한 대기 수정 완료 (2026-03-18)
+- **근본 원인**: brief `max_tokens=256`이 thinking 토큰 소진 → 답변 0토큰
+- `_get_optimized_options()`: GPU num_gpu=99 / CPU num_thread 자동 설정
+- brief=True 시 `options.think=False` + `num_ctx=4096` + system prompt 힌트
+- 120s 데드라인 타이머 (threading.Timer → session.cancel())
+- `timeout=(10,30)`: connect/read timeout 단축
+- 기대 성능: GPU ~수초, CPU 8코어 최적화 ~30-90초
 
 ### OCR 수정 완료 (2026-03-18)
 - `winrt` → `winsdk` 임포트 수정으로 WinRT OCR 정상 동작 확인
