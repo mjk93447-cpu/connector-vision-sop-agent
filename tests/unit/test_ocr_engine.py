@@ -175,9 +175,12 @@ class TestFindText:
 
 class TestPaddleOCRParsing:
     def test_parse_paddle_output_format(self) -> None:
-        """Verify _scan_paddleocr converts PaddleOCR raw output to TextRegion list."""
+        """Verify _scan_paddleocr converts PaddleOCR raw output to TextRegion list.
+        Uses spec=['ocr'] so hasattr(mock, 'predict') is False → 2.x code path taken.
+        """
         engine = OCREngine(backend="paddleocr")
-        mock_paddle = MagicMock()
+        # Use spec to prevent MagicMock from synthesising a 'predict' attribute
+        mock_paddle = MagicMock(spec=["ocr"])
         # PaddleOCR returns: [[ [[[x1,y1],[x2,y1],[x2,y2],[x1,y2]], ("TEXT", 0.99)], ... ]]
         mock_paddle.ocr.return_value = [
             [
@@ -196,7 +199,7 @@ class TestPaddleOCRParsing:
 
     def test_handles_empty_paddle_output(self) -> None:
         engine = OCREngine(backend="paddleocr")
-        mock_paddle = MagicMock()
+        mock_paddle = MagicMock(spec=["ocr"])
         mock_paddle.ocr.return_value = [[]]
         engine._paddle = mock_paddle
         results = engine._scan_paddleocr(_make_bgr())
@@ -204,7 +207,7 @@ class TestPaddleOCRParsing:
 
     def test_handles_none_paddle_output(self) -> None:
         engine = OCREngine(backend="paddleocr")
-        mock_paddle = MagicMock()
+        mock_paddle = MagicMock(spec=["ocr"])
         mock_paddle.ocr.return_value = None
         engine._paddle = mock_paddle
         results = engine._scan_paddleocr(_make_bgr())
@@ -295,21 +298,21 @@ class TestWinRTEnglishFallback:
         mock_winrt.windows = mock_windows
 
         return {
-            "winrt": mock_winrt,
-            "winrt.windows": mock_windows,
-            "winrt.windows.media": mock_media,
-            "winrt.windows.media.ocr": mock_wocr,
-            "winrt.windows.globalization": mock_wg,
-            "winrt.windows.graphics": mock_graphics,
-            "winrt.windows.graphics.imaging": mock_wgi,
-            "winrt.windows.storage": mock_storage,
-            "winrt.windows.storage.streams": mock_wss,
+            "winsdk": mock_winrt,
+            "winsdk.windows": mock_windows,
+            "winsdk.windows.media": mock_media,
+            "winsdk.windows.media.ocr": mock_wocr,
+            "winsdk.windows.globalization": mock_wg,
+            "winsdk.windows.graphics": mock_graphics,
+            "winsdk.windows.graphics.imaging": mock_wgi,
+            "winsdk.windows.storage": mock_storage,
+            "winsdk.windows.storage.streams": mock_wss,
         }
 
     def _clear_winrt_imports(self) -> None:
-        """Remove any cached winrt sub-modules so patch.dict takes effect."""
+        """Remove any cached winsdk sub-modules so patch.dict takes effect."""
         for key in list(sys.modules.keys()):
-            if key.startswith("winrt"):
+            if key.startswith("winsdk"):
                 del sys.modules[key]
 
     def test_tries_en_us_when_profile_returns_none(self) -> None:
@@ -325,7 +328,7 @@ class TestWinRTEnglishFallback:
             result = engine._scan_winrt(_make_bgr())
         assert isinstance(result, list)
         mods[
-            "winrt.windows.media.ocr"
+            "winsdk.windows.media.ocr"
         ].OcrEngine.try_create_from_language.assert_called_once()
 
     def test_raises_when_both_winrt_none(self) -> None:

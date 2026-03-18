@@ -37,8 +37,8 @@ def _check_winrt() -> bool:
     if _WINRT_AVAILABLE is not None:
         return _WINRT_AVAILABLE
     try:
-        import winrt.windows.media.ocr as _  # noqa: F401
-        import winrt.windows.graphics.imaging as _g  # noqa: F401
+        import winsdk.windows.media.ocr as _  # noqa: F401
+        import winsdk.windows.graphics.imaging as _g  # noqa: F401
 
         _WINRT_AVAILABLE = True
     except Exception:
@@ -171,9 +171,9 @@ class OCREngine:
         try:
             import asyncio  # noqa: PLC0415
 
-            import winrt.windows.graphics.imaging as wgi  # noqa: PLC0415
-            import winrt.windows.media.ocr as wocr  # noqa: PLC0415
-            import winrt.windows.storage.streams as wss  # noqa: PLC0415
+            import winsdk.windows.graphics.imaging as wgi  # noqa: PLC0415
+            import winsdk.windows.media.ocr as wocr  # noqa: PLC0415
+            import winsdk.windows.storage.streams as wss  # noqa: PLC0415
         except ImportError:
             logger.debug("WinRT OCR unavailable — falling back to PaddleOCR")
             self._backend = "paddleocr"
@@ -193,7 +193,7 @@ class OCREngine:
             ibuf.length = len(raw_bytes)  # type: ignore[attr-defined]
             # Copy bytes via DataWriter
             dw = wss.DataWriter()
-            dw.write_bytes(list(raw_bytes))
+            dw.write_bytes(raw_bytes)
             ibuf = dw.detach_buffer()
 
             bmp = wgi.SoftwareBitmap.create_copy_from_buffer(
@@ -208,7 +208,7 @@ class OCREngine:
             if ocr_engine is None:
                 # Fallback: explicitly request English OCR (available on most Windows 10/11)
                 try:
-                    import winrt.windows.globalization as wg  # noqa: PLC0415
+                    import winsdk.windows.globalization as wg  # noqa: PLC0415
 
                     lang = wg.Language("en-US")
                     ocr_engine = wocr.OcrEngine.try_create_from_language(lang)
@@ -267,7 +267,25 @@ class OCREngine:
 
         preprocessed = self._preprocess(img_np)
         try:
-            raw = paddle.ocr(preprocessed, cls=True)
+            # PaddleOCR 3.x uses predict(); 2.x uses ocr()
+            if hasattr(paddle, "predict"):
+                result_list = paddle.predict(preprocessed)
+                # 3.x returns list of OCRResult objects; normalize to 2.x list-of-pages format
+                raw = []
+                for ocr_result in result_list or []:
+                    page = []
+                    rec_texts = getattr(ocr_result, "rec_texts", None)
+                    rec_scores = getattr(ocr_result, "rec_scores", None)
+                    dt_polys = getattr(ocr_result, "dt_polys", None)
+                    if rec_texts and dt_polys:
+                        for i, text_val in enumerate(rec_texts):
+                            conf_val = rec_scores[i] if rec_scores else 1.0
+                            poly = dt_polys[i] if i < len(dt_polys) else None
+                            if poly is not None:
+                                page.append([poly, (str(text_val), float(conf_val))])
+                    raw.append(page)
+            else:
+                raw = paddle.ocr(preprocessed, cls=True)
         except Exception as exc:
             logger.warning("PaddleOCR inference error: %s", exc)
             return []
@@ -309,16 +327,18 @@ class OCREngine:
         try:
             from paddleocr import PaddleOCR  # noqa: PLC0415
 
-            self._paddle = PaddleOCR(
-                use_angle_cls=True,
-                lang="en",
-                show_log=False,
-                use_gpu=False,
-            )
+            # PaddleOCR 3.x removed use_gpu and use_angle_cls args; 2.x still accepts them.
+            # Try 3.x-compatible constructor first, fall back to 2.x signature.
+            try:
+                self._paddle = PaddleOCR(lang="en", show_log=False)
+            except TypeError:
+                self._paddle = PaddleOCR(
+                    use_angle_cls=True, lang="en", show_log=False, use_gpu=False
+                )
         except ImportError:
             logger.warning(
                 "paddleocr package not installed. "
-                "Install with: pip install paddleocr paddlepaddle-cpu"
+                "Install with: pip install paddleocr paddlepaddle"
             )
             self._paddle = None
         except Exception as exc:
