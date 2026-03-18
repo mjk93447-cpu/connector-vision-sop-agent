@@ -6,6 +6,7 @@ Uses mocks for WinRT and PaddleOCR — no external dependencies required.
 
 from __future__ import annotations
 
+import sys
 from typing import List
 from unittest.mock import MagicMock, patch
 
@@ -228,3 +229,138 @@ class TestPreprocess:
         # Should be larger (border added)
         assert out.shape[0] > 100
         assert out.shape[1] > 200
+
+
+# ---------------------------------------------------------------------------
+# WinRT en-US fallback logic
+# ---------------------------------------------------------------------------
+#
+# Strategy: instead of mocking the deep WinRT call chain, we patch the
+# internal helper that wraps the WinRT import block.  Specifically, we
+# monkey-patch OCREngine._scan_winrt at a higher level to exercise only
+# the fallback branching logic that was added in commit 7b25dde.
+#
+# The branching lives *inside* _scan_winrt, so the cleanest approach is
+# to patch `winrt.windows.media.ocr.OcrEngine` method return values and
+# ensure recognize_async is a coroutine (AsyncMock).
+
+
+class TestWinRTEnglishFallback:
+    def _build_winrt_sys_modules(
+        self,
+        profile_engine: object,
+        lang_engine: object,
+    ) -> dict:
+        """Build a sys.modules patch dict whose attribute hierarchy mirrors the real WinRT tree.
+
+        Python resolves `import winrt.windows.media.ocr as wocr` by following the attribute
+        chain on the top-level `winrt` object, not by direct sys.modules key lookup.  We must
+        therefore wire each level so attribute traversal reaches our configured mock.
+        """
+        from unittest.mock import AsyncMock
+
+        mock_wocr = MagicMock()
+        mock_wocr.OcrEngine.try_create_from_user_profile_languages.return_value = (
+            profile_engine
+        )
+        mock_wocr.OcrEngine.try_create_from_language.return_value = lang_engine
+
+        if lang_engine is not None:
+            mock_ocr_result = MagicMock()
+            mock_ocr_result.lines = []
+            lang_engine.recognize_async = AsyncMock(return_value=mock_ocr_result)
+
+        if profile_engine is not None:
+            mock_ocr_result2 = MagicMock()
+            mock_ocr_result2.lines = []
+            profile_engine.recognize_async = AsyncMock(return_value=mock_ocr_result2)
+
+        mock_wg = MagicMock()
+        mock_wgi = MagicMock()
+        mock_wss = MagicMock()
+
+        # Build the object attribute hierarchy
+        mock_media = MagicMock()
+        mock_media.ocr = mock_wocr
+        mock_graphics = MagicMock()
+        mock_graphics.imaging = mock_wgi
+        mock_storage = MagicMock()
+        mock_storage.streams = mock_wss
+        mock_windows = MagicMock()
+        mock_windows.media = mock_media
+        mock_windows.globalization = mock_wg
+        mock_windows.graphics = mock_graphics
+        mock_windows.storage = mock_storage
+        mock_winrt = MagicMock()
+        mock_winrt.windows = mock_windows
+
+        return {
+            "winrt": mock_winrt,
+            "winrt.windows": mock_windows,
+            "winrt.windows.media": mock_media,
+            "winrt.windows.media.ocr": mock_wocr,
+            "winrt.windows.globalization": mock_wg,
+            "winrt.windows.graphics": mock_graphics,
+            "winrt.windows.graphics.imaging": mock_wgi,
+            "winrt.windows.storage": mock_storage,
+            "winrt.windows.storage.streams": mock_wss,
+        }
+
+    def _clear_winrt_imports(self) -> None:
+        """Remove any cached winrt sub-modules so patch.dict takes effect."""
+        for key in list(sys.modules.keys()):
+            if key.startswith("winrt"):
+                del sys.modules[key]
+
+    def test_tries_en_us_when_profile_returns_none(self) -> None:
+        """profile returns None → try_create_from_language called once → result list returned."""
+        mock_lang_engine = MagicMock()
+        self._clear_winrt_imports()
+        mods = self._build_winrt_sys_modules(
+            profile_engine=None,
+            lang_engine=mock_lang_engine,
+        )
+        engine = OCREngine(backend="winrt")
+        with patch.dict(sys.modules, mods):
+            result = engine._scan_winrt(_make_bgr())
+        assert isinstance(result, list)
+        mods[
+            "winrt.windows.media.ocr"
+        ].OcrEngine.try_create_from_language.assert_called_once()
+
+    def test_raises_when_both_winrt_none(self) -> None:
+        """Both profile and en-US return None → RuntimeError caught → PaddleOCR fallback → []."""
+        self._clear_winrt_imports()
+        mods = self._build_winrt_sys_modules(profile_engine=None, lang_engine=None)
+        engine = OCREngine(backend="winrt")
+        engine._scan_paddleocr = lambda img: []  # type: ignore[method-assign]
+        with patch.dict(sys.modules, mods):
+            result = engine._scan_winrt(_make_bgr())
+        # RuntimeError raised, caught by outer except → paddleocr fallback
+        assert result == []
+        assert engine._backend == "paddleocr"
+
+
+# ---------------------------------------------------------------------------
+# OCR health check (_check_ocr_health in src/main.py)
+# ---------------------------------------------------------------------------
+
+
+class TestOcrHealthCheck:
+    def test_health_check_ok_when_scan_returns_regions(self) -> None:
+        from src.main import _check_ocr_health
+
+        mock_ocr = MagicMock()
+        mock_ocr.scan_all.return_value = [MagicMock(text="Login")]
+        mock_ocr._backend = "winrt"
+        result = _check_ocr_health(mock_ocr)
+        assert "OK" in result
+
+    def test_health_check_warn_when_scan_returns_empty(self) -> None:
+        from src.main import _check_ocr_health
+
+        mock_ocr = MagicMock()
+        mock_ocr.scan_all.return_value = []
+        mock_ocr._backend = "paddleocr"
+        result = _check_ocr_health(mock_ocr)
+        assert "WARN" in result
