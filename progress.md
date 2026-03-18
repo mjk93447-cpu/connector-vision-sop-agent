@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-17 (OCR-First 파이프라인 완성 — 336 pass)_
+_최종 갱신: 2026-03-18 (YOLO26x GUI Pretrain 재실행 — showui_desktop epochs=20)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -46,12 +46,17 @@ _최종 갱신: 2026-03-17 (OCR-First 파이프라인 완성 — 336 pass)_
   - `📷 캡처` 버튼: numpy+QPixmap+YOLO 통합
 - **main.py**: `vision` 추출 → `MainWindow` + `VisionPanel.set_vision_engine()` 전달
 
-## 빌드 이력 (v3.0)
+## 빌드 이력 (v3.0~3.1)
 | 워크플로우 | Run ID | 상태 | 아티팩트 |
 |-----------|--------|------|---------|
 | Build & Release EXE | 23175357680 | ✅ 완료 | `connector_vision_agent-v3` |
-| **Build All-in-One (통팩)** | **23176720634** | 🔄 진행 중 | **`connector-agent-v3-allinone`** |
+| Build All-in-One (통팩) | 23176720634 | ❌ dispatch 불가 | GitHub 등록 이슈 |
+| **YOLO26x GUI Pretrain** | **23224811871** | 🔄 **진행 중** | **`yolo26x-gui-pretrained-*`** (showui_desktop, epochs=20) |
 | Portable Bundle Part2 (phi4-mini) | 23139568715 | ✅ 재활용 | `portable-part2-phi4-mini` (2.7 GB) |
+
+### 워크플로우 등록 이슈 (2026-03-18 발견)
+- `build-allinone.yml`, `build-allinone-v2.yml`, `build-package.yml`, `build-portable-split.yml` 모두 GitHub에서 `workflow_dispatch` 없는 것으로 인식 (캐싱/중복 이슈)
+- **해결 방안**: 워크플로우 파일 삭제 후 재등록, 또는 release.yml 방식으로 push+dispatch 동시 트리거 추가
 
 ### 통팩 조립 방법 (2단계)
 1. `connector-agent-v3-allinone` 압축 해제
@@ -103,12 +108,12 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
 
 ## 다음 작업 후보
-- [ ] Actions → `YOLO26x GUI Pretrain` 워크플로우 실행 (rico_widget, epochs=20)
-- [ ] 생성된 `yolo26x_pretrained.pt` 아티팩트 → `assets/models/` 배치 → 통팩 재빌드
+- [x] Actions → `YOLO26x GUI Pretrain` 워크플로우 실행 (showui_desktop, epochs=20) — run #23224811871 실행 중
+- [ ] `YOLO26x GUI Pretrain` 결과(yolo26x_pretrained.pt) 아티팩트 다운로드 → `assets/models/` 배치
+- [ ] 통팩 빌드 워크플로우 재등록 수정 (dispatch 불가 이슈 해결) → 통팩 재빌드
 - [ ] `yolo26x_pretrained.pt` → Tab7 Training Panel에서 OLED 파인튜닝 실행
 - [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제)
 - [ ] build_exe.spec에 paddleocr/winrt hidden imports 추가
-- [ ] build-allinone.yml에 OCR deps 포함 → 통팩 재빌드
 - [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
