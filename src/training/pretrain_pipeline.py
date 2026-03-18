@@ -307,7 +307,8 @@ class PretrainPipeline:
         rf = Roboflow(api_key=key)
         project = rf.workspace("roboflow-100").project("pcb-components-4x9w5")
         dataset = project.version(1).download(
-            "yolov8", location=str(self.output_dir / "_roboflow_pcb")
+            "yolov5pytorch",  # YOLO26x 규칙 준수 — yolov8 금지, 동일 txt 포맷
+            location=str(self.output_dir / "_roboflow_pcb"),
         )
 
         # PCB dataset은 YOLO 포맷으로 제공됨 — 이미지·레이블을 pretrain 디렉터리로 복사

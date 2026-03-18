@@ -549,3 +549,55 @@ class TestDatasetYamlContent:
         pipeline.prepare_dataset_yaml()
         assert (tmp_path / "train" / "images").exists()
         assert (tmp_path / "val" / "images").exists()
+
+
+# ---------------------------------------------------------------------------
+# YOLO26x 규칙 준수 검증
+# ---------------------------------------------------------------------------
+
+
+class TestYolo26xRuleCompliance:
+    def test_roboflow_download_uses_yolov5pytorch_not_yolov8(
+        self, tmp_path: Path
+    ) -> None:
+        """Roboflow 다운로드 포맷이 yolov5pytorch인지 검증 (yolov8 금지 규칙).
+
+        roboflow 패키지가 미설치 환경에서도 sys.modules mock으로 실행 가능.
+        """
+        import os
+        import sys
+
+        mock_dataset = MagicMock()
+        mock_dataset.location = str(tmp_path / "_roboflow_pcb")
+        (tmp_path / "_roboflow_pcb" / "train" / "images").mkdir(
+            parents=True, exist_ok=True
+        )
+        (tmp_path / "_roboflow_pcb" / "train" / "labels").mkdir(
+            parents=True, exist_ok=True
+        )
+
+        mock_download = MagicMock(return_value=mock_dataset)
+        mock_version = MagicMock()
+        mock_version.download = mock_download
+        mock_project = MagicMock()
+        mock_project.version.return_value = mock_version
+        mock_workspace = MagicMock()
+        mock_workspace.project.return_value = mock_project
+        mock_rf_instance = MagicMock()
+        mock_rf_instance.workspace.return_value = mock_workspace
+
+        mock_rf_class = MagicMock(return_value=mock_rf_instance)
+        mock_roboflow_module = MagicMock()
+        mock_roboflow_module.Roboflow = mock_rf_class
+
+        with patch.dict(sys.modules, {"roboflow": mock_roboflow_module}), patch.dict(
+            os.environ, {"ROBOFLOW_API_KEY": "test_key"}
+        ):
+            pipeline = PretrainPipeline(output_dir=tmp_path)
+            pipeline.build_pcb_components_dataset(max_samples=0)
+
+        fmt = mock_download.call_args[0][0]
+        assert (
+            fmt == "yolov5pytorch"
+        ), f"YOLO26x 규칙 위반: '{fmt}' 사용됨 (yolov8 금지)"
+        assert "yolov8" not in fmt
