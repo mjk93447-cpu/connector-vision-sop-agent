@@ -23,8 +23,9 @@ Usage
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -34,6 +35,11 @@ from src.vision_engine import DEFAULT_TARGET_LABELS
 
 # Dataset root: absolute path so EXE and source-run both resolve correctly
 _DEFAULT_DATA_ROOT = get_base_dir() / "training_data"
+
+# Matches the systematic timestamp suffix: _{YYYYMMDD}_{HHMMSS}[_{n}] at end of stem
+# e.g.  "login_button_20260318_143022"  →  class = "login_button"
+#        "connector_pin_20260318_143022_001"  →  class = "connector_pin"
+_TIMESTAMP_RE = re.compile(r"_\d{8}_\d{6}(?:_\d+)?$")
 
 # OLED class names in fixed order (index == YOLO class id)
 OLED_CLASSES: List[str] = list(DEFAULT_TARGET_LABELS)
@@ -113,9 +119,74 @@ class DatasetManager:
         lbl_path.write_text("\n".join(lines), encoding="utf-8")
         return img_path
 
-    def save_dataset_yaml(self) -> Path:
-        """Write ``training_data/dataset.yaml`` for ultralytics training."""
+    def get_class_image_counts(self) -> Dict[str, int]:
+        """Return number of images per class subfolder under ``images/``.
+
+        Scans ``images/{cls}/`` for every directory that exists.
+        Classes without a subfolder return 0.
+        Also counts legacy flat images (``images/{cls}_*.png``) for any class
+        not yet stored in a subfolder.
+        """
+        counts: Dict[str, int] = {}
+        if not self.images_dir.exists():
+            return counts
+
+        # Class subfolders created by new save logic
+        for cls_dir in sorted(self.images_dir.iterdir()):
+            if cls_dir.is_dir():
+                counts[cls_dir.name] = len(list(cls_dir.rglob("*.png")))
+
+        # Legacy flat images: credit them to the class derived from the filename.
+        # Filename convention: {class}_{YYYYMMDD}_{HHMMSS}[_{n}].png
+        # Strip the trailing timestamp to recover the class name.
+        for img_file in self.images_dir.glob("*.png"):
+            stem = img_file.stem
+            m = _TIMESTAMP_RE.search(stem)
+            cls = stem[: m.start()] if m else stem
+            if cls:
+                counts[cls] = counts.get(cls, 0) + 1
+
+        return counts
+
+    def save_dataset_yaml(self, selected_classes: Optional[List[str]] = None) -> Path:
+        """Write ``training_data/dataset.yaml`` for ultralytics training.
+
+        Parameters
+        ----------
+        selected_classes:
+            Optional list of class names to include.  When provided only the
+            matching ``images/{cls}/`` subfolders are listed in the yaml so
+            YOLO trains on exactly those classes' images.  Subfolders that
+            do not exist on disk are silently skipped.
+
+            Pass ``None`` (default) to scan the entire ``images/`` directory
+            recursively — equivalent to the previous behaviour.
+        """
         yaml_path = self.data_root / "dataset.yaml"
+
+        if selected_classes:
+            # Keep only subfolders that exist and contain at least one image
+            valid_classes = [
+                cls
+                for cls in selected_classes
+                if (self.images_dir / cls).is_dir()
+                and any((self.images_dir / cls).rglob("*.png"))
+            ]
+            if valid_classes:
+                paths_str = "\n".join(f"  - images/{cls}" for cls in valid_classes)
+                content = (
+                    f"path: {self.data_root.resolve()}\n"
+                    f"train:\n{paths_str}\n"
+                    f"val:\n{paths_str}\n"
+                    f"nc: {len(OLED_CLASSES)}\n"
+                    f"names: {json.dumps(OLED_CLASSES, ensure_ascii=False)}\n"
+                )
+                yaml_path.write_text(content, encoding="utf-8")
+                return yaml_path
+            # Fall through to default if no valid subfolders found
+
+        # Default: scan entire images/ directory (ultralytics handles subfolders
+        # recursively when given a parent directory path)
         content = (
             f"path: {self.data_root.resolve()}\n"
             "train: images\n"

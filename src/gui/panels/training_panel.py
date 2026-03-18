@@ -40,8 +40,10 @@ try:
     )
     from PyQt6.QtWidgets import (
         QButtonGroup,
+        QCheckBox,
         QComboBox,
         QFileDialog,
+        QGridLayout,
         QGroupBox,
         QHBoxLayout,
         QLabel,
@@ -416,6 +418,8 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._current_image_name: Optional[str] = None
         self._current_bgr: Optional[Any] = None
         self._training_worker: Optional[Any] = None
+        # Class selection checkboxes: {class_name: QCheckBox}
+        self._class_checkboxes: Dict[str, Any] = {}
 
         if _QT_AVAILABLE:
             self._setup_ui()
@@ -594,6 +598,53 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         btn_refresh.clicked.connect(self._refresh_stats)
         sv.addWidget(btn_refresh)
         rv.addWidget(stats_grp)
+
+        # ---- Class selection -----------------------------------------
+        class_grp = QGroupBox("📚 Training Classes")
+        class_grp.setToolTip(
+            "Select which class folders to include in training.\n"
+            "Only classes that have saved annotated images are enabled.\n"
+            "Refresh Stats to update counts after adding new annotations."
+        )
+        class_cv = QVBoxLayout(class_grp)
+        class_cv.setSpacing(4)
+
+        # Select All / Deselect All buttons
+        sel_btn_row = QHBoxLayout()
+        btn_sel_all = QPushButton("✅ Select All")
+        btn_sel_all.setToolTip("Check all classes that have annotated images")
+        btn_sel_all.clicked.connect(self._on_select_all_classes)
+        btn_desel_all = QPushButton("☐ Deselect All")
+        btn_desel_all.setToolTip("Uncheck all class checkboxes")
+        btn_desel_all.clicked.connect(self._on_deselect_all_classes)
+        sel_btn_row.addWidget(btn_sel_all)
+        sel_btn_row.addWidget(btn_desel_all)
+        sel_btn_row.addStretch()
+        class_cv.addLayout(sel_btn_row)
+
+        # Checkbox grid — 2 columns
+        grid_widget = QWidget()
+        self._class_grid = QGridLayout(grid_widget)
+        self._class_grid.setContentsMargins(0, 0, 0, 0)
+        self._class_grid.setHorizontalSpacing(8)
+        self._class_grid.setVerticalSpacing(2)
+        for i, cls in enumerate(_TRAIN_CLASSES):
+            cb = QCheckBox(f"{cls}  (0 imgs)")
+            cb.setEnabled(False)
+            cb.setChecked(False)
+            self._class_checkboxes[cls] = cb
+            self._class_grid.addWidget(cb, i // 2, i % 2)
+        class_cv.addWidget(grid_widget)
+
+        # Note about all-images fallback
+        note_lbl = QLabel(
+            "ℹ If no class is selected, all images in training_data/images/ are used."
+        )
+        note_lbl.setStyleSheet("color: #546e7a; font-size: 10px;")
+        note_lbl.setWordWrap(True)
+        class_cv.addWidget(note_lbl)
+
+        rv.addWidget(class_grp)
 
         # Training config
         train_grp = QGroupBox("⚙ Training Settings")
@@ -785,14 +836,28 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             )
             return
 
-        yaml_path = self._dm.save_dataset_yaml()
+        # Collect selected training classes (checked + enabled checkboxes)
+        selected_classes = [
+            cls
+            for cls, cb in self._class_checkboxes.items()
+            if cb.isChecked() and cb.isEnabled()
+        ]
+
+        yaml_path = self._dm.save_dataset_yaml(
+            selected_classes=selected_classes if selected_classes else None
+        )
         epochs = self._spin_epochs.value()
         batch = self._spin_batch.value()
 
         # Get selected base model
         base_model = self._combo_base.currentData() or "assets/models/yolo26x.pt"
 
-        self._log(f"▶ Starting training: {epochs} epochs, batch={batch}")
+        if selected_classes:
+            self._log(f"▶ Starting training: {epochs} epochs, batch={batch}")
+            self._log(f"  Classes: {', '.join(selected_classes)}")
+        else:
+            self._log(f"▶ Starting training: {epochs} epochs, batch={batch}")
+            self._log("  Classes: all images (no class filter)")
         self._log(f"  Dataset: {yaml_path}")
         self._log(f"  Base model: {base_model}")
         self._progress.setValue(0)
@@ -839,6 +904,41 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             QMessageBox.warning(self, "Reload Error", str(exc))
 
     # ------------------------------------------------------------------
+    # Class selection helpers
+    # ------------------------------------------------------------------
+
+    def _update_class_checkboxes(self) -> None:
+        """Refresh checkbox labels with current per-class image counts.
+
+        Classes that have at least one image in their subfolder are enabled
+        and auto-checked.  Classes with zero images are disabled and unchecked.
+        Called automatically by _refresh_stats().
+        """
+        if not self._class_checkboxes:
+            return
+        counts = self._dm.get_class_image_counts()
+        for cls, cb in self._class_checkboxes.items():
+            cnt = counts.get(cls, 0)
+            cb.setText(f"{cls}  ({cnt} imgs)")
+            if cnt > 0:
+                cb.setEnabled(True)
+                cb.setChecked(True)  # auto-select classes that have images
+            else:
+                cb.setEnabled(False)
+                cb.setChecked(False)
+
+    def _on_select_all_classes(self) -> None:
+        """Check all enabled (image-bearing) class checkboxes."""
+        for cb in self._class_checkboxes.values():
+            if cb.isEnabled():
+                cb.setChecked(True)
+
+    def _on_deselect_all_classes(self) -> None:
+        """Uncheck all class checkboxes."""
+        for cb in self._class_checkboxes.values():
+            cb.setChecked(False)
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
@@ -876,3 +976,6 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             lines.append(f"\n✓ {total_imgs} images — sufficient for fine-tuning.")
 
         self._txt_stats.setText("\n".join(lines))
+
+        # Sync class checkboxes with latest per-class image counts
+        self._update_class_checkboxes()
