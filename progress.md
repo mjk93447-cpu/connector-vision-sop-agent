@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-18 (OCR-First 통팩 빌드 트리거 완료 — run #23225700565)_
+_최종 갱신: 2026-03-18 (Gemini CLI 세팅 + YOLO26x 위반 수정 완료)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -23,6 +23,8 @@ _최종 갱신: 2026-03-18 (OCR-First 통팩 빌드 트리거 완료 — run #23
 | **YOLO26x 전용 규칙** | **CLAUDE.md MANDATORY 규칙 + GUI Pretrain CI 워크플로우** | **254 pass** | — |
 | **OCR-First 파이프라인** | **OCREngine+ExceptionHandler+CycleDetector+LLM 스트리밍+영어 GUI 전환** | **336 pass** | — |
 | **통팩 빌드 준비** | **build_exe.spec OCR hidden imports + build-full-v3.yml YAML 수정 + 빌드 트리거** | **336 pass** | — |
+| **Gemini CLI 세팅** | **인증 완료 + GEMINI.md + gemini-helpers.sh + preflight 강화** | **337 pass** | — |
+| **YOLO26x 위반 수정** | **pretrain_pipeline.py:310 yolov8→yolov5pytorch + 규칙 준수 테스트** | **337 pass** | — |
 
 ## 현재 스택 (v3.1.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
@@ -110,14 +112,27 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 2. `assets/models/yolo26x_pretrained.pt` 존재 (CI GUI 프리트레인) → 이 모델로 파인튜닝 시작
 3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
 
-## 다음 작업 후보
-- [x] Actions → `YOLO26x GUI Pretrain` 워크플로우 실행 (showui_desktop, epochs=20) — run #23224811871 실행 중
+## ★ 다음 작업 (v3.0.0 현장 테스트 결과 버그 3건 — 최우선)
+
+### Bug 1: Run SOP — Login 버튼 감지 실패
+- 증상: `Target 'login_button' not found` — "Login" 텍스트가 화면에 있어도 OCR 미인식
+- 원인 추정: OCR 엔진이 SOP Executor에 제대로 연동 안 됨, 또는 SOP 동작 로직 문제
+- 개선 목표: 화면의 "login" 텍스트를 버튼으로 인식하는 OCR+Vision 통합
+
+### Bug 2: LLM Chat — 800초+ thinking 무한대기
+- 증상: send 후 thinking... 상태로 무응답
+- 원인 추정: Ollama 포트 연결 오류, 외장 GPU 없는 환경에서 CPU fallback 예외처리 누락
+- 개선 목표: 다양한 환경(CPU-only, GPU, Ollama 미실행)에서 자동 감지 및 정상 동작
+
+### Bug 3: Training Tab — 어노테이션 미저장, 오프라인 미지원
+- 증상: save annotation 눌러도 저장 안됨, dataset status 1로 고정, start training이 github.com 호출
+- 원인 추정: annotation 저장 로직 버그, training manager가 인터넷 의존
+- 개선 목표: 2026년 최신 YOLO fine-tuning GUI 벤치마크, 완전 오프라인 동작
+
+## 이전 다음 작업 후보 (홀드)
 - [ ] `YOLO26x GUI Pretrain` 결과(yolo26x_pretrained.pt) 아티팩트 다운로드 → `assets/models/` 배치
 - [ ] 통팩 빌드 워크플로우 재등록 수정 (dispatch 불가 이슈 해결) → 통팩 재빌드
-- [ ] `yolo26x_pretrained.pt` → Tab7 Training Panel에서 OLED 파인튜닝 실행
 - [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제)
-- [ ] build_exe.spec에 paddleocr/winrt hidden imports 추가
-- [ ] Checkpoint 4 로컬 검증 완결 (TEST_REPORT.md 업데이트)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)
 
 ## 알려진 이슈
