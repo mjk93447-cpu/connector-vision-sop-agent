@@ -22,8 +22,9 @@ huggingface_hub>=0.21.0
 datasets>=2.19.0
 
 # OCR (optional — loaded lazily at runtime)
-# PaddleOCR fallback when WinRT is unavailable (non-Windows or older builds)
-# Install manually if needed: pip install paddlepaddle paddleocr
+# Priority: winsdk (WinRT, Win10 built-in) → easyocr → paddleocr
+winsdk>=1.0.0b9       # Windows.Media.Ocr WinRT wrapper (Windows 10 1803+ only)
+easyocr>=1.7.0        # Fallback OCR (PyTorch-based, works without WinRT)
+# PaddleOCR optional legacy fallback (broken in 3.x; 2.x requires separate install):
 # paddlepaddle          # CPU paddle runtime (~200 MB); uncomment to install
 # paddleocr>=2.8.0      # PP-OCRv4 Lite engine; uncomment to install
-# winsdk>=1.0.0b9       # Windows.Media.Ocr WinRT wrapper (Windows 10 1803+ only)
