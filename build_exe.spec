@@ -24,6 +24,30 @@ a = Analysis(
         'PIL.Image',
         # Utils
         'numpy',
+        'difflib',
+        # OCR — WinRT primary (Windows 10 1803+)
+        'winsdk',
+        'winsdk.windows',
+        'winsdk.windows.media',
+        'winsdk.windows.media.ocr',
+        'winsdk.windows.graphics.imaging',
+        'winsdk.windows.storage.streams',
+        # OCR — PaddleOCR fallback (optional, lazy-loaded)
+        'paddleocr',
+        'paddleocr.ppocr',
+        'paddleocr.tools',
+        'paddleocr.tools.infer',
+        'paddleocr.tools.infer.predict_system',
+        # Core agent modules (OCR-First pipeline)
+        'src.ocr_engine',
+        'src.exception_handler',
+        'src.cycle_detector',
+        # Training pipeline
+        'src.training',
+        'src.training.dataset_manager',
+        'src.training.dataset_converter',
+        'src.training.training_manager',
+        'src.training.pretrain_pipeline',
         # GUI (PyQt6)
         'PyQt6',
         'PyQt6.QtCore',
@@ -41,6 +65,7 @@ a = Analysis(
         'src.gui.panels.sop_editor_panel',
         'src.gui.panels.config_panel',
         'src.gui.panels.audit_panel',
+        'src.gui.panels.training_panel',
     ],
     hookspath=[],
     hooksconfig={},

@@ -26,11 +26,15 @@ CLI:
 
 지원 데이터 소스
 ---------------
-- "showui_desktop" : showlab/ShowUI-desktop (HuggingFace, OmniAct 기반 데스크탑)
-                     Windows/Mac/Linux 데스크탑 앱 실제 스크린샷. 권장.
-- "synthetic"      : 합성 GUI 데이터 (테스트·시연용, 의존성 없음)
-- "rico_widget"    : rootsautomation/RICO-WidgetCaptioning (HuggingFace, Android)
-                     레거시 지원. 구형 Windows 환경 사용 시 showui_desktop 권장.
+- "showui_desktop"   : showlab/ShowUI-desktop (HuggingFace, OmniAct 기반 데스크탑)
+                       Windows/Mac/Linux 데스크탑 앱 실제 스크린샷. 권장.
+- "synthetic"        : 합성 GUI 데이터 (테스트·시연용, 의존성 없음)
+- "rico_widget"      : rootsautomation/RICO-WidgetCaptioning (HuggingFace, Android)
+                       레거시 지원. 구형 Windows 환경 사용 시 showui_desktop 권장.
+- "pcb_components"   : Roboflow PCB-Components 데이터셋
+                       (roboflow Python 패키지 + ROBOFLOW_API_KEY 환경변수 필요)
+                       커넥터/저항/캐패시터 등 산업 PCB 컴포넌트 포함.
+                       YOLO26x가 산업 시각 특징을 학습하기에 유용한 Tier-1 소스.
 """
 
 from __future__ import annotations
@@ -254,6 +258,120 @@ class PretrainPipeline:
                 print(f"  ... {saved}/{max_samples} 변환 완료")
 
         print(f"[PretrainPipeline] Rico 데이터 {saved}장 저장 완료")
+        return saved
+
+    def build_pcb_components_dataset(
+        self,
+        max_samples: int = 500,
+        api_key: Optional[str] = None,
+    ) -> int:
+        """Roboflow PCB-Components 데이터셋 다운로드 및 변환.
+
+        YOLO26x가 산업 PCB 컴포넌트(커넥터·저항·캐패시터 등)의 시각 특징을
+        학습하도록 하여, OLED 라인 파인튜닝 시 수렴 속도를 높인다.
+
+        Requirements
+        ------------
+        - `pip install roboflow` 설치 필요.
+        - `ROBOFLOW_API_KEY` 환경변수 또는 api_key 파라미터 필요.
+
+        Parameters
+        ----------
+        max_samples: 최대 이미지 수.
+        api_key:     Roboflow API 키 (없으면 환경변수 ROBOFLOW_API_KEY 사용).
+
+        Returns
+        -------
+        실제 변환된 이미지 수.
+        """
+        import os  # noqa: PLC0415
+
+        try:
+            from roboflow import Roboflow  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError(
+                "roboflow 패키지 필요: pip install roboflow\n"
+                "API 키: https://app.roboflow.com 에서 발급"
+            ) from e
+
+        key = api_key or os.environ.get("ROBOFLOW_API_KEY", "")
+        if not key:
+            raise ValueError(
+                "Roboflow API 키 없음. ROBOFLOW_API_KEY 환경변수를 설정하거나 "
+                "api_key 파라미터를 전달하세요."
+            )
+
+        print(
+            f"[PretrainPipeline] Roboflow PCB-Components 로딩 (최대 {max_samples}개)..."
+        )
+        rf = Roboflow(api_key=key)
+        project = rf.workspace("roboflow-100").project("pcb-components-4x9w5")
+        dataset = project.version(1).download(
+            "yolov8", location=str(self.output_dir / "_roboflow_pcb")
+        )
+
+        # PCB dataset은 YOLO 포맷으로 제공됨 — 이미지·레이블을 pretrain 디렉터리로 복사
+        import cv2  # noqa: PLC0415
+        import shutil  # noqa: PLC0415
+
+        src_images = Path(dataset.location) / "train" / "images"
+        src_labels = Path(dataset.location) / "train" / "labels"
+        # PCB class id → pretrain "connector" index mapping
+        # PCB-Components v1 classes (partial): 0=capacitor, 1=connector, 2=ic, 3=resistor, ...
+        _PCB_CONNECTOR_CLASS_IDS = {1}  # connector class in PCB dataset
+
+        saved = 0
+        if src_images.exists():
+            for img_file in sorted(src_images.glob("*.jpg")) + sorted(
+                src_images.glob("*.png")
+            ):
+                if saved >= max_samples:
+                    break
+                lbl_file = src_labels / (img_file.stem + ".txt")
+                if not lbl_file.exists():
+                    continue
+
+                img = cv2.imread(str(img_file))
+                if img is None:
+                    continue
+
+                anns = []
+                h, w = img.shape[:2]
+                for line in lbl_file.read_text().splitlines():
+                    parts = line.strip().split()
+                    if len(parts) < 5:
+                        continue
+                    class_id = int(parts[0])
+                    cx, cy, bw, bh = (
+                        float(parts[1]),
+                        float(parts[2]),
+                        float(parts[3]),
+                        float(parts[4]),
+                    )
+                    # Map PCB connector → pretrain "connector" class
+                    label = (
+                        "connector"
+                        if class_id in _PCB_CONNECTOR_CLASS_IDS
+                        else "button"
+                    )
+                    x1 = (cx - bw / 2) * w
+                    y1 = (cy - bh / 2) * h
+                    x2 = (cx + bw / 2) * w
+                    y2 = (cy + bh / 2) * h
+                    anns.append({"label": label, "bbox": [x1, y1, x2, y2]})
+
+                if not anns:
+                    continue
+
+                self._save_pretrain_sample(f"pcb_{saved:05d}", img, anns)
+                saved += 1
+                if saved % 50 == 0:
+                    print(f"  ... {saved}/{max_samples} 변환 완료")
+
+        # Cleanup downloaded roboflow dir
+        shutil.rmtree(str(self.output_dir / "_roboflow_pcb"), ignore_errors=True)
+
+        print(f"[PretrainPipeline] PCB-Components {saved}장 저장 완료")
         return saved
 
     # ------------------------------------------------------------------

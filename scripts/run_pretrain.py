@@ -10,6 +10,9 @@ YOLO26x 프리트레인 실행 스크립트.
 
   # Rico WidgetCaptioning (레거시: Android UI, 구형 Windows에는 부적합)
   python scripts/run_pretrain.py --source rico_widget --max-samples 500 --epochs 30
+
+  # Roboflow PCB-Components (커넥터/산업 부품 — ROBOFLOW_API_KEY 필요)
+  ROBOFLOW_API_KEY=<your_key> python scripts/run_pretrain.py --source pcb_components --max-samples 500 --epochs 20
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="YOLO26x 프리트레인 파이프라인")
     parser.add_argument(
         "--source",
-        choices=["showui_desktop", "synthetic", "rico_widget"],
+        choices=["showui_desktop", "synthetic", "rico_widget", "pcb_components"],
         default="showui_desktop",
         help="데이터 소스 (기본: showui_desktop — Windows/Desktop GUI 권장)",
     )
@@ -84,6 +87,13 @@ def main() -> None:
         pipeline.build_synthetic_dataset(n_images=args.n_images)
     elif args.source == "rico_widget":
         pipeline.build_rico_dataset(max_samples=args.max_samples)
+    elif args.source == "pcb_components":
+        import os  # noqa: PLC0415
+
+        pipeline.build_pcb_components_dataset(
+            max_samples=args.max_samples,
+            api_key=os.environ.get("ROBOFLOW_API_KEY"),
+        )
 
     # 학습 + 평가
     print(f"\n[run_pretrain] 학습 시작 (epochs={args.epochs}, batch={args.batch})...")
