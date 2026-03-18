@@ -20,6 +20,7 @@ New in v3.0:
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Literal, Optional, Type
@@ -71,6 +72,7 @@ class OfflineLLM:
         self._session: Any = (
             None  # requests.Session — created lazily, closed on cancel()
         )
+        self._session_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
     # 생성자
@@ -91,9 +93,10 @@ class OfflineLLM:
             import requests  # type: ignore[import]
         except Exception as exc:  # pragma: no cover
             raise RuntimeError("requests package required") from exc
-        if self._session is None:
-            self._session = requests.Session()
-        return self._session
+        with self._session_lock:
+            if self._session is None:
+                self._session = requests.Session()
+            return self._session
 
     def cancel(self) -> None:
         """Cancel any in-flight HTTP request by closing the session.
@@ -101,18 +104,19 @@ class OfflineLLM:
         Called from LLMStreamWorker.stop() to immediately abort streaming.
         A fresh session will be created automatically on the next request.
         """
-        if self._session is not None:
-            try:
-                self._session.close()
-            except Exception:  # noqa: BLE001
-                pass
-            self._session = None
+        with self._session_lock:
+            if self._session is not None:
+                try:
+                    self._session.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._session = None
 
     # ------------------------------------------------------------------ #
     # Ollama health check
     # ------------------------------------------------------------------ #
 
-    def check_health(self) -> None:
+    def check_health(self) -> Optional[str]:
         """Verify Ollama server is reachable before issuing a chat request.
 
         Raises RuntimeError with a clear message if:

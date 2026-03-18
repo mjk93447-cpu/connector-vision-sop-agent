@@ -142,6 +142,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         # Step 2-C: token buffer for batched QTextEdit rendering
         self._token_buf: List[str] = []
         self._flush_timer: Optional[Any] = None
+        self._stop_requested: bool = False
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -175,6 +176,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             self._stop_flush_timer()
             self._flush_token_buf()  # flush any remaining buffered tokens
             self._lbl_elapsed.setText("")
+            self._stop_requested = False
 
     # ------------------------------------------------------------------
     # Private — UI
@@ -409,6 +411,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if self._worker is not None and hasattr(self._worker, "isRunning"):
             try:
                 if self._worker.isRunning():
+                    self._stop_requested = True
                     self._worker.stop()
                     self.set_sending(False)
                     self._append_system("⏹ Generation stopped by user.")
@@ -487,6 +490,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     @pyqtSlot(str)
     def on_llm_error(self, error: str) -> None:
+        if self._stop_requested:
+            # User-initiated stop — suppress error bubble, just reset state
+            self.set_sending(False)
+            return
         self._append_bubble("assistant", f"❌ Error: {error}")
         self._append_system(
             "Tip: Check that Ollama is running (start_agent.bat) "
