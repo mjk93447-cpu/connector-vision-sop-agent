@@ -3,9 +3,14 @@ YOLO-format dataset manager for OLED line PC annotations.
 
 Folder layout produced by this module:
   training_data/
-    images/        *.png  (source images for labelling)
-    labels/        *.txt  (YOLO annotation: class cx cy w h, normalised 0-1)
+    images/
+      {class}/     *.png  (source images, organised by primary class)
+    labels/
+      {class}/     *.txt  (YOLO annotation: class cx cy w h, normalised 0-1)
     dataset.yaml   (ultralytics training config)
+
+  Legacy flat layout (images/*.png, labels/*.txt) is still supported for
+  backward-compatibility — get_stats() scans recursively.
 
 Usage
 -----
@@ -57,12 +62,13 @@ class DatasetManager:
         image_name: str,
         image: np.ndarray,
         annotations: List[Dict[str, Any]],
+        subfolder: str = "",
     ) -> Path:
         """Save an image and its YOLO-format label file.
 
         Parameters
         ----------
-        image_name:   Filename without path (e.g. ``"step3_001.png"``).
+        image_name:   Filename without path (e.g. ``"button_20260318_143022.png"``).
         image:        BGR numpy array.
         annotations:  List of dicts::
 
@@ -70,12 +76,24 @@ class DatasetManager:
                           "label": "login_button",
                           "bbox": [x1, y1, x2, y2]   # pixel coords, absolute
                         }
+        subfolder:    Optional class-based subfolder name (e.g. ``"button"``).
+                      When provided, images and labels are stored in
+                      ``images/{subfolder}/`` and ``labels/{subfolder}/``
+                      respectively. Defaults to ``""`` (flat layout).
 
         Returns the path to the saved image.
         """
         stem = Path(image_name).stem
-        img_path = self.images_dir / f"{stem}.png"
-        lbl_path = self.labels_dir / f"{stem}.txt"
+        if subfolder:
+            img_dir = self.images_dir / subfolder
+            lbl_dir = self.labels_dir / subfolder
+            img_dir.mkdir(parents=True, exist_ok=True)
+            lbl_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            img_dir = self.images_dir
+            lbl_dir = self.labels_dir
+        img_path = img_dir / f"{stem}.png"
+        lbl_path = lbl_dir / f"{stem}.txt"
 
         cv2.imwrite(str(img_path), image)
 
@@ -117,9 +135,9 @@ class DatasetManager:
                 "annotation_count": 0,
                 "class_counts": {name: 0 for name in OLED_CLASSES},
             }
-        img_count = len(list(self.images_dir.glob("*.png")))
+        img_count = len(list(self.images_dir.rglob("*.png")))
         lbl_count = (
-            len(list(self.labels_dir.glob("*.txt"))) if self.labels_dir.exists() else 0
+            len(list(self.labels_dir.rglob("*.txt"))) if self.labels_dir.exists() else 0
         )
         ann_count = 0
         class_counts: Dict[str, int] = {name: 0 for name in OLED_CLASSES}
@@ -132,7 +150,7 @@ class DatasetManager:
                 "class_counts": class_counts,
             }
 
-        for lbl_file in self.labels_dir.glob("*.txt"):
+        for lbl_file in self.labels_dir.rglob("*.txt"):
             text = lbl_file.read_text(encoding="utf-8").strip()
             for line in text.splitlines():
                 parts = line.split()

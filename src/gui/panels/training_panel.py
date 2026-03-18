@@ -22,6 +22,8 @@ YOLO Training Minimization Strategy:
 
 from __future__ import annotations
 
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -711,7 +713,10 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             screenshot = pyautogui.screenshot()
             rgb = np.array(screenshot)
             bgr = rgb[:, :, ::-1].copy()
-            self.set_image_for_annotation(bgr, "capture.png")
+            # Use current class + timestamp so the capture filename is meaningful
+            cls = self._combo_label.currentText() if _QT_AVAILABLE else "capture"
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.set_image_for_annotation(bgr, f"{cls}_{ts}_capture.png")
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Capture Failed", str(exc))
 
@@ -739,12 +744,31 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
                 "No annotations found. Please draw bounding boxes or polygons first.",
             )
             return
-        name = self._current_image_name or "capture.png"
+
+        # Determine primary class: most frequent label in current annotations
+        label_counts = Counter(ann.get("label", "") for ann in annotations)
+        primary_class = label_counts.most_common(1)[0][0] if label_counts else "unknown"
+
+        # Generate systematic filename: {class}_{YYYYMMDD}_{HHMMSS}[_{n}].png
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_stem = f"{primary_class}_{ts}"
+        save_name = f"{base_stem}.png"
+
+        # Avoid overwriting an existing file in the same second (rare)
+        subfolder_dir = self._dm.images_dir / primary_class
+        counter = 1
+        while (subfolder_dir / save_name).exists():
+            save_name = f"{base_stem}_{counter:03d}.png"
+            counter += 1
+
         img_path = self._dm.add_image_with_annotations(
-            name, self._current_bgr, annotations
+            save_name, self._current_bgr, annotations, subfolder=primary_class
         )
         self._dm.save_dataset_yaml()
-        self._log(f"✅ Saved: {img_path} ({len(annotations)} annotations)")
+        self._log(
+            f"✅ Saved: {img_path.relative_to(self._dm.data_root)}"
+            f" ({len(annotations)} annotations)"
+        )
         self._refresh_stats()
         self._canvas.clear_annotations()
 
