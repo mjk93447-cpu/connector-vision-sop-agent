@@ -164,6 +164,14 @@ class DatasetManager:
         """
         yaml_path = self.data_root / "dataset.yaml"
 
+        # Always use forward slashes in the yaml path field.
+        # Windows backslashes (e.g. C:\training_data) can confuse ultralytics'
+        # YAML parser — especially \t → tab and \n → newline sequences —
+        # causing path resolution to silently fail and im_files to be empty,
+        # which leads to cache_path=None and the cryptic
+        # "NoneType has no attribute 'write'" error.
+        yaml_root = str(self.data_root.resolve()).replace("\\", "/")
+
         if selected_classes:
             # Keep only subfolders that exist and contain at least one image
             valid_classes = [
@@ -175,7 +183,7 @@ class DatasetManager:
             if valid_classes:
                 paths_str = "\n".join(f"  - images/{cls}" for cls in valid_classes)
                 content = (
-                    f"path: {self.data_root.resolve()}\n"
+                    f"path: {yaml_root}\n"
                     f"train:\n{paths_str}\n"
                     f"val:\n{paths_str}\n"
                     f"nc: {len(OLED_CLASSES)}\n"
@@ -188,7 +196,7 @@ class DatasetManager:
         # Default: scan entire images/ directory (ultralytics handles subfolders
         # recursively when given a parent directory path)
         content = (
-            f"path: {self.data_root.resolve()}\n"
+            f"path: {yaml_root}\n"
             "train: images\n"
             "val: images\n"
             f"nc: {len(OLED_CLASSES)}\n"

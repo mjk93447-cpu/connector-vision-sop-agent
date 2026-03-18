@@ -162,20 +162,44 @@ class PretrainPipeline:
         -------
         실제 저장된 이미지 수.
         """
+        # Offline guard — YOLO_OFFLINE=1 or ULTRALYTICS_OFFLINE=1 skips download
+        import os as _os  # noqa: PLC0415
+
+        if (
+            _os.environ.get("YOLO_OFFLINE") == "1"
+            or _os.environ.get("ULTRALYTICS_OFFLINE") == "1"
+        ):
+            print(
+                "[PretrainPipeline] Offline mode detected — "
+                "skipping ShowUI-Desktop download, using synthetic fallback."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
+
         try:
             from datasets import load_dataset  # noqa: PLC0415
-        except ImportError as e:
-            raise ImportError("datasets 패키지 필요: pip install datasets") from e
+        except ImportError:
+            print(
+                "[PretrainPipeline] 'datasets' package not installed — "
+                "falling back to synthetic dataset."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
 
         print(
             f"[PretrainPipeline] ShowUI-Desktop 로딩 (최대 이미지 {max_samples}개)..."
         )
-        ds = load_dataset(
-            "showlab/ShowUI-desktop",
-            split="train",
-            streaming=True,
-            trust_remote_code=False,
-        )
+        try:
+            ds = load_dataset(
+                "showlab/ShowUI-desktop",
+                split="train",
+                streaming=True,
+                trust_remote_code=False,
+            )
+        except Exception as _e:  # noqa: BLE001
+            print(
+                f"[PretrainPipeline] ShowUI-Desktop 다운로드 실패 ({_e}) — "
+                "synthetic 데이터로 대체합니다."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
 
         # 동일 이미지의 여러 행을 하나로 병합 (이미지 해시 키)
         # ShowUI-desktop: 100 스크린샷 × N 요소/쿼리 = 수천 행
@@ -230,20 +254,44 @@ class PretrainPipeline:
         -------
         실제 변환된 이미지 수.
         """
+        # Offline guard
+        import os as _os  # noqa: PLC0415
+
+        if (
+            _os.environ.get("YOLO_OFFLINE") == "1"
+            or _os.environ.get("ULTRALYTICS_OFFLINE") == "1"
+        ):
+            print(
+                "[PretrainPipeline] Offline mode detected — "
+                "skipping Rico download, using synthetic fallback."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
+
         try:
             from datasets import load_dataset  # noqa: PLC0415
-        except ImportError as e:
-            raise ImportError("datasets 패키지 필요: pip install datasets") from e
+        except ImportError:
+            print(
+                "[PretrainPipeline] 'datasets' package not installed — "
+                "falling back to synthetic dataset."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
 
         print(
             f"[PretrainPipeline] Rico WidgetCaptioning 로딩 (최대 {max_samples}개)..."
         )
-        ds = load_dataset(
-            "rootsautomation/RICO-WidgetCaptioning",
-            split="train",
-            streaming=True,
-            trust_remote_code=False,
-        )
+        try:
+            ds = load_dataset(
+                "rootsautomation/RICO-WidgetCaptioning",
+                split="train",
+                streaming=True,
+                trust_remote_code=False,
+            )
+        except Exception as _e:  # noqa: BLE001
+            print(
+                f"[PretrainPipeline] Rico 다운로드 실패 ({_e}) — "
+                "synthetic 데이터로 대체합니다."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
 
         saved = 0
         for sample in ds:
@@ -286,30 +334,50 @@ class PretrainPipeline:
         """
         import os  # noqa: PLC0415
 
+        # Offline guard
+        if (
+            os.environ.get("YOLO_OFFLINE") == "1"
+            or os.environ.get("ULTRALYTICS_OFFLINE") == "1"
+        ):
+            print(
+                "[PretrainPipeline] Offline mode detected — "
+                "skipping Roboflow PCB download, using synthetic fallback."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
+
         try:
             from roboflow import Roboflow  # noqa: PLC0415
-        except ImportError as e:
-            raise ImportError(
-                "roboflow 패키지 필요: pip install roboflow\n"
-                "API 키: https://app.roboflow.com 에서 발급"
-            ) from e
+        except ImportError:
+            print(
+                "[PretrainPipeline] 'roboflow' package not installed — "
+                "falling back to synthetic dataset."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
 
         key = api_key or os.environ.get("ROBOFLOW_API_KEY", "")
         if not key:
-            raise ValueError(
-                "Roboflow API 키 없음. ROBOFLOW_API_KEY 환경변수를 설정하거나 "
-                "api_key 파라미터를 전달하세요."
+            print(
+                "[PretrainPipeline] ROBOFLOW_API_KEY not set — "
+                "falling back to synthetic dataset."
             )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
 
         print(
             f"[PretrainPipeline] Roboflow PCB-Components 로딩 (최대 {max_samples}개)..."
         )
-        rf = Roboflow(api_key=key)
-        project = rf.workspace("roboflow-100").project("pcb-components-4x9w5")
-        dataset = project.version(1).download(
-            "yolov5pytorch",  # YOLO26x 규칙 준수 — yolov8 금지, 동일 txt 포맷
-            location=str(self.output_dir / "_roboflow_pcb"),
-        )
+        try:
+            rf = Roboflow(api_key=key)
+            project = rf.workspace("roboflow-100").project("pcb-components-4x9w5")
+            dataset = project.version(1).download(
+                "yolov5pytorch",  # YOLO26x 규칙 준수 — yolov8 금지, 동일 txt 포맷
+                location=str(self.output_dir / "_roboflow_pcb"),
+            )
+        except Exception as _e:  # noqa: BLE001
+            print(
+                f"[PretrainPipeline] Roboflow 다운로드 실패 ({_e}) — "
+                "synthetic 데이터로 대체합니다."
+            )
+            return self.build_synthetic_dataset(max_samples=min(max_samples, 200))
 
         # PCB dataset은 YOLO 포맷으로 제공됨 — 이미지·레이블을 pretrain 디렉터리로 복사
         import cv2  # noqa: PLC0415

@@ -69,22 +69,51 @@ class TrainingManager:
 
         Raises
         ------
-        FileNotFoundError: dataset.yaml or start weights file not found.
+        FileNotFoundError:  dataset.yaml or start weights file not found.
+        ValueError:         No training images found in dataset.
         """
-        # Prevent ultralytics from auto-downloading models from GitHub
+        # ------------------------------------------------------------------ #
+        # Complete offline prevention — block ALL network calls from          #
+        # ultralytics, W&B, Comet, ClearML, neptune, and PyTorch Hub.        #
+        # This is an offline Windows program; no telemetry/download allowed.  #
+        # ------------------------------------------------------------------ #
         os.environ["YOLO_OFFLINE"] = "1"
+        os.environ["ULTRALYTICS_OFFLINE"] = "1"  # newer ultralytics guard
+        os.environ.setdefault("WANDB_DISABLED", "true")  # Weights & Biases off
+        os.environ.setdefault("WANDB_MODE", "disabled")
+        os.environ.setdefault("COMET_MODE", "disabled")  # Comet.ml off
+        os.environ.setdefault("CLEARML_LOG_MODEL", "false")  # ClearML off
+        os.environ.setdefault("NEPTUNE_MODE", "offline")  # Neptune off
+        # Prevent PyTorch Hub from downloading backbone weights
+        os.environ.setdefault("TORCH_HOME", str(Path.home() / ".cache" / "torch"))
+
         try:
             from ultralytics.utils import SETTINGS  # noqa: PLC0415
 
-            SETTINGS.update({"sync": False})
+            SETTINGS.update({"sync": False, "api_key": ""})
         except Exception:  # noqa: BLE001
-            pass  # ultralytics not installed or SETTINGS not accessible — proceed
+            pass  # ultralytics not installed — proceed; YOLO import will fail later
 
         from ultralytics import YOLO  # noqa: PLC0415 — heavy import, defer
 
         dataset_yaml = Path(dataset_yaml)
         if not dataset_yaml.exists():
             raise FileNotFoundError(f"dataset.yaml not found: {dataset_yaml}")
+
+        # ------------------------------------------------------------------ #
+        # Pre-validate: count training images BEFORE calling model.train().   #
+        # ultralytics gives a cryptic "NoneType has no attribute 'write'"     #
+        # when no images are found (im_files=[]).  We detect this early and   #
+        # raise a clear, actionable error.                                    #
+        # ------------------------------------------------------------------ #
+        img_count = self._count_training_images(dataset_yaml)
+        if img_count == 0:
+            raise ValueError(
+                "No training images found in dataset.\n"
+                "Please annotate and save at least one image in the Training tab\n"
+                "before starting training.\n"
+                f"Dataset config: {dataset_yaml}"
+            )
 
         # Determine starting weights: prefer existing custom model if present,
         # then caller-supplied base_model override, then self.base_model default.
@@ -99,7 +128,7 @@ class TrainingManager:
         if not Path(start_weights).exists():
             raise FileNotFoundError(
                 f"Model file not found: {start_weights}\n"
-                "Download yolo26x.pt from GitHub Actions artifacts and place in assets/models/"
+                "Place yolo26x.pt in assets/models/ before training."
             )
 
         model = YOLO(start_weights)
@@ -115,12 +144,23 @@ class TrainingManager:
             model.add_callback("on_train_epoch_end", _epoch_cb)
 
         # Run training (blocking; call from a QThread for GUI use).
+        #
+        # workers=0   : single-process DataLoader — avoids Windows multiprocessing
+        #               spawn failures (common in PyInstaller-bundled EXEs and when
+        #               QThread + subprocess conflict).
+        # exist_ok=True: overwrite previous run directory instead of creating
+        #               train2/, train3/ … clutter.
+        # rect=False  : disable rectangular training mode (can fail with mixed
+        #               aspect-ratio images from screen captures).
         results = model.train(
             data=str(dataset_yaml),
             epochs=epochs,
             imgsz=image_size,
             batch=batch,
             device="cpu",
+            workers=0,  # single-process DataLoader (Windows multiprocessing fix)
+            exist_ok=True,  # overwrite previous run directory
+            rect=False,  # disable rectangular training
             verbose=False,
             plots=False,
         )
@@ -136,6 +176,44 @@ class TrainingManager:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _count_training_images(dataset_yaml: Path) -> int:
+        """Count images referenced by ``dataset.yaml``'s ``train:`` field.
+
+        Returns the total number of image files found, or ``-1`` if the yaml
+        cannot be parsed (caller treats -1 as "unknown — proceed anyway").
+
+        Supports both the flat string form (``train: images``) and the list
+        form (``train: [images/button, images/icon]``).
+        """
+        try:
+            import yaml as _yaml  # noqa: PLC0415
+
+            with open(dataset_yaml, encoding="utf-8") as f:
+                data = _yaml.safe_load(f)
+
+            # Resolve root (forward-slash paths are safe on both platforms)
+            root = Path(
+                str(data.get("path", str(dataset_yaml.parent))).replace("/", os.sep)
+            )
+            train_entries = data.get("train", "images")
+            if isinstance(train_entries, str):
+                train_entries = [train_entries]
+
+            _IMG_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
+            count = 0
+            for entry in train_entries:
+                p = root / Path(entry)
+                if p.is_dir():
+                    count += sum(
+                        1 for f in p.rglob("*") if f.suffix.lower() in _IMG_EXTS
+                    )
+                elif p.is_file() and p.suffix.lower() in _IMG_EXTS:
+                    count += 1
+            return count
+        except Exception:  # noqa: BLE001
+            return -1  # unknown — let ultralytics decide
 
     def _find_best_weights(self, results: object) -> Optional[Path]:
         """Locate ``best.pt`` from the training run results."""

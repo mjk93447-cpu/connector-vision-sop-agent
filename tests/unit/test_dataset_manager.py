@@ -166,6 +166,47 @@ class TestDatasetManagerAddImage:
         assert "train: images" in content
         assert f"nc: {len(OLED_CLASSES)}" in content
 
+    def test_yaml_path_uses_forward_slashes(self, tmp_path: Path) -> None:
+        """dataset.yaml path: field must use forward slashes (no backslashes).
+
+        Windows backslashes in the yaml path field can confuse ultralytics'
+        YAML parser (e.g.  \\t → tab, \\n → newline) causing im_files=[],
+        cache_path=None and the cryptic NoneType.write AttributeError.
+        """
+        from src.training.dataset_manager import DatasetManager
+
+        dm = DatasetManager(data_root=tmp_path / "slash_test")
+        yaml_path = dm.save_dataset_yaml()
+        content = yaml_path.read_text(encoding="utf-8")
+        path_line = next(
+            (line for line in content.splitlines() if line.startswith("path:")), ""
+        )
+        assert "\\" not in path_line, (
+            f"Backslash found in yaml path field: {path_line!r}\n"
+            "This will cause ultralytics to fail finding training images on Windows."
+        )
+
+    def test_yaml_selected_classes_path_uses_forward_slashes(
+        self, tmp_path: Path
+    ) -> None:
+        """selected_classes yaml also must not contain Windows backslashes."""
+        from src.training.dataset_manager import DatasetManager, OLED_CLASSES
+
+        dm = DatasetManager(data_root=tmp_path / "slash_sel_test")
+        img = _make_bgr()
+        cls = OLED_CLASSES[0]
+        dm.add_image_with_annotations(
+            f"{cls}_20260318_120000.png", img, _make_annotations(cls), subfolder=cls
+        )
+        yaml_path = dm.save_dataset_yaml(selected_classes=[cls])
+        content = yaml_path.read_text(encoding="utf-8")
+        path_line = next(
+            (line for line in content.splitlines() if line.startswith("path:")), ""
+        )
+        assert (
+            "\\" not in path_line
+        ), f"Backslash in selected-classes yaml path field: {path_line!r}"
+
     def test_save_with_subfolder_saves_in_subfolder(self, tmp_path: Path) -> None:
         """add_image_with_annotations(subfolder=...) stores under images/{cls}/."""
         from src.training.dataset_manager import DatasetManager, OLED_CLASSES
