@@ -19,6 +19,7 @@ Usage
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Callable, Optional
@@ -47,6 +48,7 @@ class TrainingManager:
         epochs: int = 10,
         image_size: int = 640,
         batch: int = 4,
+        base_model: Optional[str] = None,
         progress_cb: Optional[Callable[[int, int], None]] = None,
     ) -> Path:
         """Fine-tune the model and save the best weights.
@@ -57,24 +59,47 @@ class TrainingManager:
         epochs:       Number of training epochs.
         image_size:   Input resolution for YOLO.
         batch:        Batch size (use 2-4 for CPU-only line PC).
+        base_model:   Override base model path (takes precedence over self.base_model).
         progress_cb:  Optional callback ``(epoch, total_epochs)`` for UI progress.
 
         Returns
         -------
         Path to the saved weights file (``assets/models/yolo26x.pt``).
+
+        Raises
+        ------
+        FileNotFoundError: dataset.yaml or start weights file not found.
         """
+        # Prevent ultralytics from auto-downloading models from GitHub
+        os.environ["YOLO_OFFLINE"] = "1"
+        try:
+            from ultralytics.utils import SETTINGS  # noqa: PLC0415
+
+            SETTINGS.update({"sync": False})
+        except Exception:  # noqa: BLE001
+            pass  # ultralytics not installed or SETTINGS not accessible — proceed
+
         from ultralytics import YOLO  # noqa: PLC0415 — heavy import, defer
 
         dataset_yaml = Path(dataset_yaml)
         if not dataset_yaml.exists():
             raise FileNotFoundError(f"dataset.yaml not found: {dataset_yaml}")
 
-        # Determine starting weights: prefer existing custom model if present.
-        start_weights = (
-            str(self.target_weights)
-            if self.target_weights.exists()
-            else self.base_model
-        )
+        # Determine starting weights: prefer existing custom model if present,
+        # then caller-supplied base_model override, then self.base_model default.
+        if self.target_weights.exists():
+            start_weights = str(self.target_weights)
+        elif base_model is not None:
+            start_weights = base_model
+        else:
+            start_weights = self.base_model
+
+        # Guard: model file must exist — never auto-download from GitHub
+        if not Path(start_weights).exists():
+            raise FileNotFoundError(
+                f"Model file not found: {start_weights}\n"
+                "Download yolo26x.pt from GitHub Actions artifacts and place in assets/models/"
+            )
 
         model = YOLO(start_weights)
 

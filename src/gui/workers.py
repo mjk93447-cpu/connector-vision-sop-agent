@@ -311,12 +311,14 @@ class TrainingWorker(QThread):  # type: ignore[misc]
         dataset_yaml: str,
         epochs: int = 10,
         batch: int = 4,
+        base_model: str = "",
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self._dataset_yaml = dataset_yaml
         self._epochs = epochs
         self._batch = batch
+        self._base_model = base_model
 
     def run(self) -> None:
         """Thread entry point."""
@@ -332,6 +334,7 @@ class TrainingWorker(QThread):  # type: ignore[misc]
                 dataset_yaml=self._dataset_yaml,
                 epochs=self._epochs,
                 batch=self._batch,
+                base_model=self._base_model or None,
                 progress_cb=_progress_cb,
             )
             self.finished_ok.emit(str(weights))

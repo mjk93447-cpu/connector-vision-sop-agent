@@ -786,6 +786,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             dataset_yaml=str(yaml_path),
             epochs=epochs,
             batch=batch,
+            base_model=base_model,
             parent=self,
         )
         self._training_worker.progress.connect(self.on_training_progress)

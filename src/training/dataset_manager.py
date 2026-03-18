@@ -24,10 +24,11 @@ from typing import Any, Dict, List
 import cv2
 import numpy as np
 
+from src.config_loader import get_base_dir
 from src.vision_engine import DEFAULT_TARGET_LABELS
 
-# Dataset root alongside the project root
-_DEFAULT_DATA_ROOT = Path("training_data")
+# Dataset root: absolute path so EXE and source-run both resolve correctly
+_DEFAULT_DATA_ROOT = get_base_dir() / "training_data"
 
 # OLED class names in fixed order (index == YOLO class id)
 OLED_CLASSES: List[str] = list(DEFAULT_TARGET_LABELS)
@@ -37,7 +38,7 @@ class DatasetManager:
     """Manages a YOLO-format annotation dataset for OLED UI fine-tuning."""
 
     def __init__(self, data_root: str | Path = _DEFAULT_DATA_ROOT) -> None:
-        self.data_root = Path(data_root)
+        self.data_root = Path(data_root).resolve()  # always absolute
         self.images_dir = self.data_root / "images"
         self.labels_dir = self.data_root / "labels"
         self.images_dir.mkdir(parents=True, exist_ok=True)
@@ -109,10 +110,27 @@ class DatasetManager:
 
     def get_stats(self) -> Dict[str, Any]:
         """Return basic dataset stats for the Training panel display."""
+        if not self.images_dir.exists():
+            return {
+                "image_count": 0,
+                "label_count": 0,
+                "annotation_count": 0,
+                "class_counts": {name: 0 for name in OLED_CLASSES},
+            }
         img_count = len(list(self.images_dir.glob("*.png")))
-        lbl_count = len(list(self.labels_dir.glob("*.txt")))
+        lbl_count = (
+            len(list(self.labels_dir.glob("*.txt"))) if self.labels_dir.exists() else 0
+        )
         ann_count = 0
         class_counts: Dict[str, int] = {name: 0 for name in OLED_CLASSES}
+
+        if not self.labels_dir.exists():
+            return {
+                "image_count": img_count,
+                "label_count": 0,
+                "annotation_count": 0,
+                "class_counts": class_counts,
+            }
 
         for lbl_file in self.labels_dir.glob("*.txt"):
             text = lbl_file.read_text(encoding="utf-8").strip()
