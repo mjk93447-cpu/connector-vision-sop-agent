@@ -401,6 +401,11 @@ class OfflineLLM:
                         chunk = json.loads(raw)
                         delta = chunk.get("choices", [{}])[0].get("delta", {})
                         token = delta.get("content", "")
+                        # Ollama 0.7+ reasoning 모델: thinking 토큰이
+                        # 별도 reasoning_content 필드로 올 수 있음 (phi4-mini-reasoning 등)
+                        reasoning_token = delta.get("reasoning_content", "")
+                        if reasoning_token and on_think_token:
+                            on_think_token(reasoning_token)
                         if not token:
                             continue
                     except (json.JSONDecodeError, IndexError, KeyError):
