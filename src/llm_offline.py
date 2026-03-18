@@ -56,6 +56,10 @@ class LLMConfig:
         )
 
 
+_OLLAMA_BASE_URL = "http://localhost:11434"
+_HEALTH_TIMEOUT = 1.5  # seconds for Ollama health check
+
+
 class OfflineLLM:
     """로컬 LLM 백엔드 래퍼.
 
@@ -64,6 +68,9 @@ class OfflineLLM:
 
     def __init__(self, cfg: LLMConfig) -> None:
         self.cfg = cfg
+        self._session: Any = (
+            None  # requests.Session — created lazily, closed on cancel()
+        )
 
     # ------------------------------------------------------------------ #
     # 생성자
@@ -73,6 +80,86 @@ class OfflineLLM:
     def from_config(cls, cfg_dict: Dict[str, Any]) -> "OfflineLLM":
         cfg = LLMConfig.from_dict(cfg_dict)
         return cls(cfg)
+
+    # ------------------------------------------------------------------ #
+    # Session / cancellation
+    # ------------------------------------------------------------------ #
+
+    def _get_session(self) -> Any:
+        """Return (or create) a requests.Session for streaming/chat requests."""
+        try:
+            import requests  # type: ignore[import]
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError("requests package required") from exc
+        if self._session is None:
+            self._session = requests.Session()
+        return self._session
+
+    def cancel(self) -> None:
+        """Cancel any in-flight HTTP request by closing the session.
+
+        Called from LLMStreamWorker.stop() to immediately abort streaming.
+        A fresh session will be created automatically on the next request.
+        """
+        if self._session is not None:
+            try:
+                self._session.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._session = None
+
+    # ------------------------------------------------------------------ #
+    # Ollama health check
+    # ------------------------------------------------------------------ #
+
+    def check_health(self) -> None:
+        """Verify Ollama server is reachable before issuing a chat request.
+
+        Raises RuntimeError with a clear message if:
+        - Ollama is not running (connection refused)
+        - Server responds but not within _HEALTH_TIMEOUT
+
+        After successful health check, emits an info string if CPU-only
+        by returning it as a second value.  Callers that only want the
+        error-or-not behaviour can ignore the return value.
+
+        Returns
+        -------
+        str | None
+            None if GPU available, or an info message string if CPU-only.
+        """
+        try:
+            import requests  # type: ignore[import]
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError("requests package required") from exc
+
+        # Derive base URL from configured completions URL
+        url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
+        # Strip "/v1/chat/completions" suffix to reach the root endpoint
+        if "/v1/" in url:
+            base = url.split("/v1/")[0]
+        else:
+            base = _OLLAMA_BASE_URL
+
+        try:
+            resp = requests.get(base, timeout=_HEALTH_TIMEOUT)
+            resp.raise_for_status()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Ollama server not running at {base}. "
+                "Run 'ollama serve' first, or start start_agent.bat."
+            ) from exc
+
+        # CPU-only detection (optional — torch may not be installed)
+        try:
+            import torch  # type: ignore[import]
+
+            if not torch.cuda.is_available():
+                return "ℹ️ CPU-only mode detected — response may take 120+ seconds"
+        except ImportError:
+            pass  # torch not available — skip GPU check
+
+        return None
 
     # ------------------------------------------------------------------ #
     # 핵심 채팅 인터페이스
@@ -105,21 +192,33 @@ class OfflineLLM:
         on_token: Callable[[str], None],
         on_done: Optional[Callable[[str, float], None]] = None,
         brief: bool = False,
+        on_think_token: Optional[Callable[[str], None]] = None,
     ) -> str:
-        """Streaming chat — calls on_token(chunk) for each token as it arrives.
+        """Streaming chat — calls on_token(chunk) for each visible token.
 
         Parameters
         ----------
-        system   : System prompt.
-        history  : Conversation history.
-        on_token : Callback invoked with each token string chunk.
-        on_done  : Optional callback(full_text, elapsed_sec) on completion.
-        brief    : Use shorter token limit for faster response.
+        system         : System prompt.
+        history        : Conversation history.
+        on_token       : Callback for each visible answer token.
+        on_done        : Optional callback(full_text, elapsed_sec) on completion.
+        brief          : Use shorter token limit for faster response.
+        on_think_token : Optional callback for <think>…</think> reasoning tokens.
+                         While inside a <think> block, tokens are routed here
+                         instead of on_token so the UI can show reasoning progress
+                         without cluttering the answer area.
 
-        Returns the full assembled response string.
+        Returns the full assembled response string (answer only, no <think> blocks).
         """
         if self.cfg.backend in ("ollama", "http"):
-            return self._stream_ollama(system, history, on_token, on_done, brief=brief)
+            return self._stream_ollama(
+                system,
+                history,
+                on_token,
+                on_done,
+                brief=brief,
+                on_think_token=on_think_token,
+            )
         raise RuntimeError(f"Streaming not supported for backend: {self.cfg.backend!r}")
 
     # ------------------------------------------------------------------ #
@@ -188,13 +287,15 @@ class OfflineLLM:
         on_token: Callable[[str], None],
         on_done: Optional[Callable[[str, float], None]],
         brief: bool = False,
+        on_think_token: Optional[Callable[[str], None]] = None,
     ) -> str:
-        """Streaming SSE request to Ollama. Calls on_token(chunk) per token."""
-        try:
-            import requests  # type: ignore[import]
-        except Exception as exc:  # pragma: no cover
-            raise RuntimeError("requests package required for streaming") from exc
+        """Streaming SSE request to Ollama. Calls on_token(chunk) per visible token.
 
+        <think>…</think> reasoning tokens from phi4-mini-reasoning are detected
+        and routed to on_think_token (if provided) instead of on_token, so the UI
+        can show "thinking…" feedback without polluting the answer area.
+        Only the answer text (outside <think> blocks) is included in the return value.
+        """
         url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
         model = self.cfg.model_path or _OLLAMA_DEFAULT_MODEL
         max_tokens = _BRIEF_MAX_TOKENS if brief else self.cfg.max_output_tokens
@@ -212,10 +313,13 @@ class OfflineLLM:
         }
 
         t0 = time.perf_counter()
-        full_text = ""
+        answer_text = ""  # text outside <think> blocks
+        _pending = ""  # partial token buffer for tag detection
+        _in_think = False  # True while inside a <think> block
 
+        session = self._get_session()
         try:
-            with requests.post(url, json=payload, stream=True, timeout=180) as resp:
+            with session.post(url, json=payload, stream=True, timeout=180) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():
                     if not line:
@@ -229,19 +333,51 @@ class OfflineLLM:
                         chunk = json.loads(raw)
                         delta = chunk.get("choices", [{}])[0].get("delta", {})
                         token = delta.get("content", "")
-                        if token:
-                            full_text += token
-                            on_token(token)
+                        if not token:
+                            continue
                     except (json.JSONDecodeError, IndexError, KeyError):
                         continue
 
-        except Exception as exc:  # pragma: no cover
+                    # ---- <think> token routing ----
+                    _pending += token
+                    while _pending:
+                        if _in_think:
+                            end_idx = _pending.find("</think>")
+                            if end_idx == -1:
+                                # All pending is reasoning — route to think callback
+                                if on_think_token:
+                                    on_think_token(_pending)
+                                _pending = ""
+                            else:
+                                # Emit reasoning up to </think>
+                                reasoning_chunk = _pending[:end_idx]
+                                if reasoning_chunk and on_think_token:
+                                    on_think_token(reasoning_chunk)
+                                _in_think = False
+                                _pending = _pending[end_idx + len("</think>") :]
+                        else:
+                            start_idx = _pending.find("<think>")
+                            if start_idx == -1:
+                                # All pending is answer text
+                                answer_text += _pending
+                                on_token(_pending)
+                                _pending = ""
+                            else:
+                                # Emit answer text before <think>
+                                before = _pending[:start_idx]
+                                if before:
+                                    answer_text += before
+                                    on_token(before)
+                                _in_think = True
+                                _pending = _pending[start_idx + len("<think>") :]
+
+        except Exception as exc:
             raise RuntimeError(f"Streaming error: {exc}") from exc
 
         elapsed = time.perf_counter() - t0
         if on_done:
-            on_done(full_text, elapsed)
-        return full_text
+            on_done(answer_text, elapsed)
+        return answer_text
 
     def _chat_http(
         self,

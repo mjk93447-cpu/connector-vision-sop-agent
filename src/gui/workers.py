@@ -175,13 +175,15 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
 
     Signals
     -------
-    token_ready(token_str)       — partial token chunk
+    token_ready(token_str)       — partial visible answer token
+    think_token_ready(token_str) — reasoning token inside <think>…</think>
     elapsed_tick(elapsed_sec)    — progress tick every 0.5s
     response_done(full_text)     — complete response assembled
     error_occurred(error_text)   — exception during streaming
     """
 
     token_ready: Any = pyqtSignal(str)
+    think_token_ready: Any = pyqtSignal(str)
     elapsed_tick: Any = pyqtSignal(float)
     response_done: Any = pyqtSignal(str)
     error_occurred: Any = pyqtSignal(str)
@@ -203,20 +205,34 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
         self._running = True
 
     def stop(self) -> None:
+        """Request cancellation — closes the underlying HTTP session immediately."""
         self._running = False
+        # Cancel in-flight HTTP request via session.close()
+        cancel = getattr(self._llm, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+            except Exception:  # noqa: BLE001
+                pass
 
     def run(self) -> None:
         """Thread entry point — streams tokens and emits signals."""
         self._t0 = time.perf_counter()
         self._running = True
 
-        # Start elapsed ticker in this thread (simple loop between chunks)
         try:
 
             def _on_token(chunk: str) -> None:
                 if not self._running:
                     return
                 self.token_ready.emit(chunk)
+                elapsed = time.perf_counter() - self._t0
+                self.elapsed_tick.emit(elapsed)
+
+            def _on_think_token(chunk: str) -> None:
+                if not self._running:
+                    return
+                self.think_token_ready.emit(chunk)
                 elapsed = time.perf_counter() - self._t0
                 self.elapsed_tick.emit(elapsed)
 
@@ -229,6 +245,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
                 on_token=_on_token,
                 on_done=_on_done,
                 brief=self._brief,
+                on_think_token=_on_think_token,
             )
         except Exception as exc:  # noqa: BLE001
             self.error_occurred.emit(str(exc))

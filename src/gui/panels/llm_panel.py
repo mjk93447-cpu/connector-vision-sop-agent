@@ -135,10 +135,13 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._history: List[Dict[str, str]] = []
         self._worker: Any = None
         self._last_llm_text: str = ""
-        self._brief_mode: bool = False
+        self._brief_mode: bool = True  # Step 2-B: Brief ON by default
         self._t0: float = 0.0
         self._streaming_buffer: str = ""
         self._timer: Optional[Any] = None
+        # Step 2-C: token buffer for batched QTextEdit rendering
+        self._token_buf: List[str] = []
+        self._flush_timer: Optional[Any] = None
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -156,16 +159,21 @@ class LlmPanel(QWidget):  # type: ignore[misc]
     def set_sending(self, sending: bool) -> None:
         if not _QT_AVAILABLE:
             return
-        self._btn_send.setEnabled(not sending)
         self._btn_analyze.setEnabled(not sending)
         self._input.setEnabled(not sending)
         if sending:
-            self._btn_send.setText("⏳ Waiting...")
+            # Step 2-D: show Stop button during generation
+            self._btn_send.setText("⏹ Stop")
+            self._btn_send.setEnabled(True)  # keep enabled so user can stop
             self._t0 = time.perf_counter()
             self._start_timer()
+            self._start_flush_timer()
         else:
             self._btn_send.setText("📤 Send")
+            self._btn_send.setEnabled(True)
             self._stop_timer()
+            self._stop_flush_timer()
+            self._flush_token_buf()  # flush any remaining buffered tokens
             self._lbl_elapsed.setText("")
 
     # ------------------------------------------------------------------
@@ -187,12 +195,13 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         hdr_row.addWidget(header)
         hdr_row.addStretch()
 
-        # Brief mode checkbox
+        # Brief mode checkbox — Step 2-B: default ON to reduce worst-case wait
         self._chk_brief = QCheckBox("⚡ Brief mode (faster)")
         self._chk_brief.setToolTip(
             "Shorter response — fewer tokens, faster answer.\n"
             "Best for quick yes/no or status questions."
         )
+        self._chk_brief.setChecked(True)  # ON by default (256 tokens vs 1024)
         self._chk_brief.toggled.connect(self.set_brief_mode)
         hdr_row.addWidget(self._chk_brief)
 
@@ -291,14 +300,30 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     @pyqtSlot(str)
     def on_token_ready(self, token: str) -> None:
-        """Append a streaming token to the current AI bubble."""
+        """Buffer a streaming token — rendered every 50ms by flush timer (Step 2-C)."""
         if not _QT_AVAILABLE:
             return
-        self._streaming_buffer += token
-        # Update last paragraph in-place by replacing full content
+        self._token_buf.append(token)
+
+    @pyqtSlot(str)
+    def on_think_token_ready(self, token: str) -> None:
+        """Handle a <think> reasoning token — update elapsed label with thinking hint."""
+        if not _QT_AVAILABLE:
+            return
+        # Show a brief "thinking…" hint in elapsed label rather than cluttering chat
+        elapsed = time.perf_counter() - self._t0 if self._t0 > 0 else 0
+        self._lbl_elapsed.setText(f"🤔 Reasoning... {elapsed:.1f}s")
+
+    def _flush_token_buf(self) -> None:
+        """Flush the token buffer to QTextEdit in one repaint (Step 2-C)."""
+        if not _QT_AVAILABLE or not self._token_buf:
+            return
+        chunk = "".join(self._token_buf)
+        self._token_buf.clear()
+        self._streaming_buffer += chunk
+        # Replace entire last block with updated content
         cursor = self._chat_display.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        # Replace entire last block with updated content
         cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
         escaped = self._escape(self._streaming_buffer)
         html = (
@@ -307,6 +332,19 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         )
         cursor.insertHtml(html)
         self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
+
+    def _start_flush_timer(self) -> None:
+        """Start the 50ms flush timer for batched token rendering."""
+        if not _QT_AVAILABLE:
+            return
+        if self._flush_timer is None:
+            self._flush_timer = QTimer(self)
+            self._flush_timer.timeout.connect(self._flush_token_buf)
+        self._flush_timer.start(50)
+
+    def _stop_flush_timer(self) -> None:
+        if self._flush_timer is not None:
+            self._flush_timer.stop()
 
     @pyqtSlot(float)
     def on_elapsed_tick(self, elapsed: float) -> None:
@@ -366,6 +404,18 @@ class LlmPanel(QWidget):  # type: ignore[misc]
     def _on_send(self) -> None:
         if not _QT_AVAILABLE:
             return
+
+        # Step 2-D: if we're already sending, this acts as Stop
+        if self._worker is not None and hasattr(self._worker, "isRunning"):
+            try:
+                if self._worker.isRunning():
+                    self._worker.stop()
+                    self.set_sending(False)
+                    self._append_system("⏹ Generation stopped by user.")
+                    return
+            except Exception:  # noqa: BLE001
+                pass
+
         text = self._input.text().strip()
         if not text:
             return

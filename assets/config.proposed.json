@@ -1,0 +1,7 @@
+{
+  "_comment": "Apply these values to assets/config.json after review. Do NOT commit assets/config.json changes.",
+  "llm": {
+    "timeout_sec": 120,
+    "max_output_tokens": 256
+  }
+}

@@ -42,7 +42,7 @@ from src.gui.panels.sop_editor_panel import SopEditorPanel
 from src.gui.panels.sop_panel import SopPanel
 from src.gui.panels.training_panel import TrainingPanel
 from src.gui.panels.vision_panel import VisionPanel
-from src.gui.workers import AnalysisWorker, LLMWorker, SopWorker
+from src.gui.workers import AnalysisWorker, LLMStreamWorker, LLMWorker, SopWorker
 
 _APP_VERSION = "3.0.0"
 
@@ -93,22 +93,68 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._sop_panel.set_steps(self._steps)
         self._update_status()
 
-    def on_llm_send(self, history: List[Dict[str, str]]) -> None:
-        """Start LLMWorker for a chat turn."""
+    def on_llm_send(
+        self,
+        history: List[Dict[str, str]],
+        system: Optional[str] = None,
+        brief: bool = False,
+        streaming: bool = True,
+    ) -> None:
+        """Start LLMStreamWorker (or LLMWorker) for a chat turn.
+
+        Steps performed before starting the worker:
+        1. Ollama health check — raises clear error if server not running.
+        2. CPU-only detection — shows info message so user knows to expect delay.
+        """
         if self._llm is None:
             self._llm_panel.on_llm_error(
                 "LLM is not configured. Please check the llm settings in config.json."
             )
             return
-        system = (
-            "You are an expert in Samsung OLED connector line SOP procedures. "
-            "Help the engineer diagnose and resolve SOP execution issues clearly and accurately. "
-            "Respond in English, using technical terms where appropriate."
-        )
-        self._llm_worker = LLMWorker(self._llm, system_prompt=system, history=history)
-        self._llm_worker.response_ready.connect(self._llm_panel.on_llm_response)
-        self._llm_worker.error_occurred.connect(self._llm_panel.on_llm_error)
-        self._llm_worker.start()
+
+        # Health check + CPU warning (Step 2-E)
+        health_check = getattr(self._llm, "check_health", None)
+        if callable(health_check):
+            try:
+                cpu_msg = health_check()
+                if cpu_msg:
+                    self._llm_panel.on_analysis_ready(
+                        {
+                            "raw_text": cpu_msg,
+                            "config_patch": {},
+                            "sop_recommendations": [],
+                        }
+                    )
+            except RuntimeError as exc:
+                self._llm_panel.on_llm_error(str(exc))
+                return
+
+        if system is None:
+            system = (
+                "You are an expert in Samsung OLED connector line SOP procedures. "
+                "Help the engineer diagnose and resolve SOP execution issues clearly and accurately. "
+                "Respond in English, using technical terms where appropriate."
+            )
+
+        if streaming:
+            worker = LLMStreamWorker(
+                self._llm, system_prompt=system, history=history, brief=brief
+            )
+            worker.token_ready.connect(self._llm_panel.on_token_ready)
+            worker.think_token_ready.connect(self._llm_panel.on_think_token_ready)
+            worker.elapsed_tick.connect(self._llm_panel.on_elapsed_tick)
+            worker.response_done.connect(self._llm_panel.on_streaming_done)
+            worker.error_occurred.connect(self._llm_panel.on_llm_error)
+            self._llm_panel._worker = worker  # expose for Stop button
+            self._llm_worker = worker
+            worker.start()
+        else:
+            self._llm_worker = LLMWorker(
+                self._llm, system_prompt=system, history=history
+            )
+            self._llm_worker.response_ready.connect(self._llm_panel.on_llm_response)
+            self._llm_worker.error_occurred.connect(self._llm_panel.on_llm_error)
+            self._llm_worker.start()
 
     def on_llm_analyze(self) -> None:
         """Start AnalysisWorker using the latest log payload."""

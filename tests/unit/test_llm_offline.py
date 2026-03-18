@@ -371,3 +371,218 @@ class TestAnalyzeLogs:
         """기본 생성 시 ollama 백엔드를 통해 analyze_logs가 호출된다."""
         llm = OfflineLLM.from_config({})
         assert llm.cfg.backend == "ollama"
+
+
+# ---------------------------------------------------------------------------
+# Bug2 fixes — <think> token routing
+# ---------------------------------------------------------------------------
+
+
+def _make_sse_lines(tokens: list[str]) -> list[bytes]:
+    """Helper: convert token strings to SSE-style bytes lines."""
+    import json as _json
+
+    lines = []
+    for t in tokens:
+        chunk = {"choices": [{"delta": {"content": t}}]}
+        lines.append(f"data: {_json.dumps(chunk)}".encode())
+    lines.append(b"data: [DONE]")
+    return lines
+
+
+class TestThinkTokenRouting:
+    """stream_chat() should route <think>…</think> tokens to on_think_token."""
+
+    def _make_streaming_resp(self, tokens: list[str]) -> MagicMock:
+        resp = MagicMock()
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        resp.raise_for_status.return_value = None
+        resp.iter_lines.return_value = _make_sse_lines(tokens)
+        return resp
+
+    def _mock_session(self, tokens: list[str]) -> MagicMock:
+        sess = MagicMock()
+        sess.post.return_value = self._make_streaming_resp(tokens)
+        return sess
+
+    def test_plain_tokens_go_to_on_token(self) -> None:
+        llm = OfflineLLM.from_config({})
+        llm._session = self._mock_session(["Hello", " world"])
+        received: list[str] = []
+        result = llm.stream_chat(
+            "sys", [{"role": "user", "content": "hi"}], on_token=received.append
+        )
+        assert "".join(received) == "Hello world"
+        assert result == "Hello world"
+
+    def test_think_tokens_routed_to_think_callback(self) -> None:
+        tokens = ["<think>", "reasoning here", "</think>", "answer"]
+        llm = OfflineLLM.from_config({})
+        llm._session = self._mock_session(tokens)
+        visible: list[str] = []
+        thinking: list[str] = []
+        result = llm.stream_chat(
+            "sys",
+            [{"role": "user", "content": "hi"}],
+            on_token=visible.append,
+            on_think_token=thinking.append,
+        )
+        assert "".join(visible) == "answer"
+        assert result == "answer"
+        assert "reasoning here" in "".join(thinking)
+
+    def test_think_block_not_in_answer(self) -> None:
+        tokens = ["<think>", "secret reasoning", "</think>", "real answer"]
+        llm = OfflineLLM.from_config({})
+        llm._session = self._mock_session(tokens)
+        visible: list[str] = []
+        llm.stream_chat(
+            "sys", [{"role": "user", "content": "q"}], on_token=visible.append
+        )
+        combined = "".join(visible)
+        assert "secret reasoning" not in combined
+        assert "real answer" in combined
+
+    def test_no_think_block_works_normally(self) -> None:
+        tokens = ["simple", " answer"]
+        llm = OfflineLLM.from_config({})
+        llm._session = self._mock_session(tokens)
+        visible: list[str] = []
+        thinking: list[str] = []
+        result = llm.stream_chat(
+            "sys",
+            [{"role": "user", "content": "q"}],
+            on_token=visible.append,
+            on_think_token=thinking.append,
+        )
+        assert result == "simple answer"
+        assert thinking == []
+
+    def test_mixed_answer_think_answer(self) -> None:
+        """Text before and after a <think> block should both be in answer."""
+        tokens = ["before", "<think>", "reasoning", "</think>", "after"]
+        llm = OfflineLLM.from_config({})
+        llm._session = self._mock_session(tokens)
+        visible: list[str] = []
+        result = llm.stream_chat(
+            "sys", [{"role": "user", "content": "q"}], on_token=visible.append
+        )
+        assert result == "beforeafter"
+        assert "".join(visible) == "beforeafter"
+
+
+# ---------------------------------------------------------------------------
+# Bug2 fixes — cancel() method
+# ---------------------------------------------------------------------------
+
+
+class TestCancelMethod:
+    def test_cancel_closes_session(self) -> None:
+        llm = OfflineLLM.from_config({})
+        mock_sess = MagicMock()
+        llm._session = mock_sess
+        llm.cancel()
+        mock_sess.close.assert_called_once()
+        assert llm._session is None
+
+    def test_cancel_when_no_session_is_noop(self) -> None:
+        llm = OfflineLLM.from_config({})
+        assert llm._session is None
+        llm.cancel()  # should not raise
+        assert llm._session is None
+
+    def test_cancel_ignores_close_exception(self) -> None:
+        llm = OfflineLLM.from_config({})
+        mock_sess = MagicMock()
+        mock_sess.close.side_effect = OSError("already closed")
+        llm._session = mock_sess
+        llm.cancel()  # should not raise
+        assert llm._session is None
+
+    def test_session_recreated_after_cancel(self) -> None:
+        """After cancel(), _get_session() creates a fresh session."""
+        llm = OfflineLLM.from_config({})
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
+
+        with patch("requests.Session") as mock_cls:
+            mock_sess = MagicMock()
+            mock_sess.post.return_value = resp
+            mock_cls.return_value = mock_sess
+            llm.cancel()  # clear any existing session
+            s = llm._get_session()
+            assert s is mock_sess
+
+
+# ---------------------------------------------------------------------------
+# Bug2 fixes — Ollama health check
+# ---------------------------------------------------------------------------
+
+
+class TestCheckHealth:
+    def test_health_ok_returns_none_with_gpu(self) -> None:
+        llm = OfflineLLM.from_config({})
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_get.return_value = mock_resp
+            # Simulate GPU available
+            with patch("torch.cuda.is_available", return_value=True):
+                result = llm.check_health()
+        assert result is None
+
+    def test_health_ok_cpu_only_returns_info_message(self) -> None:
+        llm = OfflineLLM.from_config({})
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_get.return_value = mock_resp
+            with patch("torch.cuda.is_available", return_value=False):
+                result = llm.check_health()
+        assert result is not None
+        assert "CPU" in result or "cpu" in result.lower()
+
+    def test_health_check_fails_raises_runtime_error(self) -> None:
+        llm = OfflineLLM.from_config({})
+        import requests as _req
+
+        with patch(
+            "requests.get", side_effect=_req.exceptions.ConnectionError("refused")
+        ):
+            with pytest.raises(RuntimeError, match="Ollama server not running"):
+                llm.check_health()
+
+    def test_health_check_timeout_raises_runtime_error(self) -> None:
+        llm = OfflineLLM.from_config({})
+        import requests as _req
+
+        with patch("requests.get", side_effect=_req.exceptions.Timeout("timeout")):
+            with pytest.raises(RuntimeError, match="Ollama server not running"):
+                llm.check_health()
+
+    def test_health_check_uses_short_timeout(self) -> None:
+        from src.llm_offline import _HEALTH_TIMEOUT
+
+        llm = OfflineLLM.from_config({})
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_get.return_value = mock_resp
+            with patch("torch.cuda.is_available", return_value=True):
+                llm.check_health()
+        call_kwargs = mock_get.call_args[1]
+        assert call_kwargs.get("timeout") == _HEALTH_TIMEOUT
+
+    def test_health_check_no_torch_skips_gpu_check(self) -> None:
+        """If torch is not installed, health check passes without error."""
+        llm = OfflineLLM.from_config({})
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_get.return_value = mock_resp
+            with patch.dict("sys.modules", {"torch": None}):
+                result = llm.check_health()
+        # torch not available → skip GPU check → return None
+        assert result is None
