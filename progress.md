@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-18 (YOLO26x GUI Pretrain 재실행 — showui_desktop epochs=20)_
+_최종 갱신: 2026-03-18 (OCR-First 통팩 빌드 트리거 완료 — run #23225700565)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -22,6 +22,7 @@ _최종 갱신: 2026-03-18 (YOLO26x GUI Pretrain 재실행 — showui_desktop ep
 | **프리트레인 파이프라인** | **PretrainPipeline+DatasetConverter+run_pretrain.py + mAP50 실측** | **242 pass** | — |
 | **YOLO26x 전용 규칙** | **CLAUDE.md MANDATORY 규칙 + GUI Pretrain CI 워크플로우** | **254 pass** | — |
 | **OCR-First 파이프라인** | **OCREngine+ExceptionHandler+CycleDetector+LLM 스트리밍+영어 GUI 전환** | **336 pass** | — |
+| **통팩 빌드 준비** | **build_exe.spec OCR hidden imports + build-full-v3.yml YAML 수정 + 빌드 트리거** | **336 pass** | — |
 
 ## 현재 스택 (v3.1.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
@@ -50,13 +51,15 @@ _최종 갱신: 2026-03-18 (YOLO26x GUI Pretrain 재실행 — showui_desktop ep
 | 워크플로우 | Run ID | 상태 | 아티팩트 |
 |-----------|--------|------|---------|
 | Build & Release EXE | 23175357680 | ✅ 완료 | `connector_vision_agent-v3` |
-| Build All-in-One (통팩) | 23176720634 | ❌ dispatch 불가 | GitHub 등록 이슈 |
-| **YOLO26x GUI Pretrain** | **23224811871** | 🔄 **진행 중** | **`yolo26x-gui-pretrained-*`** (showui_desktop, epochs=20) |
+| Build All-in-One (통팩) | 23176720634 | ❌ dispatch 불가 | GitHub YAML 오류 (히어독) |
+| **Build Full v3.1 (OCR-First)** | **23225700565** | 🔄 **진행 중** | **`connector-agent-v3.1-allinone`** |
+| YOLO26x GUI Pretrain | 23224811871 | 🔄 진행 중 | `yolo26x-gui-pretrained-*` (showui_desktop, epochs=20) |
 | Portable Bundle Part2 (phi4-mini) | 23139568715 | ✅ 재활용 | `portable-part2-phi4-mini` (2.7 GB) |
 
-### 워크플로우 등록 이슈 (2026-03-18 발견)
-- `build-allinone.yml`, `build-allinone-v2.yml`, `build-package.yml`, `build-portable-split.yml` 모두 GitHub에서 `workflow_dispatch` 없는 것으로 인식 (캐싱/중복 이슈)
-- **해결 방안**: 워크플로우 파일 삭제 후 재등록, 또는 release.yml 방식으로 push+dispatch 동시 트리거 추가
+### 워크플로우 YAML 이슈 근본 원인 (2026-03-18 해결)
+- **원인**: PowerShell `@'...'@` 히어독 내 Python 코드(컬럼0 시작)가 YAML 파서 오류 유발 → GitHub이 `workflow_dispatch` 트리거를 인식 못 함
+- **해결**: `python -c "..."` 원라이너로 교체 → `build-full-v3.yml` 정상 파싱 및 dispatch 성공
+- **영향받는 파일**: `build-allinone.yml`, `build-allinone-v2.yml`, `build-package.yml` (모두 같은 패턴) — 추후 정리 필요
 
 ### 통팩 조립 방법 (2단계)
 1. `connector-agent-v3-allinone` 압축 해제
