@@ -274,7 +274,18 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
                 on_think_token=_on_think_token,
             )
         except Exception as exc:  # noqa: BLE001
-            self.error_occurred.emit(str(exc))
+            err_msg = str(exc)
+            # session.close() (cancel/deadline) 에 의한 종료인지 판별
+            is_cancel = any(
+                k in err_msg.lower()
+                for k in ("cancel", "connection aborted", "connection reset", "closed")
+            )
+            if is_cancel and not self._running:
+                return  # 사용자 ⏹ Stop — 에러 메시지 불필요
+            elif is_cancel:
+                self.error_occurred.emit("LLM request timed out (120s limit reached)")
+            else:
+                self.error_occurred.emit(err_msg)
 
 
 # ---------------------------------------------------------------------------

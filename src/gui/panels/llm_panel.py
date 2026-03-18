@@ -143,6 +143,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._token_buf: List[str] = []
         self._flush_timer: Optional[Any] = None
         self._stop_requested: bool = False
+        self._last_think_t: float = 0.0  # 마지막 think 토큰 수신 시각
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -312,8 +313,8 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         """Handle a <think> reasoning token — update elapsed label with thinking hint."""
         if not _QT_AVAILABLE:
             return
-        # Show a brief "thinking…" hint in elapsed label rather than cluttering chat
-        elapsed = time.perf_counter() - self._t0 if self._t0 > 0 else 0
+        self._last_think_t = time.perf_counter()
+        elapsed = self._last_think_t - self._t0 if self._t0 > 0 else 0
         self._lbl_elapsed.setText(f"🤔 Reasoning... {elapsed:.1f}s")
 
     def _flush_token_buf(self) -> None:
@@ -396,8 +397,13 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     def _tick_timer(self) -> None:
         if self._t0 > 0:
-            elapsed = time.perf_counter() - self._t0
-            self._lbl_elapsed.setText(f"Thinking... {elapsed:.1f}s")
+            now = time.perf_counter()
+            elapsed = now - self._t0
+            # 최근 2초 내 think 토큰이 있으면 Reasoning 상태 유지
+            if self._last_think_t > 0 and (now - self._last_think_t) < 2.0:
+                self._lbl_elapsed.setText(f"🤔 Reasoning... {elapsed:.1f}s")
+            else:
+                self._lbl_elapsed.setText(f"Thinking... {elapsed:.1f}s")
 
     # ------------------------------------------------------------------
     # Slots / event handlers
@@ -494,11 +500,20 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             # User-initiated stop — suppress error bubble, just reset state
             self.set_sending(False)
             return
-        self._append_bubble("assistant", f"❌ Error: {error}")
-        self._append_system(
-            "Tip: Check that Ollama is running (start_agent.bat) "
-            "and LLM settings are correct in Tab 5 Config."
-        )
+        # timeout / connection cancel 에러 구분
+        is_timeout = "timed out" in error.lower() or "120s" in error
+        if is_timeout:
+            self._append_system(
+                "⏱ Request timed out (120s). CPU-only mode에서 phi4-mini-reasoning이 "
+                "너무 느립니다. 해결책: 1) GPU 설치 (권장) "
+                "2) 더 빠른 모델 사용 (llama3.2:3b 등) 3) Brief mode 확인"
+            )
+        else:
+            self._append_bubble("assistant", f"❌ Error: {error}")
+            self._append_system(
+                "Tip: Check that Ollama is running (start_agent.bat) "
+                "and LLM settings are correct in Tab 5 Config."
+            )
         self.set_sending(False)
 
     @pyqtSlot(object)

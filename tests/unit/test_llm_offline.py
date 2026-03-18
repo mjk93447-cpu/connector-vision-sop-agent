@@ -213,14 +213,16 @@ class TestOllamaBackend:
         payload = mock_post.call_args[1]["json"]
         assert payload.get("stream") is False
 
-    def test_timeout_is_180s(self) -> None:
-        """Ollama uses 180s timeout to handle model loading + recovery_action() latency."""
+    def test_timeout_is_tuple(self) -> None:
+        """Ollama uses (connect, read) tuple timeout for connect 10s + read 120s."""
         llm = OfflineLLM.from_config({})
         with patch(
             "requests.post", return_value=self._mock_response("ok")
         ) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "test"}])
-        assert mock_post.call_args[1]["timeout"] == 180
+        t = mock_post.call_args[1]["timeout"]
+        assert isinstance(t, tuple), "timeout should be a (connect, read) tuple"
+        assert t[0] <= 15, "connect timeout should be short (<= 15s)"
 
     def test_no_duplicate_system_message(self) -> None:
         """history에 이미 system이 있으면 중복 추가하지 않는다."""
@@ -522,7 +524,7 @@ class TestCancelMethod:
 
 
 class TestCheckHealth:
-    def test_health_ok_returns_none_with_gpu(self) -> None:
+    def test_health_ok_returns_gpu_message_with_gpu(self) -> None:
         llm = OfflineLLM.from_config({})
         with patch("requests.get") as mock_get:
             mock_resp = MagicMock()
@@ -531,7 +533,8 @@ class TestCheckHealth:
             # Simulate GPU available
             with patch("torch.cuda.is_available", return_value=True):
                 result = llm.check_health()
-        assert result is None
+        assert result is not None
+        assert "GPU" in result
 
     def test_health_ok_cpu_only_returns_info_message(self) -> None:
         llm = OfflineLLM.from_config({})
@@ -575,8 +578,8 @@ class TestCheckHealth:
         call_kwargs = mock_get.call_args[1]
         assert call_kwargs.get("timeout") == _HEALTH_TIMEOUT
 
-    def test_health_check_no_torch_skips_gpu_check(self) -> None:
-        """If torch is not installed, health check passes without error."""
+    def test_health_check_no_torch_returns_cpu_message(self) -> None:
+        """If torch is not installed, health check returns CPU-only info message."""
         llm = OfflineLLM.from_config({})
         with patch("requests.get") as mock_get:
             mock_resp = MagicMock()
@@ -584,5 +587,78 @@ class TestCheckHealth:
             mock_get.return_value = mock_resp
             with patch.dict("sys.modules", {"torch": None}):
                 result = llm.check_health()
-        # torch not available → skip GPU check → return None
-        assert result is None
+        # torch not available → CPU-only message
+        assert result is not None
+        assert "CPU" in result or "cpu" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# _get_optimized_options (Bug 2 — 하드웨어 최적화)
+# ---------------------------------------------------------------------------
+
+
+class TestOptimizedOptions:
+    def test_gpu_mode_sets_num_gpu_99(self) -> None:
+        """CUDA 감지 시 num_gpu=99 설정 확인."""
+        llm = OfflineLLM.from_config({})
+        with patch("torch.cuda.is_available", return_value=True):
+            opts = llm._get_optimized_options()
+        assert opts["num_gpu"] == 99
+
+    def test_cpu_mode_sets_num_thread_and_num_gpu_0(self) -> None:
+        """CPU-only 환경에서 num_gpu=0, num_thread>=1 설정 확인."""
+        llm = OfflineLLM.from_config({})
+        with patch("torch.cuda.is_available", return_value=False):
+            opts = llm._get_optimized_options()
+        assert opts["num_gpu"] == 0
+        assert opts["num_thread"] >= 1
+
+    def test_brief_mode_sets_think_false(self) -> None:
+        """brief=True 시 options.think=False 포함 확인."""
+        llm = OfflineLLM.from_config({})
+        with patch("torch.cuda.is_available", return_value=False):
+            opts = llm._get_optimized_options(brief=True)
+        assert opts.get("think") is False
+
+    def test_brief_mode_num_ctx_4096(self) -> None:
+        """brief=True 시 num_ctx=4096 (컨텍스트 단축) 확인."""
+        llm = OfflineLLM.from_config({"ctx_size": 8192})
+        with patch("torch.cuda.is_available", return_value=False):
+            opts = llm._get_optimized_options(brief=True)
+        assert opts["num_ctx"] == 4096
+
+    def test_non_brief_mode_no_think_key(self) -> None:
+        """brief=False 시 options에 think 키 없음 확인."""
+        llm = OfflineLLM.from_config({})
+        with patch("torch.cuda.is_available", return_value=False):
+            opts = llm._get_optimized_options(brief=False)
+        assert "think" not in opts
+
+
+# ---------------------------------------------------------------------------
+# 120s deadline timer (Bug 2 — 스트리밍 timeout 안전망)
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingDeadlineTimer:
+    def test_deadline_timer_calls_cancel_on_timeout(self) -> None:
+        """120s 데드라인 타이머가 만료되면 llm.cancel() 호출 확인."""
+        import threading as _threading
+
+        llm = OfflineLLM.from_config({})
+        cancel_called = []
+
+        original_cancel = llm.cancel
+
+        def _spy_cancel() -> None:
+            cancel_called.append(True)
+            original_cancel()
+
+        llm.cancel = _spy_cancel  # type: ignore[method-assign]
+
+        # Timer를 0.05s로 단축하여 즉시 만료 시뮬레이션
+        timer = _threading.Timer(0.05, llm.cancel)
+        timer.start()
+        timer.join(timeout=1.0)
+
+        assert cancel_called, "cancel()이 호출되지 않음"

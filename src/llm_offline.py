@@ -20,6 +20,7 @@ New in v3.0:
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -31,7 +32,8 @@ _OLLAMA_DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
 _OLLAMA_DEFAULT_MODEL = "llama4:scout"
 
 # Brief mode: shorter token limit for fast responses (used when user requests quick answer)
-_BRIEF_MAX_TOKENS = 256
+# 256 → 512: thinking 토큰이 max_tokens에 포함되므로 답변 여유 확보
+_BRIEF_MAX_TOKENS = 512
 
 
 @dataclass
@@ -113,6 +115,47 @@ class OfflineLLM:
                 self._session = None
 
     # ------------------------------------------------------------------ #
+    # Hardware-optimized Ollama options
+    # ------------------------------------------------------------------ #
+
+    def _get_optimized_options(self, brief: bool = False) -> Dict[str, Any]:
+        """하드웨어에 맞는 Ollama llama.cpp 최적화 옵션 반환.
+
+        우선순위: GPU (CUDA) > CPU 멀티코어
+        - GPU 있음: num_gpu=99 (전 레이어 GPU 오프로딩), 빠른 추론
+        - CPU only: num_thread=cpu_count-1, use_mlock=True로 8코어 이상 최대 활용
+        """
+        cpu_count = os.cpu_count() or 8
+
+        has_gpu = False
+        try:
+            import torch  # type: ignore[import]
+
+            has_gpu = torch.cuda.is_available()
+        except ImportError:
+            pass
+
+        options: Dict[str, Any] = {
+            "num_ctx": 4096 if brief else self.cfg.ctx_size,
+            "use_mlock": True,  # 모델을 RAM에 고정 — 스왑 방지
+            "use_mmap": True,  # 메모리맵 로딩 — 콜드 스타트 단축
+        }
+
+        if has_gpu:
+            options["num_gpu"] = 99  # 모든 레이어 GPU 오프로딩
+            options["num_thread"] = max(1, cpu_count // 4)
+        else:
+            options["num_gpu"] = 0
+            options["num_thread"] = max(1, cpu_count - 1)  # 물리 코어 수 - 1
+
+        if brief:
+            # Ollama 0.7+: phi4-mini-reasoning thinking 비활성화
+            # think 토큰이 max_tokens를 소진해 답변이 빈 문자열이 되는 문제 방지
+            options["think"] = False
+
+        return options
+
+    # ------------------------------------------------------------------ #
     # Ollama health check
     # ------------------------------------------------------------------ #
 
@@ -154,16 +197,18 @@ class OfflineLLM:
                 "Run 'ollama serve' first, or start start_agent.bat."
             ) from exc
 
-        # CPU-only detection (optional — torch may not be installed)
-        try:
-            import torch  # type: ignore[import]
+        # 하드웨어 감지 및 정보 반환
+        opts = self._get_optimized_options()
+        has_gpu = opts.get("num_gpu", 0) > 0
+        num_thread = opts.get("num_thread", 1)
 
-            if not torch.cuda.is_available():
-                return "ℹ️ CPU-only mode detected — response may take 120+ seconds"
-        except ImportError:
-            pass  # torch not available — skip GPU check
-
-        return None
+        if has_gpu:
+            return "ℹ️ GPU mode detected — fast inference expected"
+        else:
+            return (
+                f"ℹ️ CPU-only mode ({num_thread} threads) — "
+                "phi4-mini-reasoning: ~30-90s per response"
+            )
 
     # ------------------------------------------------------------------ #
     # 핵심 채팅 인터페이스
@@ -183,6 +228,13 @@ class OfflineLLM:
         history : Conversation history (role/content dicts).
         brief   : If True, use shorter max_output_tokens for faster response.
         """
+        # brief 모드: thinking 스킵 유도 힌트를 system prompt 앞에 추가
+        if brief:
+            system = (
+                "BRIEF MODE: Respond directly and concisely. "
+                "Do NOT include <think> tags or internal reasoning. "
+                "Give only the final answer.\n\n"
+            ) + system
         if self.cfg.backend == "ollama":
             return self._chat_ollama(system, history, brief=brief)
         if self.cfg.backend == "http":
@@ -214,6 +266,13 @@ class OfflineLLM:
 
         Returns the full assembled response string (answer only, no <think> blocks).
         """
+        # brief 모드: thinking 스킵 유도 힌트를 system prompt 앞에 추가
+        if brief:
+            system = (
+                "BRIEF MODE: Respond directly and concisely. "
+                "Do NOT include <think> tags or internal reasoning. "
+                "Give only the final answer.\n\n"
+            ) + system
         if self.cfg.backend in ("ollama", "http"):
             return self._stream_ollama(
                 system,
@@ -268,10 +327,11 @@ class OfflineLLM:
             "messages": messages,
             "max_tokens": max_tokens,
             "stream": False,
+            "options": self._get_optimized_options(brief=brief),
         }
 
-        # Ollama may take time on first model load — use long timeout
-        resp = requests.post(url, json=payload, timeout=180)
+        # connect 10s, read 30s per chunk (non-streaming: total response timeout)
+        resp = requests.post(url, json=payload, timeout=(10, 120))
         resp.raise_for_status()
         data = resp.json()
 
@@ -314,6 +374,7 @@ class OfflineLLM:
             "messages": messages,
             "max_tokens": max_tokens,
             "stream": True,
+            "options": self._get_optimized_options(brief=brief),
         }
 
         t0 = time.perf_counter()
@@ -322,8 +383,11 @@ class OfflineLLM:
         _in_think = False  # True while inside a <think> block
 
         session = self._get_session()
+        # 120s 데드라인 타이머: 총 스트리밍 시간이 120s를 초과하면 session 닫기
+        _deadline = threading.Timer(120.0, self.cancel)
+        _deadline.start()
         try:
-            with session.post(url, json=payload, stream=True, timeout=180) as resp:
+            with session.post(url, json=payload, stream=True, timeout=(10, 30)) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():
                     if not line:
@@ -377,6 +441,8 @@ class OfflineLLM:
 
         except Exception as exc:
             raise RuntimeError(f"Streaming error: {exc}") from exc
+        finally:
+            _deadline.cancel()  # 정상 완료 시 타이머 취소
 
         elapsed = time.perf_counter() - t0
         if on_done:
@@ -411,9 +477,10 @@ class OfflineLLM:
             "model": self.cfg.model_path or "llama4:scout",
             "messages": messages,
             "max_tokens": max_tokens,
+            "options": self._get_optimized_options(brief=brief),
         }
 
-        resp = requests.post(self.cfg.http_url, json=payload, timeout=180)
+        resp = requests.post(self.cfg.http_url, json=payload, timeout=(10, 120))
         resp.raise_for_status()
         data = resp.json()
 
