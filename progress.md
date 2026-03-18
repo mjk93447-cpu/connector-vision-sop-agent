@@ -64,7 +64,8 @@ _최종 갱신: 2026-03-18 (v3.2.2 — Training NoneType 에러 수정 + 완전 
 | **Build Full v3.1 (OCR-First)** | **23225700565** | ❌ 실패 | — |
 | Build Connector Vision Agent v3.1 | 23237420818 | ❓ 확인 필요 | `connector-agent-app` + `connector-agent-llm` |
 | **Build Connector Vision Agent v3.2.0** | **23239456447** | ❓ 확인 필요 | `connector-agent-app` + `connector-agent-llm` |
-| **Build Connector Vision Agent v3.2.1** | **23242119709** | 🔄 트리거 완료 | `connector-agent-app` + `connector-agent-llm` |
+| **Build Connector Vision Agent v3.2.1** | **23242119709** | ❓ 확인 필요 | `connector-agent-app` + `connector-agent-llm` |
+| **Build Connector Vision Agent v3.2.2** | **23243915242** | ✅ 완료 (27m18s) | `connector-agent-app` + `connector-agent-llm` |
 | Portable Bundle Part2 (phi4-mini) | 23139568715 | ✅ 재활용 | `portable-part2-phi4-mini` (2.7 GB) |
 
 ### 워크플로우 YAML 이슈 근본 원인 (2026-03-18 해결)
@@ -142,10 +143,10 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 ### OCR 수정 완료 (2026-03-18)
 - `winrt` → `winsdk` 임포트 수정, EasyOCR fallback 추가
 
-### 통팩 빌드 (2026-03-18) — v3.2.2 빌드 진행 예정
-- `gh workflow run "Build Connector Vision Agent (All-in-One)" --ref main`
-- build-app: EXE + Ollama + YOLO26x + OCR(winsdk/easyocr) + Training fixes
-- build-llm: phi4-mini-reasoning ~2.5 GB 별도 아티팩트
+### 통팩 빌드 완료 (2026-03-18) — v3.2.2 ✅
+- run #23243915242 — 전체 성공 (27m18s)
+- `connector-agent-app`: EXE + Ollama + YOLO26x + OCR(winsdk/easyocr) + Training fixes
+- `connector-agent-llm`: phi4-mini-reasoning ~2.5 GB 별도 아티팩트
 
 ## 이전 다음 작업 후보 (홀드)
 - [ ] `YOLO26x GUI Pretrain` 결과(yolo26x_pretrained.pt) 아티팩트 다운로드 → `assets/models/` 배치
