@@ -48,20 +48,7 @@ jobs:
         run: |
           if (-not (Test-Path "assets\models\yolo26x.pt")) {
             Write-Host "[INFO] yolo26x.pt not found - downloading yolo26x.pt base model"
-            $pyScript = @'
-from ultralytics import YOLO
-import shutil, pathlib
-m = YOLO("yolo26x.pt")
-src = pathlib.Path(m.ckpt_path if hasattr(m,"ckpt_path") else "yolo26x.pt")
-if not src.exists():
-    src = pathlib.Path("yolo26x.pt")
-pathlib.Path("assets/models").mkdir(parents=True, exist_ok=True)
-shutil.copy2(str(src), "assets/models/yolo26x.pt")
-print("Copied", src, "->", "assets/models/yolo26x.pt")
-'@
-            $pyScript | Out-File -FilePath "setup_yolo.py" -Encoding UTF8
-            python setup_yolo.py
-            Remove-Item "setup_yolo.py" -ErrorAction SilentlyContinue
+            python -c "from ultralytics import YOLO; import shutil, pathlib; m=YOLO('yolo26x.pt'); src=pathlib.Path(getattr(m,'ckpt_path','yolo26x.pt')); src=pathlib.Path('yolo26x.pt') if not src.exists() else src; pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True); shutil.copy2(str(src), 'assets/models/yolo26x.pt'); print('Copied', src)"
           } else {
             Write-Host "[INFO] yolo26x.pt found"
           }
