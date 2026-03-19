@@ -1,5 +1,4 @@
 {
-  "model": "claude-sonnet-4-6",
   "permissions": {
     "allow": [
       "Bash(*)",
@@ -9,9 +8,12 @@
       "Glob(*)",
       "Grep(*)",
       "WebFetch(*)",
-      "WebSearch(*)"
+      "WebSearch(*)",
+      "mcp__b4d8e858-8098-41e7-be5e-d0b90dabb595__hub_repo_details",
+      "mcp__b4d8e858-8098-41e7-be5e-d0b90dabb595__hub_repo_search"
     ]
   },
+  "model": "claude-sonnet-4-6",
   "hooks": {
     "Stop": [
       {
