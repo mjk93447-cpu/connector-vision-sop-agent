@@ -441,7 +441,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self.set_sending(True)
         self._begin_streaming_bubble()
 
-        parent = self.parent()
+        # self.parent() returns the internal QStackedWidget inside QTabWidget,
+        # NOT MainWindow.  self.window() always returns the top-level QMainWindow
+        # regardless of how many intermediate container widgets exist.
+        parent = self.window()
         if parent and hasattr(parent, "on_llm_send"):
             parent.on_llm_send(  # type: ignore[union-attr]
                 self._history[:],
@@ -449,9 +452,13 @@ class LlmPanel(QWidget):  # type: ignore[misc]
                 brief=self._brief_mode,
                 streaming=True,
             )
+        else:
+            # Defensive fallback: window not reachable yet (e.g. unit test env)
+            self.set_sending(False)
+            self._append_system("❌ Internal error: MainWindow not reachable.")
 
     def _on_analyze(self) -> None:
-        parent = self.parent()
+        parent = self.window()
         if parent and hasattr(parent, "on_llm_analyze"):
             parent.on_llm_analyze()  # type: ignore[union-attr]
 
