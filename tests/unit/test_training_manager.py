@@ -394,3 +394,121 @@ class TestCountTrainingImages:
 
         count = TrainingManager._count_training_images(tmp_path / "no_file.yaml")
         assert count == -1
+
+
+# ---------------------------------------------------------------------------
+# Stale-cache cleanup
+# ---------------------------------------------------------------------------
+
+
+class TestCleanStaleCaches:
+    """_clean_stale_caches() removes leftover *.cache / *.cache.npy files.
+
+    Background
+    ----------
+    ultralytics saves label caches as ``labels/<split>.cache`` (e.g.
+    ``labels/image_source.cache``).  If a prior training run was interrupted
+    after ``np.save()`` but before the ``*.cache.npy`` → ``*.cache`` rename,
+    or if the hash mismatches on a subsequent run, the stale ``.cache.npy``
+    causes ultralytics to fail with::
+
+        'NoneType' object has no attribute 'write'
+
+    Pre-emptive deletion before every training call ensures a clean start.
+    """
+
+    def test_removes_cache_files_adjacent_to_labels(self, tmp_path: Path) -> None:
+        """*.cache files directly in labels/ are deleted."""
+        from src.training.training_manager import TrainingManager
+
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        stale = labels_dir / "image_source.cache"
+        stale.write_bytes(b"stale-cache-data")
+
+        yaml_path = tmp_path / "dataset.yaml"
+        yaml_path.write_text("dummy: yaml\n", encoding="utf-8")
+
+        TrainingManager._clean_stale_caches(yaml_path)
+
+        assert not stale.exists(), "stale .cache file should have been deleted"
+
+    def test_removes_cache_npy_files(self, tmp_path: Path) -> None:
+        """*.cache.npy files (partial writes) are deleted."""
+        from src.training.training_manager import TrainingManager
+
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        stale = labels_dir / "image_source.cache.npy"
+        stale.write_bytes(b"partial-write")
+
+        yaml_path = tmp_path / "dataset.yaml"
+        yaml_path.write_text("dummy: yaml\n", encoding="utf-8")
+
+        TrainingManager._clean_stale_caches(yaml_path)
+
+        assert not stale.exists(), "stale .cache.npy file should have been deleted"
+
+    def test_removes_multiple_class_cache_files(self, tmp_path: Path) -> None:
+        """All *.cache and *.cache.npy under labels/ are cleaned, not just one."""
+        from src.training.training_manager import TrainingManager
+
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        files = [
+            labels_dir / "image_source.cache",
+            labels_dir / "button.cache",
+            labels_dir / "button.cache.npy",
+        ]
+        for f in files:
+            f.write_bytes(b"stale")
+
+        yaml_path = tmp_path / "dataset.yaml"
+        yaml_path.write_text("dummy: yaml\n", encoding="utf-8")
+
+        TrainingManager._clean_stale_caches(yaml_path)
+
+        for f in files:
+            assert not f.exists(), f"{f.name} should have been deleted"
+
+    def test_no_error_when_labels_dir_missing(self, tmp_path: Path) -> None:
+        """Silent no-op when labels/ directory does not exist."""
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        yaml_path.write_text("dummy: yaml\n", encoding="utf-8")
+
+        # Should not raise any exception
+        TrainingManager._clean_stale_caches(yaml_path)
+
+    def test_preserves_non_cache_files(self, tmp_path: Path) -> None:
+        """Regular .txt label files are NOT deleted."""
+        from src.training.training_manager import TrainingManager
+
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        label_file = labels_dir / "image_source_20260319_123456.txt"
+        label_file.write_text("0 0.5 0.5 0.3 0.2\n", encoding="utf-8")
+
+        yaml_path = tmp_path / "dataset.yaml"
+        yaml_path.write_text("dummy: yaml\n", encoding="utf-8")
+
+        TrainingManager._clean_stale_caches(yaml_path)
+
+        assert label_file.exists(), ".txt label files must be preserved"
+
+    def test_cleans_nested_subdirectory_caches(self, tmp_path: Path) -> None:
+        """*.cache.npy inside labels/image_source/ subdir is also cleaned."""
+        from src.training.training_manager import TrainingManager
+
+        subdir = tmp_path / "labels" / "image_source"
+        subdir.mkdir(parents=True)
+        stale = subdir / "temp.cache.npy"
+        stale.write_bytes(b"partial")
+
+        yaml_path = tmp_path / "dataset.yaml"
+        yaml_path.write_text("dummy: yaml\n", encoding="utf-8")
+
+        TrainingManager._clean_stale_caches(yaml_path)
+
+        assert not stale.exists(), "nested .cache.npy should be cleaned"

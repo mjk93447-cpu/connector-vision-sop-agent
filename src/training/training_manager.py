@@ -124,6 +124,16 @@ class TrainingManager:
         else:
             start_weights = self.base_model
 
+        # ------------------------------------------------------------------ #
+        # Clean stale ultralytics label-cache files.                        #
+        # Leftover *.cache.npy files from an interrupted previous run cause #
+        # the infamous 'NoneType' object has no attribute 'write' crash on  #
+        # the cache-rebuild path.  Deleting them here ensures a clean start #
+        # and reproduces the "first run always works" behaviour the user     #
+        # already observes.                                                  #
+        # ------------------------------------------------------------------ #
+        self._clean_stale_caches(dataset_yaml)
+
         # Guard: model file must exist — never auto-download from GitHub
         if not Path(start_weights).exists():
             raise FileNotFoundError(
@@ -214,6 +224,42 @@ class TrainingManager:
             return count
         except Exception:  # noqa: BLE001
             return -1  # unknown — let ultralytics decide
+
+    @staticmethod
+    def _clean_stale_caches(dataset_yaml: Path) -> None:
+        """Delete stale ultralytics label-cache files before training.
+
+        ultralytics stores per-split label caches as ``*.cache`` files
+        adjacent to the ``labels/`` subdirectories (e.g.
+        ``training_data/labels/image_source.cache``).  The save sequence is:
+
+        1. ``np.save(str(cache_path), data)``  → creates ``*.cache.npy``
+        2. ``cache_path.with_suffix(".cache.npy").rename(cache_path)``
+
+        If a previous training run was **interrupted between steps 1 and 2**
+        (common when the GUI is closed mid-training), the ``*.cache.npy`` file
+        is left on disk but ``*.cache`` never appears.  On the next run:
+
+        * ``load_dataset_cache_file("*.cache")``  → ``FileNotFoundError``
+        * ``cache_labels(cache_path)`` tries to rebuild and re-save
+        * ``Path("*.cache.npy").rename(cache_path)`` fails on Windows
+          when destination already exists (Python < 3.9) or when the
+          ``np.save()`` path resolves to ``None`` in some ultralytics builds
+        * Result: ``'NoneType' object has no attribute 'write'``
+
+        Pre-emptively deleting all ``*.cache`` and ``*.cache.npy`` files in
+        ``<yaml_dir>/labels/`` before every training call guarantees a clean
+        slate and reproduces the "first-run always works" behaviour.
+        """
+        labels_dir = dataset_yaml.parent / "labels"
+        if not labels_dir.exists():
+            return
+        for pattern in ("*.cache", "*.cache.npy"):
+            for stale in labels_dir.rglob(pattern):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass  # read-only or locked — skip silently
 
     def _find_best_weights(self, results: object) -> Optional[Path]:
         """Locate ``best.pt`` from the training run results."""
