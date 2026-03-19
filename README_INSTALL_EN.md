@@ -306,6 +306,7 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.2.7 | 2026-03-19 | Fix: bypass corporate HTTP proxy (trust_env=False, NO_PROXY) + health-check timeout → 30s |
 | 3.2.6 | 2026-03-19 | Fix: LLM health check non-fatal + timeout 1.5s → 5s (network-drive/RAM-limited envs) |
 | 3.2.5 | 2026-03-19 | Fix: stale label-cache crash on 2nd training run ("NoneType write") |
 | 3.2.4 | 2026-03-19 | OCR: multi-word button detection, 4-variant preprocessing, IoU dedup |
@@ -321,4 +322,4 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 ---
 
 *For technical support, contact your local IT team or line supervisor.*
-*Connector Vision SOP Agent v3.2.6 — Samsung OLED Line Automation*
+*Connector Vision SOP Agent v3.2.7 — Samsung OLED Line Automation*

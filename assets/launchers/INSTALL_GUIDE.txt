@@ -1,5 +1,5 @@
 ================================================================
- Connector Vision SOP Agent v3.2.6 - All-in-One Package
+ Connector Vision SOP Agent v3.2.7 - All-in-One Package
  INSTALL GUIDE
 ================================================================
 
@@ -64,7 +64,7 @@ NOTES
   - sop_steps.json edits take effect immediately (no restart needed)
   - config.json changes: always use Tab 5 -> review config.proposed.json -> apply manually
   - Training: second run "NoneType write" error is fixed in v3.2.5 (stale cache auto-cleared)
-  - LLM Chat: health check now non-fatal; works on network-drive/low-RAM systems (v3.2.6)
+  - LLM Chat: health check now non-fatal; works on network-drive/low-RAM systems (v3.2.7)
   - LLM first response may take 60-120 seconds on CPU-only hardware (normal)
 
 REQUIREMENTS
