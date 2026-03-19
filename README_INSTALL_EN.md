@@ -1,6 +1,6 @@
 # Connector Vision SOP Agent — Complete Guide for Line Engineers
 
-> Version 3.0 | For Indian Line Engineers | English Only
+> Version 3.2.5 | For Indian Line Engineers | English Only
 
 ---
 
@@ -267,6 +267,7 @@ This is normal for CPU-only operation. The AI runs fully offline.
 | **App crashed** | Any issue | Restart `start_agent.bat`; check Tab 6 logs |
 | **"Model file not found"** | yolo26x.pt missing | Contact IT to restore `assets\models\yolo26x.pt` |
 | **Training failed** | Insufficient images | Add at least 30 labeled images in Tab 7 |
+| **"NoneType write" on 2nd training** | Stale cache file | Fixed automatically in v3.2.5 — just retry training |
 | **Config change not applied** | proposed.json | Open `assets\config.proposed.json`, verify, copy to `config.json` manually |
 
 ### Restarting Properly
@@ -305,7 +306,13 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 3.0 | 2026-03-17 | OCR-first detection, LLM streaming, polygon mask training, English UI |
+| 3.2.5 | 2026-03-19 | Fix: stale label-cache crash on 2nd training run ("NoneType write") |
+| 3.2.4 | 2026-03-19 | OCR: multi-word button detection, 4-variant preprocessing, IoU dedup |
+| 3.2.3 | 2026-03-19 | Fix: LLM chat requests never sent (self.parent() → self.window()) |
+| 3.2.2 | 2026-03-18 | Fix: Training dataset.yaml path, offline env, class subfolders |
+| 3.2.0 | 2026-03-18 | OCR winsdk import fix, EasyOCR fallback, workflow consolidation |
+| 3.1.0 | 2026-03-17 | OCR-first detection, LLM streaming, exception handler, English UI |
+| 3.0.0 | 2026-03-17 | GUI 7-tab, Training panel, YOLO26x pretrain CI |
 | 2.1 | 2026-03 | YOLO26x exclusive, GUI 7-tab layout, TrainingPanel |
 | 2.0 | 2026-02 | phi4-mini LLM, Ollama backend |
 | 1.0 | 2025-12 | Initial release |
@@ -313,4 +320,4 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 ---
 
 *For technical support, contact your local IT team or line supervisor.*
-*Connector Vision SOP Agent v3.0 — Samsung OLED Line Automation*
+*Connector Vision SOP Agent v3.2.5 — Samsung OLED Line Automation*

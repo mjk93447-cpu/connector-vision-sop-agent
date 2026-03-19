@@ -1,58 +1,75 @@
 ================================================================
- Connector Vision SOP Agent v3.0 - All-in-One Package
+ Connector Vision SOP Agent v3.2.5 - All-in-One Package
  INSTALL GUIDE
 ================================================================
 
-STEP 1.  phi4-mini 모델 블롭 복사 (약 2.7 GB)
+STEP 1.  Copy phi4-mini model blobs (~2.7 GB)
 --------------------------------------------------
-기존 빌드에서 portable-part2-phi4-mini 아티팩트를 다운로드합니다.
-  Actions run:
-  https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions/runs/23139568715
+Download the connector-agent-llm artifact from the latest build:
+  GitHub Actions:
+  https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions
 
-압축 해제 후 blobs\ 와 manifests\ 폴더를 아래 경로에 복사:
+Extract the ZIP and copy the blobs\ and manifests\ folders to:
 
-  [이 패키지 폴더]\ollama_models\blobs\
-  [이 패키지 폴더]\ollama_models\manifests\
+  [this package folder]\ollama_models\blobs\
+  [this package folder]\ollama_models\manifests\
 
-STEP 2.  실행
+STEP 2.  Run first-time setup (once only)
 --------------------------------------------------
-  start_agent.bat 더블클릭
+  Right-click install_first_time.bat -> Run as administrator
+  Wait for "Setup Complete!" message (2-5 minutes)
 
-  => Ollama 서버 자동 시작 (포트 11434)
-  => phi4-mini-reasoning 모델 로드 확인
-  => PyQt6 GUI 오픈 (6탭)
+STEP 3.  Launch
+--------------------------------------------------
+  Double-click start_agent.bat
 
-최종 폴더 구조
+  => Ollama server starts automatically (port 11434)
+  => phi4-mini-reasoning model loads
+  => PyQt6 GUI opens (7 tabs)
+
+Final folder structure
 --------------------------------------------------
   connector_agent\
   +-- connector_vision_agent.exe   <- SOP Agent (GUI + YOLO26x)
-  +-- ollama.exe                   <- LLM 런타임
-  +-- start_agent.bat              <- 실행 스크립트 (더블클릭)
-  +-- stop_ollama.bat
-  +-- INSTALL_GUIDE.txt            <- 이 파일
+  +-- ollama.exe                   <- LLM runtime
+  +-- start_agent.bat              <- Launch script (double-click)
+  +-- stop_ollama.bat              <- Stop Ollama server
+  +-- install_first_time.bat       <- First-time setup (run once as Admin)
+  +-- INSTALL_GUIDE.txt            <- This file
+  +-- QUICK_START_EN.md            <- One-page daily reference
+  +-- README_INSTALL_EN.md         <- Full user guide
   +-- assets\
-  |   +-- config.json              <- 설정 (편집 가능)
-  |   +-- sop_steps.json           <- SOP 12단계 정의 (편집 가능)
+  |   +-- config.json              <- Settings (edit via Tab 5)
+  |   +-- sop_steps.json           <- SOP 12-step definition (edit via Tab 4)
   |   +-- models\
-  |       +-- yolo26x.pt           <- YOLO 가중치 (CI=플레이스홀더)
+  |       +-- yolo26x.pt           <- YOLO26x weights (COCO pretrained baseline)
   +-- ollama_models\
-      +-- blobs\     <- Part2에서 복사
-      +-- manifests\ <- Part2에서 복사
+      +-- blobs\     <- copy from connector-agent-llm artifact
+      +-- manifests\ <- copy from connector-agent-llm artifact
 
-GUI 6탭 구성
+GUI 7-Tab Layout
 --------------------------------------------------
-  Tab1: Run SOP    - 12단계 SOP 자동 실행 / 로그 실시간 확인
-  Tab2: Vision     - 스크린샷 캡처 + YOLO bbox 오버레이 / 파일 열기
-  Tab3: LLM Chat   - LLM에게 SOP 실패 원인 질문 / config 변경 제안
-  Tab4: SOP Editor - SOP 단계 추가/삭제/순서 변경 (JSON 직접 편집)
-  Tab5: Config     - config.json 값 UI로 편집
-  Tab6: Audit      - config 변경 이력 열람
+  Tab 1: SOP Runner  - Run 12-step SOP / real-time log
+  Tab 2: Vision      - Screenshot + YOLO bbox overlay / file open
+  Tab 3: LLM Chat    - Ask LLM about SOP failures / config suggestions
+  Tab 4: SOP Editor  - Add/delete/reorder SOP steps (JSON)
+  Tab 5: Config      - Edit config.json via UI (saves to config.proposed.json)
+  Tab 6: Audit       - Config change history viewer
+  Tab 7: Training    - Annotate connector images and fine-tune YOLO26x
 
 NOTES
 --------------------------------------------------
-  - LLM 없이도 Tab1/Tab2/Tab5 정상 동작
-  - yolo26x.pt: CI 플레이스홀더 (실제 학습 모델로 교체 시 검출 성능 향상)
-  - sop_steps.json 편집 후 EXE 재시작 없이 즉시 반영
-  - config.json -> llm.allow_config_write=true 설정 시
-    LLM이 직접 config.json 수정 가능 (감사 로그 기록됨)
+  - Tabs 1/2/5 work without LLM (Ollama not required for core SOP)
+  - yolo26x.pt: COCO pretrained by default; fine-tune via Tab 7 for better accuracy
+  - sop_steps.json edits take effect immediately (no restart needed)
+  - config.json changes: always use Tab 5 -> review config.proposed.json -> apply manually
+  - Training: second run "NoneType write" error is fixed in v3.2.5 (stale cache auto-cleared)
+  - LLM first response may take 60-120 seconds on CPU-only hardware (normal)
+
+REQUIREMENTS
+--------------------------------------------------
+  - Windows 10 Pro 1803+ or Windows 11 (64-bit)
+  - 1920x1080 display resolution (REQUIRED)
+  - 16 GB RAM minimum
+  - 15 GB free disk space
 ================================================================

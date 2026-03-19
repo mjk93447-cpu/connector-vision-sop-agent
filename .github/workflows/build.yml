@@ -1,18 +1,18 @@
 name: Build Connector Vision Agent (All-in-One)
 
-# 통팩 빌드: EXE + Ollama + YOLO26x + OCR(winsdk/easyocr) + phi4-mini LLM
+# All-in-One build: EXE + Ollama + YOLO26x + OCR (winsdk/easyocr) + phi4-mini LLM
 #
-# MANDATORY: YOLO26x(yolo26x.pt) 단독 사용. YOLOv8/v9/v10/v11 절대 금지.
+# MANDATORY: YOLO26x (yolo26x.pt) ONLY. YOLOv8/v9/v10/v11 ABSOLUTELY FORBIDDEN.
 #
-# 아티팩트 2개 생성:
-#   connector-agent-app  ~500 MB  EXE + Ollama + YOLO26x + OCR + 설정
-#   connector-agent-llm  ~2.5 GB  phi4-mini-reasoning 모델 블롭
+# Produces 2 artifacts:
+#   connector-agent-app  ~500 MB  EXE + Ollama + YOLO26x + OCR + config
+#   connector-agent-llm  ~2.5 GB  phi4-mini-reasoning model blobs
 #
-# 현장 배포 절차:
-#   1. connector-agent-app.zip 압축 해제 → connector_agent\ 폴더
-#   2. connector-agent-llm.zip 압축 해제 → blobs/ manifests/ 를
-#      connector_agent\ollama_models\ 에 복사
-#   3. connector_agent\start_agent.bat 더블클릭
+# On-site deployment:
+#   1. Extract connector-agent-app.zip → connector_agent\ folder
+#   2. Extract connector-agent-llm.zip → copy blobs\ and manifests\ into
+#      connector_agent\ollama_models\
+#   3. Double-click connector_agent\start_agent.bat
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ on:
 jobs:
 
   # ─────────────────────────────────────────────────────────────────────
-  # Job 1: EXE + Ollama + YOLO26x + OCR + 설정 파일
+  # Job 1: EXE + Ollama + YOLO26x + OCR + config files
   # ─────────────────────────────────────────────────────────────────────
   build-app:
     name: App (EXE + Ollama + YOLO26x + OCR)
@@ -48,10 +48,10 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "assets\models\yolo26x.pt")) {
-            Write-Host "[INFO] yolo26x.pt 없음 - COCO pretrained 다운로드 중"
+            Write-Host "[INFO] yolo26x.pt not found — downloading COCO pretrained weights"
             python -c "from ultralytics import YOLO; import shutil, pathlib; m=YOLO('yolo26x.pt'); src=pathlib.Path(getattr(m,'ckpt_path','yolo26x.pt')); src=pathlib.Path('yolo26x.pt') if not src.exists() else src; pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True); shutil.copy2(str(src), 'assets/models/yolo26x.pt'); print('Copied', src)"
           } else {
-            Write-Host "[INFO] yolo26x.pt 존재 확인"
+            Write-Host "[INFO] yolo26x.pt found — using existing file"
           }
           $sz = [math]::Round((Get-Item "assets\models\yolo26x.pt").Length / 1MB, 1)
           Write-Host "[INFO] yolo26x.pt: $sz MB"
@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "dist_build\connector_vision_agent.exe")) {
-            throw "EXE 빌드 실패 — 파일 없음"
+            throw "EXE build failed — file not found"
           }
           $mb = [math]::Round((Get-Item "dist_build\connector_vision_agent.exe").Length / 1MB, 1)
           Write-Host "[OK] EXE: $mb MB"
@@ -84,7 +84,7 @@ jobs:
           $uri = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
           Invoke-WebRequest -Uri $uri -OutFile ollama.zip -UseBasicParsing
           Expand-Archive ollama.zip -DestinationPath ollama_bin -Force
-          if (-not (Test-Path "ollama_bin\ollama.exe")) { throw "ollama.exe 없음" }
+          if (-not (Test-Path "ollama_bin\ollama.exe")) { throw "ollama.exe not found" }
           $mb = [math]::Round((Get-Item "ollama_bin\ollama.exe").Length / 1MB, 1)
           Write-Host "[OK] ollama.exe: $mb MB"
 
@@ -96,11 +96,11 @@ jobs:
           New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
           New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
 
-          # 실행 파일
+          # Executables
           Copy-Item "dist_build\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
           Copy-Item "ollama_bin\ollama.exe"                 "$pkg\ollama.exe"
 
-          # Config: LLM 활성화 (phi4-mini-reasoning via Ollama)
+          # Config: enable LLM (phi4-mini-reasoning via Ollama)
           $cfg = Get-Content assets\config.json -Raw | ConvertFrom-Json
           $cfg.llm.enabled    = $true
           $cfg.llm.backend    = "ollama"
@@ -108,16 +108,16 @@ jobs:
           $cfg.llm.http_url   = "http://127.0.0.1:11434/v1/chat/completions"
           $cfg | ConvertTo-Json -Depth 10 | Set-Content "$pkg\assets\config.json" -Encoding UTF8
 
-          # SOP 설정 + YOLO26x 모델 (MANDATORY: YOLO26x only)
+          # SOP config + YOLO26x model (MANDATORY: YOLO26x only)
           Copy-Item "assets\sop_steps.json"            "$pkg\assets\sop_steps.json"
           Copy-Item "assets\models\yolo26x.pt"         "$pkg\assets\models\yolo26x.pt"
           if (Test-Path "assets\models\yolo26x_pretrained.pt") {
             Copy-Item "assets\models\yolo26x_pretrained.pt" "$pkg\assets\models\yolo26x_pretrained.pt"
             $mb = [math]::Round((Get-Item "assets\models\yolo26x_pretrained.pt").Length / 1MB, 1)
-            Write-Host "[OK] yolo26x_pretrained.pt (GUI 특화): $mb MB"
+            Write-Host "[OK] yolo26x_pretrained.pt (GUI-specialized): $mb MB"
           }
 
-          # 런처 + 문서
+          # Launchers + documentation
           Copy-Item "assets\launchers\start_agent.bat"    "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat"    "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt"  "$pkg\INSTALL_GUIDE.txt"
@@ -126,12 +126,12 @@ jobs:
             if (Test-Path $f) { Copy-Item $f "$pkg\$f" }
           }
 
-          # LLM 모델 자리 표시 파일
-          "connector-agent-llm 아티팩트를 여기에 압축해제 하세요. (blobs/, manifests/ 폴더)" |
+          # LLM model placeholder
+          "Extract connector-agent-llm artifact here (blobs\ and manifests\ folders)." |
             Set-Content "$pkg\ollama_models\PLACE_LLM_HERE.txt" -Encoding UTF8
 
           Write-Host ""
-          Write-Host "=== connector_agent/ 패키지 매니페스트 ==="
+          Write-Host "=== connector_agent/ package manifest ==="
           Get-ChildItem $pkg -Recurse |
             Where-Object { -not $_.PSIsContainer } |
             Select-Object @{N="File";E={$_.FullName.Replace((Resolve-Path $pkg).Path+"\","")}},
@@ -146,8 +146,8 @@ jobs:
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────────────
-  # Job 2: phi4-mini-reasoning LLM 모델 블롭 (~2.5 GB)
-  #         디스크 공간 제약으로 별도 Job 실행
+  # Job 2: phi4-mini-reasoning LLM model blobs (~2.5 GB)
+  #         Separate job due to disk space constraints
   # ─────────────────────────────────────────────────────────────────────
   build-llm:
     name: LLM (phi4-mini-reasoning model blobs)
@@ -160,8 +160,8 @@ jobs:
         shell: pwsh
         run: |
           $free = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
-          Write-Host "여유 디스크: $free GB"
-          if ($free -lt 6) { throw "디스크 부족 — 6 GB 이상 필요 (현재 $free GB)" }
+          Write-Host "Free disk: $free GB"
+          if ($free -lt 6) { throw "Insufficient disk — need 6 GB+ (current: $free GB)" }
 
       - name: Download Ollama binary
         shell: pwsh
@@ -169,7 +169,7 @@ jobs:
           $uri = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
           Invoke-WebRequest -Uri $uri -OutFile ollama.zip -UseBasicParsing
           Expand-Archive ollama.zip -DestinationPath ollama_bin -Force
-          Write-Host "[OK] Ollama 준비 완료"
+          Write-Host "[OK] Ollama ready"
 
       - name: Set model storage path
         shell: pwsh
@@ -184,18 +184,18 @@ jobs:
         run: |
           $env:OLLAMA_HOST = "127.0.0.1:11434"
           Start-Process "ollama_bin\ollama.exe" -ArgumentList "serve" -WindowStyle Hidden
-          Write-Host "Ollama 시작 대기 중 (20초)..."
+          Write-Host "Waiting for Ollama to start (20 seconds)..."
           Start-Sleep -Seconds 20
-          Write-Host "[OK] Ollama 서버 준비 완료"
+          Write-Host "[OK] Ollama server ready"
 
       - name: Pull phi4-mini-reasoning (~2.5 GB)
         shell: pwsh
         run: |
           $env:OLLAMA_HOST = "127.0.0.1:11434"
-          Write-Host "phi4-mini-reasoning 다운로드 중 (Microsoft, ~2.5 GB)..."
+          Write-Host "Downloading phi4-mini-reasoning (Microsoft, ~2.5 GB)..."
           & ollama_bin\ollama.exe pull phi4-mini-reasoning
-          if ($LASTEXITCODE -ne 0) { throw "모델 다운로드 실패 (exit $LASTEXITCODE)" }
-          Write-Host "[OK] 다운로드 완료"
+          if ($LASTEXITCODE -ne 0) { throw "Model download failed (exit $LASTEXITCODE)" }
+          Write-Host "[OK] Download complete"
           & ollama_bin\ollama.exe list
 
       - name: Verify model blobs
@@ -205,8 +205,8 @@ jobs:
           $files = Get-ChildItem $modelDir -Recurse -File
           $files | Select-Object Name, @{N="MB";E={[math]::Round($_.Length/1MB,1)}} | Format-Table
           $gb = ($files | Measure-Object Length -Sum).Sum / 1GB
-          Write-Host ("모델 총 크기: {0:F2} GB" -f $gb)
-          if ($gb -lt 1.0) { throw "모델 크기 너무 작음 — 다운로드 실패 의심" }
+          Write-Host ("Model total size: {0:F2} GB" -f $gb)
+          if ($gb -lt 1.0) { throw "Model size too small — download may have failed" }
 
       - name: Upload LLM artifact
         uses: actions/upload-artifact@v4
