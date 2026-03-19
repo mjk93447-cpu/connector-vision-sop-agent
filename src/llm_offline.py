@@ -60,7 +60,9 @@ class LLMConfig:
 
 
 _OLLAMA_BASE_URL = "http://localhost:11434"
-_HEALTH_TIMEOUT = 1.5  # seconds for Ollama health check
+_HEALTH_TIMEOUT = (
+    5.0  # seconds for Ollama health check (generous for network-drive/RAM-limited envs)
+)
 
 
 class OfflineLLM:
