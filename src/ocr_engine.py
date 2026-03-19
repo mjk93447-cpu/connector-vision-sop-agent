@@ -132,6 +132,9 @@ class OCREngine:
         """
         thr = threshold if threshold is not None else self.threshold
         regions = self.scan_all(img_np)
+        # Merge adjacent word-level regions so multi-word button labels
+        # (e.g. "Image Source") are searchable as a single region.
+        regions = self._merge_adjacent_regions(regions)
         best: Optional[TextRegion] = None
         best_score = 0.0
 
@@ -278,66 +281,73 @@ class OCREngine:
     # ------------------------------------------------------------------
 
     def _scan_paddleocr(self, img_np: np.ndarray) -> List[TextRegion]:
-        """Use PaddleOCR PP-OCRv4 for text detection."""
+        """Use PaddleOCR PP-OCRv4 for text detection.
+
+        Runs multiple preprocessed variants (V1–V4) and deduplicates results
+        with IoU-based NMS so that bold fonts and colored button backgrounds
+        are reliably detected regardless of which variant performs best.
+        """
         paddle = self._get_paddle()
         if paddle is None:
             logger.warning("PaddleOCR not available — returning empty OCR result")
             return []
 
-        preprocessed = self._preprocess(img_np)
-        try:
-            # PaddleOCR 3.x uses predict(); 2.x uses ocr()
-            if hasattr(paddle, "predict"):
-                result_list = paddle.predict(preprocessed)
-                # 3.x returns list of OCRResult objects; normalize to 2.x list-of-pages format
-                raw = []
-                for ocr_result in result_list or []:
-                    page = []
-                    rec_texts = getattr(ocr_result, "rec_texts", None)
-                    rec_scores = getattr(ocr_result, "rec_scores", None)
-                    dt_polys = getattr(ocr_result, "dt_polys", None)
-                    if rec_texts and dt_polys:
-                        for i, text_val in enumerate(rec_texts):
-                            conf_val = rec_scores[i] if rec_scores else 1.0
-                            poly = dt_polys[i] if i < len(dt_polys) else None
-                            if poly is not None:
-                                page.append([poly, (str(text_val), float(conf_val))])
-                    raw.append(page)
-            else:
-                raw = paddle.ocr(preprocessed, cls=True)
-        except Exception as exc:
-            logger.warning("PaddleOCR inference error: %s", exc)
-            return []
-
-        regions: List[TextRegion] = []
-        if not raw:
-            return regions
-
-        for page in raw:
-            if not page:
+        all_regions: List[TextRegion] = []
+        for variant in self._preprocess_variants(img_np):
+            try:
+                # PaddleOCR 3.x uses predict(); 2.x uses ocr()
+                if hasattr(paddle, "predict"):
+                    result_list = paddle.predict(variant)
+                    # 3.x returns list of OCRResult objects; normalize to 2.x format
+                    raw = []
+                    for ocr_result in result_list or []:
+                        page = []
+                        rec_texts = getattr(ocr_result, "rec_texts", None)
+                        rec_scores = getattr(ocr_result, "rec_scores", None)
+                        dt_polys = getattr(ocr_result, "dt_polys", None)
+                        if rec_texts and dt_polys:
+                            for i, text_val in enumerate(rec_texts):
+                                conf_val = rec_scores[i] if rec_scores else 1.0
+                                poly = dt_polys[i] if i < len(dt_polys) else None
+                                if poly is not None:
+                                    page.append(
+                                        [poly, (str(text_val), float(conf_val))]
+                                    )
+                        raw.append(page)
+                else:
+                    raw = paddle.ocr(variant, cls=True)
+            except Exception as exc:
+                logger.warning("PaddleOCR inference error: %s", exc)
                 continue
-            for item in page:
-                if not item or len(item) < 2:
+
+            if not raw:
+                continue
+            for page in raw:
+                if not page:
                     continue
-                box_pts, (text, conf) = item
-                # box_pts: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
-                xs = [int(p[0]) for p in box_pts]
-                ys = [int(p[1]) for p in box_pts]
-                x_min, y_min = min(xs), min(ys)
-                bw = max(xs) - x_min
-                bh = max(ys) - y_min
-                cx = x_min + bw // 2
-                cy = y_min + bh // 2
-                regions.append(
-                    TextRegion(
-                        text=str(text),
-                        bbox=(x_min, y_min, bw, bh),
-                        confidence=float(conf),
-                        center=(cx, cy),
-                        source="paddleocr",
+                for item in page:
+                    if not item or len(item) < 2:
+                        continue
+                    box_pts, (text, conf) = item
+                    # box_pts: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
+                    xs = [int(p[0]) for p in box_pts]
+                    ys = [int(p[1]) for p in box_pts]
+                    x_min, y_min = min(xs), min(ys)
+                    bw = max(xs) - x_min
+                    bh = max(ys) - y_min
+                    cx = x_min + bw // 2
+                    cy = y_min + bh // 2
+                    all_regions.append(
+                        TextRegion(
+                            text=str(text),
+                            bbox=(x_min, y_min, bw, bh),
+                            confidence=float(conf),
+                            center=(cx, cy),
+                            source="paddleocr",
+                        )
                     )
-                )
-        return regions
+
+        return self._dedup_regions(all_regions)
 
     def _get_paddle(self) -> Optional[object]:
         """Lazy-load PaddleOCR instance."""
@@ -370,38 +380,44 @@ class OCREngine:
     # ------------------------------------------------------------------
 
     def _scan_easyocr(self, img_np: np.ndarray) -> List[TextRegion]:
-        """Use EasyOCR for text detection (non-WinRT fallback)."""
+        """Use EasyOCR for text detection with multi-variant preprocessing.
+
+        Runs V1–V4 preprocessing variants and deduplicates results so bold
+        fonts and colored button backgrounds are reliably detected.
+        """
         reader = self._get_easyocr()
         if reader is None:
             logger.warning("EasyOCR not available — returning empty OCR result")
             return []
 
-        try:
-            raw = reader.readtext(img_np)
-        except Exception as exc:
-            logger.warning("EasyOCR inference error: %s", exc)
-            return []
+        all_regions: List[TextRegion] = []
+        for variant in self._preprocess_variants(img_np):
+            try:
+                raw = reader.readtext(variant)
+            except Exception as exc:
+                logger.warning("EasyOCR inference error: %s", exc)
+                continue
 
-        regions: List[TextRegion] = []
-        for bbox_pts, text, conf in raw or []:
-            # bbox_pts: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
-            xs = [int(p[0]) for p in bbox_pts]
-            ys = [int(p[1]) for p in bbox_pts]
-            x_min, y_min = min(xs), min(ys)
-            bw = max(xs) - x_min
-            bh = max(ys) - y_min
-            cx = x_min + bw // 2
-            cy = y_min + bh // 2
-            regions.append(
-                TextRegion(
-                    text=str(text),
-                    bbox=(x_min, y_min, bw, bh),
-                    confidence=float(conf),
-                    center=(cx, cy),
-                    source="easyocr",
+            for bbox_pts, text, conf in raw or []:
+                # bbox_pts: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
+                xs = [int(p[0]) for p in bbox_pts]
+                ys = [int(p[1]) for p in bbox_pts]
+                x_min, y_min = min(xs), min(ys)
+                bw = max(xs) - x_min
+                bh = max(ys) - y_min
+                cx = x_min + bw // 2
+                cy = y_min + bh // 2
+                all_regions.append(
+                    TextRegion(
+                        text=str(text),
+                        bbox=(x_min, y_min, bw, bh),
+                        confidence=float(conf),
+                        center=(cx, cy),
+                        source="easyocr",
+                    )
                 )
-            )
-        return regions
+
+        return self._dedup_regions(all_regions)
 
     def _get_easyocr(self) -> Optional[object]:
         """Lazy-load EasyOCR Reader instance."""
@@ -425,6 +441,144 @@ class OCREngine:
         return self._paddle
 
     # ------------------------------------------------------------------
+    # Multi-word region merging (WinRT word-level → line-level)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _merge_adjacent_regions(regions: List[TextRegion]) -> List[TextRegion]:
+        """Merge horizontally adjacent word-level regions into line-level regions.
+
+        WinRT returns word-level bounding boxes.  A button labelled "Image Source"
+        produces two separate TextRegions: "Image" and "Source".  This method
+        groups words on the same horizontal line and merges neighbouring words
+        so that multi-word button labels can be matched as a single region.
+
+        Original word regions are preserved in the output alongside the merged
+        line regions so that single-word searches still work.
+
+        Parameters
+        ----------
+        regions : list of TextRegion (may come from any backend)
+
+        Returns
+        -------
+        list of TextRegion — original regions + merged line regions (no dedup)
+        """
+        if not regions:
+            return []
+
+        # Sort by y_center for line grouping
+        sorted_r = sorted(regions, key=lambda r: r.center[1])
+
+        # Group into lines: compare each word against the LAST word already in
+        # the line (rolling reference) so slight vertical drift across 3+ words
+        # is handled correctly.  Words whose y_center difference is within 70%
+        # of the smaller word's height are considered on the same line.
+        lines: List[List[TextRegion]] = []
+        for reg in sorted_r:
+            placed = False
+            for line in lines:
+                ref = line[-1]  # rolling reference: compare to last word in line
+                y_diff = abs(reg.center[1] - ref.center[1])
+                height_threshold = min(reg.bbox[3], ref.bbox[3]) * 0.7
+                if y_diff <= height_threshold:
+                    line.append(reg)
+                    placed = True
+                    break
+            if not placed:
+                lines.append([reg])
+
+        merged: List[TextRegion] = []
+        for line in lines:
+            # Sort words left-to-right within the line
+            line_sorted = sorted(line, key=lambda r: r.bbox[0])
+
+            # Greedily merge horizontally close words
+            groups: List[List[TextRegion]] = [[line_sorted[0]]]
+            for word in line_sorted[1:]:
+                last_group = groups[-1]
+                last_word = last_group[-1]
+                # Gap between end of last word and start of current word
+                gap = word.bbox[0] - (last_word.bbox[0] + last_word.bbox[2])
+                gap_threshold = max(last_word.bbox[2], word.bbox[2]) * 1.5
+                if gap <= gap_threshold:
+                    last_group.append(word)
+                else:
+                    groups.append([word])
+
+            for group in groups:
+                if len(group) == 1:
+                    # Single-word group — already in original regions
+                    continue
+                # Build merged region spanning all words in the group
+                x_min = min(r.bbox[0] for r in group)
+                y_min = min(r.bbox[1] for r in group)
+                x_max = max(r.bbox[0] + r.bbox[2] for r in group)
+                y_max = max(r.bbox[1] + r.bbox[3] for r in group)
+                bw = x_max - x_min
+                bh = y_max - y_min
+                merged.append(
+                    TextRegion(
+                        text=" ".join(r.text for r in group),
+                        bbox=(x_min, y_min, bw, bh),
+                        confidence=sum(r.confidence for r in group) / len(group),
+                        center=(x_min + bw // 2, y_min + bh // 2),
+                        source=group[0].source + "+merged",
+                    )
+                )
+
+        return regions + merged
+
+    # ------------------------------------------------------------------
+    # IoU-based deduplication (multi-variant scan)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _bbox_iou(a: tuple, b: tuple) -> float:
+        """Intersection-over-Union for two (x, y, w, h) bounding boxes."""
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        ix = max(ax, bx)
+        iy = max(ay, by)
+        ix2 = min(ax + aw, bx + bw)
+        iy2 = min(ay + ah, by + bh)
+        if ix2 <= ix or iy2 <= iy:
+            return 0.0
+        inter = (ix2 - ix) * (iy2 - iy)
+        union = aw * ah + bw * bh - inter
+        return inter / union if union > 0 else 0.0
+
+    @staticmethod
+    def _dedup_regions(
+        regions: List[TextRegion], iou_threshold: float = 0.5
+    ) -> List[TextRegion]:
+        """Remove duplicate TextRegions using IoU-based non-maximum suppression.
+
+        When multiple preprocessing variants detect the same text region, only
+        the highest-confidence result is kept.
+
+        Parameters
+        ----------
+        regions       : List of TextRegion from one or more scan passes.
+        iou_threshold : Regions with IoU > this value are considered duplicates.
+        """
+        if not regions:
+            return []
+        sorted_r = sorted(regions, key=lambda r: r.confidence, reverse=True)
+        kept: List[TextRegion] = []
+        suppressed = set()
+        for i, r in enumerate(sorted_r):
+            if i in suppressed:
+                continue
+            kept.append(r)
+            for j in range(i + 1, len(sorted_r)):
+                if j in suppressed:
+                    continue
+                if OCREngine._bbox_iou(r.bbox, sorted_r[j].bbox) > iou_threshold:
+                    suppressed.add(j)
+        return kept
+
+    # ------------------------------------------------------------------
     # Image pre-processing (improves OCR on industrial UI buttons)
     # ------------------------------------------------------------------
 
@@ -441,3 +595,52 @@ class OCREngine:
             bgr, 4, 4, 4, 4, cv2.BORDER_CONSTANT, value=(255, 255, 255)
         )
         return padded
+
+    @staticmethod
+    def _preprocess_variants(img_np: np.ndarray) -> List[np.ndarray]:
+        """Return multiple preprocessed variants of an image for robust OCR.
+
+        Each variant targets a different visual challenge:
+          V1 — CLAHE grayscale  : general text (existing _preprocess logic)
+          V2 — OTSU binarize    : bold / thick fonts — clean black-white separation
+          V3 — max-channel      : colored button backgrounds (pick highest-contrast channel)
+          V4 — inverted OTSU    : white/light text on dark or colored backgrounds
+
+        All variants are 3-channel BGR arrays with border padding so they can
+        be fed directly to PaddleOCR / EasyOCR without further conversion.
+        """
+        pad = 4
+
+        def _to_bgr_padded(gray: np.ndarray) -> np.ndarray:
+            bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            return cv2.copyMakeBorder(
+                bgr, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(255, 255, 255)
+            )
+
+        variants: List[np.ndarray] = []
+
+        # V1: CLAHE grayscale (existing _preprocess)
+        variants.append(OCREngine._preprocess(img_np))
+
+        gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
+
+        # V2: OTSU binarization — best for bold/thick fonts
+        _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        variants.append(_to_bgr_padded(otsu))
+
+        # V3: Max-channel extraction — best for colored button backgrounds.
+        # Pick the channel with highest std-dev (most contrast between text and bg).
+        b_ch, g_ch, r_ch = cv2.split(img_np)
+        max_chan = max((b_ch, g_ch, r_ch), key=lambda ch: float(ch.std()))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        chan_enhanced = clahe.apply(max_chan)
+        _, chan_bin = cv2.threshold(
+            chan_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        variants.append(_to_bgr_padded(chan_bin))
+
+        # V4: Inverted OTSU — for white/light text on dark or colored backgrounds
+        inverted = cv2.bitwise_not(otsu)
+        variants.append(_to_bgr_padded(inverted))
+
+        return variants

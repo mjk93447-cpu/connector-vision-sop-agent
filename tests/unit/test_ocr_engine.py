@@ -10,6 +10,7 @@ import sys
 from typing import List
 from unittest.mock import MagicMock, patch
 
+import cv2
 import numpy as np
 import pytest
 
@@ -183,6 +184,13 @@ class TestFindText:
 
 
 class TestPaddleOCRParsing:
+    """Tests for _scan_paddleocr raw-output parsing.
+
+    _scan_paddleocr now iterates _preprocess_variants (4 variants) internally.
+    We patch _preprocess_variants to return a single variant equal to the input
+    image so the mock paddle is called exactly once and assertions remain simple.
+    """
+
     def test_parse_paddle_output_format(self) -> None:
         """Verify _scan_paddleocr converts PaddleOCR raw output to TextRegion list.
         Uses spec=['ocr'] so hasattr(mock, 'predict') is False → 2.x code path taken.
@@ -199,7 +207,9 @@ class TestPaddleOCRParsing:
         ]
         engine._paddle = mock_paddle
         img = _make_bgr()
-        results = engine._scan_paddleocr(img)
+        # Patch _preprocess_variants to return a single variant so mock is called once
+        with patch.object(OCREngine, "_preprocess_variants", return_value=[img]):
+            results = engine._scan_paddleocr(img)
         assert len(results) == 2
         assert results[0].text == "LOGIN"
         assert results[0].confidence == pytest.approx(0.99)
@@ -211,7 +221,9 @@ class TestPaddleOCRParsing:
         mock_paddle = MagicMock(spec=["ocr"])
         mock_paddle.ocr.return_value = [[]]
         engine._paddle = mock_paddle
-        results = engine._scan_paddleocr(_make_bgr())
+        img = _make_bgr()
+        with patch.object(OCREngine, "_preprocess_variants", return_value=[img]):
+            results = engine._scan_paddleocr(img)
         assert results == []
 
     def test_handles_none_paddle_output(self) -> None:
@@ -219,7 +231,9 @@ class TestPaddleOCRParsing:
         mock_paddle = MagicMock(spec=["ocr"])
         mock_paddle.ocr.return_value = None
         engine._paddle = mock_paddle
-        results = engine._scan_paddleocr(_make_bgr())
+        img = _make_bgr()
+        with patch.object(OCREngine, "_preprocess_variants", return_value=[img]):
+            results = engine._scan_paddleocr(img)
         assert results == []
 
 
@@ -376,3 +390,264 @@ class TestOcrHealthCheck:
         mock_ocr._backend = "paddleocr"
         result = _check_ocr_health(mock_ocr)
         assert "WARN" in result
+
+
+# ---------------------------------------------------------------------------
+# _merge_adjacent_regions — multi-word button label merging
+# ---------------------------------------------------------------------------
+
+
+class TestMergeAdjacentRegions:
+    def _r(self, text: str, x: int, y: int, w: int = 60, h: int = 20) -> TextRegion:
+        return TextRegion(
+            text=text,
+            bbox=(x, y, w, h),
+            confidence=1.0,
+            center=(x + w // 2, y + h // 2),
+            source="winrt",
+        )
+
+    def test_two_words_same_line_merged(self) -> None:
+        """'Image'(x=10) + 'Source'(x=80) on same y → produces 'Image Source' region."""
+        regions = [self._r("Image", x=10, y=10), self._r("Source", x=80, y=12)]
+        result = OCREngine._merge_adjacent_regions(regions)
+        texts = [r.text for r in result]
+        assert "Image Source" in texts
+
+    def test_words_different_lines_not_merged(self) -> None:
+        """Words on very different y lines must NOT be merged."""
+        regions = [self._r("Save", x=10, y=10), self._r("Cancel", x=10, y=60)]
+        result = OCREngine._merge_adjacent_regions(regions)
+        texts = [r.text for r in result]
+        assert "Save Cancel" not in texts
+        assert any(t == "Save" for t in texts)
+        assert any(t == "Cancel" for t in texts)
+
+    def test_three_words_same_line(self) -> None:
+        """'Image' + 'Source' + 'Path' on same line → 'Image Source Path' merged."""
+        regions = [
+            self._r("Image", x=10, y=10),
+            self._r("Source", x=80, y=10),
+            self._r("Path", x=150, y=10),
+        ]
+        result = OCREngine._merge_adjacent_regions(regions)
+        texts = [r.text for r in result]
+        assert "Image Source Path" in texts
+
+    def test_wide_gap_words_not_merged(self) -> None:
+        """Words separated by very large gap (> 1.5 * word_width) not merged."""
+        regions = [
+            self._r("Save", x=10, y=10, w=50),
+            self._r("Cancel", x=300, y=10, w=60),
+        ]
+        result = OCREngine._merge_adjacent_regions(regions)
+        texts = [r.text for r in result]
+        assert "Save Cancel" not in texts
+
+    def test_empty_input(self) -> None:
+        assert OCREngine._merge_adjacent_regions([]) == []
+
+    def test_single_region_unchanged(self) -> None:
+        regions = [self._r("Login", x=10, y=10)]
+        result = OCREngine._merge_adjacent_regions(regions)
+        assert any(r.text == "Login" for r in result)
+
+    def test_merged_bbox_covers_both_words(self) -> None:
+        r1 = self._r("Image", x=10, y=10, w=50, h=20)
+        r2 = self._r("Source", x=70, y=10, w=60, h=20)
+        result = OCREngine._merge_adjacent_regions([r1, r2])
+        merged = next(r for r in result if r.text == "Image Source")
+        mx, my, mw, mh = merged.bbox
+        assert mx <= 10
+        assert mx + mw >= 70 + 60  # covers rightmost word
+
+    def test_original_regions_preserved(self) -> None:
+        """Original word-level regions must still appear in the output."""
+        regions = [self._r("Save", x=10, y=10), self._r("As", x=80, y=10)]
+        result = OCREngine._merge_adjacent_regions(regions)
+        texts = [r.text for r in result]
+        assert "Save" in texts
+        assert "As" in texts
+        assert "Save As" in texts  # merged version also present
+
+
+# ---------------------------------------------------------------------------
+# _bbox_iou + _dedup_regions
+# ---------------------------------------------------------------------------
+
+
+class TestBboxIou:
+    def test_identical_boxes_iou_one(self) -> None:
+        iou = OCREngine._bbox_iou((0, 0, 100, 50), (0, 0, 100, 50))
+        assert iou == pytest.approx(1.0)
+
+    def test_non_overlapping_iou_zero(self) -> None:
+        iou = OCREngine._bbox_iou((0, 0, 50, 50), (100, 100, 50, 50))
+        assert iou == pytest.approx(0.0)
+
+    def test_partial_overlap(self) -> None:
+        # A=(0,0,100,100) area=10000, B=(50,50,100,100) area=10000
+        # intersection=(50,50,50,50)=2500, union=17500 → IoU≈0.143
+        iou = OCREngine._bbox_iou((0, 0, 100, 100), (50, 50, 100, 100))
+        assert 0.13 < iou < 0.16
+
+    def test_fully_contained_high_iou(self) -> None:
+        # small box inside big box: IoU = small_area / big_area
+        iou = OCREngine._bbox_iou((0, 0, 100, 100), (25, 25, 50, 50))
+        # intersection=2500, union=10000+2500-2500=10000 → IoU=0.25
+        assert iou == pytest.approx(0.25)
+
+
+class TestDedup:
+    def _r(
+        self, text: str, x: int, y: int, w: int = 80, h: int = 20, conf: float = 1.0
+    ) -> TextRegion:
+        return TextRegion(
+            text=text,
+            bbox=(x, y, w, h),
+            confidence=conf,
+            center=(x + w // 2, y + h // 2),
+            source="mock",
+        )
+
+    def test_identical_bbox_deduped(self) -> None:
+        """Two regions with identical bbox → keep higher confidence one."""
+        regions = [
+            self._r("LOGIN", 10, 10, conf=0.9),
+            self._r("LOGIN", 10, 10, conf=0.7),
+        ]
+        result = OCREngine._dedup_regions(regions)
+        assert len(result) == 1
+        assert result[0].confidence == pytest.approx(0.9)
+
+    def test_high_iou_deduped(self) -> None:
+        """Regions with IoU > 0.5 → keep highest confidence."""
+        regions = [
+            self._r("LOGIN", 10, 10, w=80, h=20, conf=0.8),
+            self._r("L0GIN", 11, 10, w=80, h=20, conf=0.6),  # near-identical bbox
+        ]
+        result = OCREngine._dedup_regions(regions)
+        assert len(result) == 1
+        assert result[0].text == "LOGIN"  # higher confidence kept
+
+    def test_low_iou_both_kept(self) -> None:
+        """Non-overlapping regions → both kept."""
+        regions = [
+            self._r("LOGIN", 10, 10, w=80, h=20),
+            self._r("SAVE", 200, 150, w=80, h=20),
+        ]
+        result = OCREngine._dedup_regions(regions)
+        assert len(result) == 2
+
+    def test_empty_input(self) -> None:
+        assert OCREngine._dedup_regions([]) == []
+
+    def test_single_region_unchanged(self) -> None:
+        r = self._r("OK", 5, 5)
+        result = OCREngine._dedup_regions([r])
+        assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# _preprocess_variants
+# ---------------------------------------------------------------------------
+
+
+class TestPreprocessVariants:
+    def test_returns_list_of_arrays(self) -> None:
+        img = np.zeros((100, 200, 3), dtype=np.uint8)
+        variants = OCREngine._preprocess_variants(img)
+        assert isinstance(variants, list)
+        assert len(variants) >= 4
+
+    def test_all_variants_are_bgr(self) -> None:
+        img = np.zeros((100, 200, 3), dtype=np.uint8)
+        variants = OCREngine._preprocess_variants(img)
+        for v in variants:
+            assert v.ndim == 3, "Each variant must be a 3-channel BGR array"
+            assert v.shape[2] == 3
+
+    def test_variants_have_same_or_larger_size(self) -> None:
+        """Variants may have border padding but must not shrink."""
+        img = np.zeros((100, 200, 3), dtype=np.uint8)
+        variants = OCREngine._preprocess_variants(img)
+        for v in variants:
+            assert v.shape[0] >= 100
+            assert v.shape[1] >= 200
+
+    def test_colored_button_variant_differs_from_gray(self) -> None:
+        """Blue background with white text: max-channel should differ from gray variant."""
+        img = np.full((100, 200, 3), (200, 100, 30), dtype=np.uint8)
+        img[40:60, 60:140] = (255, 255, 255)  # white text area
+        variants = OCREngine._preprocess_variants(img)
+        gray_simple = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        differs = any(
+            not np.array_equal(cv2.cvtColor(v, cv2.COLOR_BGR2GRAY), gray_simple)
+            for v in variants
+        )
+        assert differs, "At least one variant must differ from plain grayscale"
+
+    def test_has_both_bright_and_dark_variants(self) -> None:
+        """V2 (OTSU) and V4 (inverted OTSU) should span different brightness ranges.
+
+        Uses a large image (gray area = 25 % of total) so that the 4 px white
+        border padding does not dominate the mean calculation.
+        V2: mostly-black image → low mean.
+        V4: bitwise_not(V2) → mostly-white image → high mean.
+        """
+        # 200×400 image; gray block covers 100×200 = 25 % of pixels
+        img = np.zeros((200, 400, 3), dtype=np.uint8)
+        img[50:150, 100:300] = (200, 200, 200)
+        variants = OCREngine._preprocess_variants(img)
+        means = [float(v.mean()) for v in variants]
+        # The brightest variant (V4 inverted) and darkest (V2 OTSU) must differ
+        # by at least 30 gray levels — confirming both dark and bright paths exist.
+        spread = max(means) - min(means)
+        assert (
+            spread > 30
+        ), f"Variants must span diverse brightness levels; means={means}"
+
+
+# ---------------------------------------------------------------------------
+# find_text — multi-word integration
+# ---------------------------------------------------------------------------
+
+
+class TestFindTextMultiword:
+    """Integration: find_text() with multi-word targets via merged regions."""
+
+    def _make_engine(self, regions: List[TextRegion]) -> OCREngine:
+        engine = OCREngine(backend="paddleocr")
+        engine.scan_all = lambda img: regions  # type: ignore[method-assign]
+        return engine
+
+    def test_find_multiword_via_merge(self) -> None:
+        """'Image Source' split into two word regions → find_text('Image Source') succeeds."""
+        img = np.zeros((100, 200, 3), dtype=np.uint8)
+        regions = [
+            TextRegion("Image", (10, 10, 55, 20), 1.0, (37, 20), "winrt"),
+            TextRegion("Source", (72, 10, 60, 20), 1.0, (102, 20), "winrt"),
+        ]
+        engine = self._make_engine(regions)
+        result = engine.find_text(img, "Image Source")
+        assert result is not None, "Should find 'Image Source' via merged region"
+        assert "Image Source" in result.text
+
+    def test_find_single_word_still_works(self) -> None:
+        """Single-word search still works after merging."""
+        img = np.zeros((100, 200, 3), dtype=np.uint8)
+        regions = [TextRegion("Login", (10, 10, 60, 20), 1.0, (40, 20), "winrt")]
+        engine = self._make_engine(regions)
+        result = engine.find_text(img, "Login")
+        assert result is not None
+
+    def test_find_text_case_insensitive_multiword(self) -> None:
+        """Case-insensitive match for merged multi-word region."""
+        img = np.zeros((100, 200, 3), dtype=np.uint8)
+        regions = [
+            TextRegion("image", (10, 10, 55, 20), 1.0, (37, 20), "winrt"),
+            TextRegion("source", (72, 10, 60, 20), 1.0, (102, 20), "winrt"),
+        ]
+        engine = self._make_engine(regions)
+        result = engine.find_text(img, "IMAGE SOURCE")
+        assert result is not None
