@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys, re; data=sys.stdin.read(); lines=data.splitlines(); err=[l for l in lines if re.search(r'(ERROR|FAILED|WARNING|Exception|Traceback)', l, re.I)]; tail=lines[-5:] if not err else []; out=err[:30]+tail; [print(l) for l in out]; total=len(lines); shown=len(out); print(f'[filtered: {total} lines => {shown} shown]') if total > shown else None\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import json,sys; d=json.load(sys.stdin); p=d.get('tool_input',{}).get('file_path',''); blocked=['.env','secrets.yaml']; sys.exit(2) if any(x in p for x in blocked) else sys.exit(0)\""
+          }
+        ]
+      }
+    ]
+  }
+}
