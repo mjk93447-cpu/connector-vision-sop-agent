@@ -60,4 +60,4 @@
 
 ---
 
-*Connector Vision SOP Agent v3.2.6 — Line Automation System*
+*Connector Vision SOP Agent v3.2.7 — Line Automation System*
