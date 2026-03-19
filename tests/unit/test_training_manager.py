@@ -512,3 +512,98 @@ class TestCleanStaleCaches:
         TrainingManager._clean_stale_caches(yaml_path)
 
         assert not stale.exists(), "nested .cache.npy should be cleaned"
+
+
+# ---------------------------------------------------------------------------
+# verbose=True guard — prevents tqdm NoneType crash
+# ---------------------------------------------------------------------------
+
+
+class TestTrainingManagerVerbose:
+    """model.train() must be called with verbose=True.
+
+    Root cause of 'NoneType object has no attribute write':
+      training_manager.py passed verbose=False to model.train().
+      ultralytics' custom TQDM class sets self.file = None when disable=True
+      (triggered by verbose=False).  TQDM.close() then calls
+      self.file.write("\\n") unconditionally → AttributeError.
+
+      This crash fires on the FIRST iteration of cache_labels(), even before
+      any stale-cache cleanup can help, because the tqdm is disabled immediately
+      at construction time.
+
+    Fix: pass verbose=True so tqdm keeps self.file pointing at a real stream.
+    """
+
+    def test_model_train_called_with_verbose_true(self, tmp_path: Path) -> None:
+        """model.train() must receive verbose=True to avoid disabling tqdm."""
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+
+        target = tmp_path / "target.pt"
+        _write_dummy_pt(target)
+
+        tm = TrainingManager(
+            base_model=str(target),
+            target_weights=tmp_path / "out.pt",
+        )
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_result = MagicMock()
+            mock_result.save_dir = None
+            mock_model.train.return_value = mock_result
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except ImportError:
+                pytest.skip("ultralytics not installed")
+            except Exception:
+                pass  # other errors OK — we only care about the train() kwargs
+
+        assert mock_model.train.called, "model.train() was never called"
+        call_kwargs = mock_model.train.call_args[1]
+        verbose_val = call_kwargs.get("verbose")
+        assert verbose_val is not False, (
+            f"model.train() called with verbose={verbose_val!r}. "
+            "verbose=False disables tqdm (self.file=None) and causes "
+            "'NoneType object has no attribute write' crash in ultralytics."
+        )
+
+    def test_model_train_verbose_is_explicitly_true(self, tmp_path: Path) -> None:
+        """verbose=True must be explicitly set — not just absent from kwargs."""
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+
+        target = tmp_path / "target.pt"
+        _write_dummy_pt(target)
+
+        tm = TrainingManager(
+            base_model=str(target),
+            target_weights=tmp_path / "out.pt",
+        )
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_result = MagicMock()
+            mock_result.save_dir = None
+            mock_model.train.return_value = mock_result
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except ImportError:
+                pytest.skip("ultralytics not installed")
+            except Exception:
+                pass
+
+        assert mock_model.train.called
+        call_kwargs = mock_model.train.call_args[1]
+        assert (
+            call_kwargs.get("verbose") is True
+        ), "verbose must be explicitly True to guarantee tqdm is not disabled"

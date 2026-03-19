@@ -162,6 +162,15 @@ class TrainingManager:
         #               train2/, train3/ … clutter.
         # rect=False  : disable rectangular training mode (can fail with mixed
         #               aspect-ratio images from screen captures).
+        # verbose=True is REQUIRED — do NOT set False.
+        #
+        # ultralytics' custom TQDM class sets self.file = None when disable=True
+        # (which verbose=False triggers).  TQDM.close() then calls
+        # self.file.write("\n") unconditionally → AttributeError: 'NoneType'
+        # object has no attribute 'write'.  This crash fires on the very first
+        # tqdm iteration inside cache_labels(), even on a first-ever training run
+        # before any stale cache exists.  Setting verbose=True keeps tqdm enabled
+        # so self.file always points at a valid stream (sys.stdout).
         results = model.train(
             data=str(dataset_yaml),
             epochs=epochs,
@@ -171,7 +180,7 @@ class TrainingManager:
             workers=0,  # single-process DataLoader (Windows multiprocessing fix)
             exist_ok=True,  # overwrite previous run directory
             rect=False,  # disable rectangular training
-            verbose=False,
+            verbose=True,  # must stay True — see comment above
             plots=False,
         )
 

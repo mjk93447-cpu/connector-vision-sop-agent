@@ -233,6 +233,9 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         )
         self._audit_panel = AuditPanel(audit_log=self._audit_log)
         self._training_panel = TrainingPanel()
+        # Wire VisionEngine so TrainingPanel can hot-reload weights after training.
+        # Without this, "Reload Model" always shows "VisionEngine not available."
+        self._training_panel.set_vision_engine(self._vision)
 
         self._tabs.addTab(self._sop_panel, "▶ Run SOP")
         self._tabs.addTab(self._vision_panel, "👁 Vision")
