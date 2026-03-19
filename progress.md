@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-18 (v3.2.2 — Training NoneType 에러 수정 + 완전 오프라인화 + 클래스별 서브폴더 파인튜닝 UI)_
+_최종 갱신: 2026-03-19 (v3.2.3 — Bug2 근본 원인 수정: self.parent()→self.window())_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -31,6 +31,7 @@ _최종 갱신: 2026-03-18 (v3.2.2 — Training NoneType 에러 수정 + 완전 
 | **Bug2 LLM 수정** | **_get_optimized_options (GPU/CPU 자동) + think=False + 120s deadline + timeout=(10,30)** | **399 pass** | — |
 | **Bug2 호환성 보강** | **reasoning_content 별도 필드 처리 (Ollama 0.7+ phi4-mini-reasoning)** | **399 pass** | — |
 | **Bug2 v2 재수정** | **think=False payload 최상위 이동 + concurrent.futures 실제 타임아웃** | **403 pass** | — |
+| **Bug2 근본원인 수정 (v3.2.3)** | **self.parent()→self.window() — LLM 요청 미발송 근본 원인 해결 + 422 pass** | **422 pass** | — |
 | **Training 수정 (v3.2.2)** | **NoneType 에러 수정(forward slash) + 완전 오프라인 env + 클래스별 서브폴더 저장/파인튜닝 UI + 422 pass** | **422 pass** | — |
 
 ## 현재 스택 (v3.2.0)
@@ -123,6 +124,16 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
 
 ## ★ 다음 작업
+
+### Bug2 LLM 무한 대기 근본 원인 수정 (2026-03-19) — v3.2.3 ✅
+- **진짜 근본 원인**: `LlmPanel._on_send()`에서 `self.parent()` → QTabWidget 내부 `QStackedWidget` 반환
+  - `hasattr(QStackedWidget, "on_llm_send") = False` → Worker 생성 없음 → HTTP 요청 미발송
+  - `set_sending(True)` 만 실행 → 타이머 무한 동작 → "Thinking... 1000s+"
+- **이전 Fix1~3 실패 이유**: timeout/think=False/concurrent.futures는 HTTP 레이어 수정이었으나 요청 자체가 없었음
+- **수정**: `self.parent()` → `self.window()` (QWidget.window()는 항상 최상위 MainWindow 반환)
+- **추가**: `on_llm_send` 없을 때 즉시 `set_sending(False)` 방어 코드
+- `_on_analyze()` 동일 버그 동시 수정
+- 커밋: 422830d / **422 pass**
 
 ### Training 수정 완료 (2026-03-18) — v3.2.2
 - **NoneType 에러 근본 원인**: `dataset.yaml` `path:` 필드 Windows 역슬래시 → `\t`/`\n` 오파싱 → `im_files=[]` → `cache_path=None` → `np.save(None, x)` → `AttributeError`
