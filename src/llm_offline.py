@@ -61,7 +61,8 @@ class LLMConfig:
 
 _OLLAMA_BASE_URL = "http://localhost:11434"
 _HEALTH_TIMEOUT = (
-    5.0  # seconds for Ollama health check (generous for network-drive/RAM-limited envs)
+    30.0  # seconds for Ollama health check — must be generous enough for
+    # slow startup on network-drive (Z:\) / RAM-limited line PCs
 )
 
 
@@ -92,7 +93,15 @@ class OfflineLLM:
     # ------------------------------------------------------------------ #
 
     def _get_session(self) -> Any:
-        """Return (or create) a requests.Session for streaming/chat requests."""
+        """Return (or create) a requests.Session for streaming/chat requests.
+
+        trust_env=False: prevents requests from picking up HTTP_PROXY / HTTPS_PROXY
+        environment variables or Windows WinINet proxy settings.  Line PCs on a
+        corporate network route ALL HTTP traffic through a company proxy (e.g.
+        107.100.72.56), which cannot reach the client's own localhost:11434 and
+        returns 503.  Setting trust_env=False ensures Ollama requests go directly
+        to 127.0.0.1 without any proxy intercept.
+        """
         try:
             import requests  # type: ignore[import]
         except Exception as exc:  # pragma: no cover
@@ -100,6 +109,7 @@ class OfflineLLM:
         with self._session_lock:
             if self._session is None:
                 self._session = requests.Session()
+                self._session.trust_env = False  # bypass corporate HTTP proxy
             return self._session
 
     def cancel(self) -> None:
@@ -186,7 +196,15 @@ class OfflineLLM:
             base = _OLLAMA_BASE_URL
 
         try:
-            resp = requests.get(base, timeout=_HEALTH_TIMEOUT)
+            # proxies={"http": None, "https": None} overrides system/env proxy settings
+            # so the health-check request goes directly to localhost and is NOT routed
+            # through corporate proxy servers (e.g. 107.100.72.56) that cannot reach
+            # the client machine's own loopback adapter.
+            resp = requests.get(
+                base,
+                timeout=_HEALTH_TIMEOUT,
+                proxies={"http": None, "https": None},
+            )
             resp.raise_for_status()
         except Exception as exc:
             raise RuntimeError(
