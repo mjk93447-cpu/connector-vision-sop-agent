@@ -579,19 +579,67 @@ class TestCheckHealth:
         call_kwargs = mock_get.call_args[1]
         assert call_kwargs.get("timeout") == _HEALTH_TIMEOUT
 
-    def test_health_timeout_is_at_least_5_seconds(self) -> None:
-        """_HEALTH_TIMEOUT must be >= 5s to survive network-drive / RAM-limited envs.
+    def test_health_timeout_is_at_least_30_seconds(self) -> None:
+        """_HEALTH_TIMEOUT must be >= 30s.
 
-        On-line PCs use OLLAMA_MODELS on a mapped network drive (Z:\\) with
-        only ~2.2 GiB free RAM for a 3.2 GB model.  The previous value of 1.5s
-        caused false-positive 'Ollama server not running' errors even when
-        Ollama was actually live but slow to respond.
+        Line PCs run Ollama from a mapped network drive (Z:\\) with limited RAM.
+        The model may still be loading into memory 5-10s after the process starts.
+        A value of 30s gives Ollama enough headroom to respond on slow hardware.
         """
         from src.llm_offline import _HEALTH_TIMEOUT
 
-        assert _HEALTH_TIMEOUT >= 5, (
-            f"_HEALTH_TIMEOUT is {_HEALTH_TIMEOUT}s — too short for network-drive "
-            "environments. Must be >= 5s to avoid false 'server not running' errors."
+        assert _HEALTH_TIMEOUT >= 30, (
+            f"_HEALTH_TIMEOUT is {_HEALTH_TIMEOUT}s — too short for slow startup envs. "
+            "Must be >= 30s."
+        )
+
+    def test_health_check_bypasses_system_proxy(self) -> None:
+        """check_health() must NOT route requests through the system HTTP proxy.
+
+        Line PCs are on a corporate network with an HTTP proxy (e.g. 107.100.72.56).
+        Python's requests library respects HTTP_PROXY / Windows proxy settings by
+        default and routes ALL HTTP calls — including http://127.0.0.1:11434 — through
+        the corporate proxy.  The proxy cannot reach the client's own loopback adapter,
+        so it returns 503 / connection-refused.
+
+        Fix: pass proxies={'http': None, 'https': None} to bypass proxy for localhost.
+        """
+        llm = OfflineLLM.from_config({})
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_get.return_value = mock_resp
+            with patch("torch.cuda.is_available", return_value=True):
+                llm.check_health()
+        call_kwargs = mock_get.call_args[1]
+        # Must explicitly pass proxies= dict with None values to override system proxy.
+        # An absent proxies kwarg means requests still uses system/env proxy — that is wrong.
+        assert (
+            "proxies" in call_kwargs
+        ), "check_health() did not pass proxies= kwarg — system proxy will intercept Ollama requests"
+        proxies = call_kwargs["proxies"]
+        assert (
+            proxies.get("http") is None
+        ), "check_health() did not disable http proxy — corporate proxy will intercept"
+        assert (
+            proxies.get("https") is None
+        ), "check_health() did not disable https proxy — corporate proxy will intercept"
+
+    def test_get_session_trust_env_false(self) -> None:
+        """_get_session() must set trust_env=False to bypass system proxy for streaming.
+
+        requests.Session() with default trust_env=True picks up HTTP_PROXY /
+        HTTPS_PROXY environment variables and Windows WinINet proxy settings.
+        On a line PC with a corporate proxy (e.g. 107.100.72.56), all Ollama
+        streaming requests would be routed through the proxy → 503 error.
+
+        Setting session.trust_env = False bypasses all environment-based proxies.
+        """
+        llm = OfflineLLM.from_config({})
+        session = llm._get_session()
+        assert session.trust_env is False, (
+            "requests.Session has trust_env=True — corporate proxy will intercept "
+            "all Ollama requests including http://127.0.0.1:11434"
         )
 
     def test_health_check_no_torch_returns_cpu_message(self) -> None:
