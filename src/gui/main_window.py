@@ -44,7 +44,7 @@ from src.gui.panels.training_panel import TrainingPanel
 from src.gui.panels.vision_panel import VisionPanel
 from src.gui.workers import AnalysisWorker, LLMStreamWorker, LLMWorker, SopWorker
 
-_APP_VERSION = "3.0.0"
+_APP_VERSION = "3.2.5"
 
 
 class MainWindow(QMainWindow):  # type: ignore[misc]
@@ -115,6 +115,9 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             return
 
         # Health check + CPU warning (Step 2-E)
+        # Non-fatal: if Ollama is slow to respond (e.g. network drive / low RAM)
+        # we still attempt the actual streaming request rather than aborting early.
+        # The worker will surface a proper error if Ollama is truly unreachable.
         health_check = getattr(self._llm, "check_health", None)
         if callable(health_check):
             try:
@@ -128,8 +131,14 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
                         }
                     )
             except RuntimeError as exc:
-                self._llm_panel.on_llm_error(str(exc))
-                return
+                # Log the warning in the chat but do NOT abort — let the worker try.
+                self._llm_panel.on_analysis_ready(
+                    {
+                        "raw_text": f"⚠️ Health check warning (will attempt anyway): {exc}",
+                        "config_patch": {},
+                        "sop_recommendations": [],
+                    }
+                )
 
         if system is None:
             system = (

@@ -565,7 +565,8 @@ class TestCheckHealth:
             with pytest.raises(RuntimeError, match="Ollama server not running"):
                 llm.check_health()
 
-    def test_health_check_uses_short_timeout(self) -> None:
+    def test_health_check_uses_configured_timeout(self) -> None:
+        """check_health() passes _HEALTH_TIMEOUT to requests.get."""
         from src.llm_offline import _HEALTH_TIMEOUT
 
         llm = OfflineLLM.from_config({})
@@ -577,6 +578,21 @@ class TestCheckHealth:
                 llm.check_health()
         call_kwargs = mock_get.call_args[1]
         assert call_kwargs.get("timeout") == _HEALTH_TIMEOUT
+
+    def test_health_timeout_is_at_least_5_seconds(self) -> None:
+        """_HEALTH_TIMEOUT must be >= 5s to survive network-drive / RAM-limited envs.
+
+        On-line PCs use OLLAMA_MODELS on a mapped network drive (Z:\\) with
+        only ~2.2 GiB free RAM for a 3.2 GB model.  The previous value of 1.5s
+        caused false-positive 'Ollama server not running' errors even when
+        Ollama was actually live but slow to respond.
+        """
+        from src.llm_offline import _HEALTH_TIMEOUT
+
+        assert _HEALTH_TIMEOUT >= 5, (
+            f"_HEALTH_TIMEOUT is {_HEALTH_TIMEOUT}s — too short for network-drive "
+            "environments. Must be >= 5s to avoid false 'server not running' errors."
+        )
 
     def test_health_check_no_torch_returns_cpu_message(self) -> None:
         """If torch is not installed, health check returns CPU-only info message."""
