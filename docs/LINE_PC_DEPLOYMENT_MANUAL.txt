@@ -1,9 +1,9 @@
 ================================================================================
-  CONNECTOR VISION SOP AGENT v2.0.0
+  CONNECTOR VISION SOP AGENT v3.2.5
   Line PC Deployment & Test Manual
 
   For: OLED Line Engineers (Samsung India / Vendor Engineers)
-  Version: 2.0.0  |  Date: 2026-03-16
+  Version: 3.2.5  |  Date: 2026-03-19
   Model: phi4-mini-reasoning (Microsoft, USA)
 ================================================================================
 
@@ -65,13 +65,15 @@ A-3. CRITICAL WARNINGS
 
 A-4. FILES YOU WILL NEED
 --------------------------
-  Download these TWO files from GitHub Actions (instructions in Part B):
+  Download these TWO artifact ZIPs from the latest GitHub Actions build
+  (instructions in Part B):
 
-    File 1: portable-part1-app.zip         (~440 MB)
+    File 1: connector-agent-app.zip         (~500 MB)
              Contains: connector_vision_agent.exe, ollama.exe,
-                       config.json, start_agent.bat, stop_ollama.bat
+                       config.json, sop_steps.json, yolo26x.pt,
+                       start_agent.bat, stop_ollama.bat, INSTALL_GUIDE.txt
 
-    File 2: portable-part2-phi4-mini.zip   (~2.7 GB)
+    File 2: connector-agent-llm.zip         (~2.5 GB)
              Contains: phi4-mini-reasoning AI model files (blobs + manifests)
 
   TOTAL size after extraction: approximately 3.5 - 4 GB
@@ -94,7 +96,7 @@ B-1. ACCESS GITHUB ACTIONS PAGE
   3. If asked to log in to GitHub, enter your GitHub credentials.
 
   4. You will see a page titled:
-     "Build Portable Offline Bundle (Split)"
+     "Build Connector Vision Agent (All-in-One)"
      with a GREEN checkmark showing the build succeeded.
 
 B-2. DOWNLOAD THE ARTIFACTS
@@ -103,25 +105,25 @@ B-2. DOWNLOAD THE ARTIFACTS
 
   6. You will see a section called "Artifacts" with two items listed:
 
-       [portable-part1-app]            440 MB
-       [portable-part2-phi4-mini]      2749 MB
+       [connector-agent-app]           ~500 MB
+       [connector-agent-llm]           ~2500 MB
 
-  7. Click on "portable-part1-app" to download.
-     --> The browser will download "portable-part1-app.zip" (~440 MB)
+  7. Click on "connector-agent-app" to download.
+     --> The browser will download "connector-agent-app.zip" (~500 MB)
      --> This may take 3-10 minutes depending on your internet speed.
 
-  8. Click on "portable-part2-phi4-mini" to download.
-     --> The browser will download "portable-part2-phi4-mini.zip" (~2.7 GB)
+  8. Click on "connector-agent-llm" to download.
+     --> The browser will download "connector-agent-llm.zip" (~2.5 GB)
      --> This will take 15-30 minutes. Please wait patiently.
 
-  NOTE: Artifacts are available until 2026-06-14. After that date, you must
-        trigger a new build using the GitHub Actions workflow.
+  NOTE: Artifacts are stored for 90 days. Trigger a new build via
+        GitHub Actions if artifacts have expired.
 
 B-3. VERIFY DOWNLOADS
 ----------------------
   9. After both downloads complete, check:
-     - "portable-part1-app.zip"       should be approximately 440 MB
-     - "portable-part2-phi4-mini.zip" should be approximately 2,749 MB
+     - "connector-agent-app.zip"   should be approximately 500 MB
+     - "connector-agent-llm.zip"   should be approximately 2,500 MB
 
   10. If either file is much smaller than expected, the download may have
       failed. Delete and re-download the file.
@@ -145,8 +147,8 @@ C-1. PREPARE USB DRIVE
        f. Click "Start" and confirm
 
   3. Copy both ZIP files to the USB drive:
-       portable-part1-app.zip
-       portable-part2-phi4-mini.zip
+       connector-agent-app.zip
+       connector-agent-llm.zip
 
 C-2. CONNECT TO LINE PC
 -------------------------
@@ -177,8 +179,8 @@ C-3. CREATE INSTALLATION FOLDER
 C-4. COPY ZIP FILES TO LINE PC
 --------------------------------
   9. From USB drive, copy both ZIP files to C:\tools\connector_agent\:
-     - portable-part1-app.zip
-     - portable-part2-phi4-mini.zip
+     - connector-agent-app.zip
+     - connector-agent-llm.zip
 
 
 ================================================================================
@@ -189,7 +191,7 @@ D-1. EXTRACT PART 1 (EXE + Ollama + Launchers)
 ------------------------------------------------
   1. On the line PC, navigate to:  C:\tools\connector_agent\
 
-  2. Right-click on "portable-part1-app.zip"
+  2. Right-click on "connector-agent-app.zip"
 
   3. Select "Extract All..."
      (If you see "Extract Here" in 7-Zip or WinRAR, that also works)
@@ -199,7 +201,7 @@ D-1. EXTRACT PART 1 (EXE + Ollama + Launchers)
      - Make sure "Show extracted files when complete" is checked
      - Click "Extract"
 
-  5. Wait for extraction to complete (may take 2-5 minutes for 440 MB).
+  5. Wait for extraction to complete (may take 2-5 minutes for ~500 MB).
 
   6. After extraction, you should see these files in C:\tools\connector_agent\:
 
@@ -228,7 +230,7 @@ D-2. CREATE MODELS SUBFOLDER (if not already present)
 
 D-3. EXTRACT PART 2 (AI Model Files) — IMPORTANT STEP
 -------------------------------------------------------
-  8. Right-click on "portable-part2-phi4-mini.zip"
+  8. Right-click on "connector-agent-llm.zip"
 
   9. Select "Extract All..."
 
@@ -338,12 +340,12 @@ E-3. FIRST LAUNCH
   9. Double-click "start_agent.bat"
 
   10. A black console window will appear with the title:
-      "Connector Vision SOP Agent v2.0 [Offline]"
+      "Connector Vision SOP Agent v3.2.5 [Offline]"
 
   11. The console will display startup messages (watch carefully):
 
       ================================================================
-       Connector Vision SOP Agent v2.0.0  [Fully Offline]
+       Connector Vision SOP Agent v3.2.5  [Fully Offline]
        LLM  : phi4-mini-reasoning  (Microsoft, USA)
        YOLO : yolo26x embedded in EXE
       ================================================================
@@ -368,7 +370,7 @@ E-3. FIRST LAUNCH
   15. The main SOP Agent console will appear with a menu like:
 
       ============================================================
-        Connector Vision SOP Agent v2.0.0
+        Connector Vision SOP Agent v3.2.5
         Line: [LINE_NAME]   Run: [RUN_ID]
       ============================================================
 
@@ -627,7 +629,7 @@ ERROR T-3: phi4-mini-reasoning NOT in model list
     1. Verify the ollama_models folder structure (see D-3, step 12).
     2. Verify that the "blobs" folder contains a large file (~2.5 GB).
        If blobs\ is empty or missing, Part 2 was not extracted correctly.
-    3. Re-extract portable-part2-phi4-mini.zip to:
+    3. Re-extract connector-agent-llm.zip to:
        C:\tools\connector_agent\ollama_models\  (not a subfolder of it)
     4. Check the OLLAMA_MODELS variable by opening a new cmd window:
        set OLLAMA_MODELS=C:\tools\connector_agent\ollama_models
@@ -804,6 +806,6 @@ J-5. RESTORING DEFAULT SETTINGS
 ================================================================================
   END OF MANUAL
   Document: LINE_PC_DEPLOYMENT_MANUAL.txt
-  Version : 2.0.0  |  2026-03-16
-  Agent   : Connector Vision SOP Agent v2.0.0
+  Version : 3.2.5  |  2026-03-19
+  Agent   : Connector Vision SOP Agent v3.2.5
 ================================================================================
