@@ -3,7 +3,7 @@ Offline LLM integration for Connector Vision SOP Agent.
 
 Supported backends:
 - ``ollama`` : Ollama local server (recommended). OpenAI-compatible HTTP API.
-               Install: https://ollama.com  /  ollama pull phi4-mini-reasoning
+               Install: https://ollama.com  /  ollama pull pedrolucas/smollm3:3b-q4_k_m
 - ``http``   : LM Studio / Ollama or any OpenAI-compatible HTTP server.
 
 Heavy dependencies are NOT loaded at import time.
@@ -29,11 +29,11 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Type
 BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
-_OLLAMA_DEFAULT_MODEL = "llama4:scout"
+_OLLAMA_DEFAULT_MODEL = "pedrolucas/smollm3:3b-q4_k_m"
 
 # Brief mode: shorter token limit for fast responses (used when user requests quick answer)
-# 256 → 512: thinking 토큰이 max_tokens에 포함되므로 답변 여유 확보
-_BRIEF_MAX_TOKENS = 512
+# SmolLM3는 reasoning 토큰 오버헤드 없으므로 256으로 충분
+_BRIEF_MAX_TOKENS = 256
 
 
 @dataclass
@@ -222,7 +222,7 @@ class OfflineLLM:
         else:
             return (
                 f"ℹ️ CPU-only mode ({num_thread} threads) — "
-                "phi4-mini-reasoning: ~30-90s per response"
+                "SmolLM3-3B Q4_K_M: ~15-45s per response on CPU"
             )
 
     # ------------------------------------------------------------------ #

@@ -4,7 +4,7 @@ Windows exception handler for Connector Vision SOP Agent.
 Handles common Windows line PC interruptions that can block SOP execution:
   1. Known system popups (Windows Update, Activation, UAC, etc.)
   2. Screen freeze detection (MSE < 0.01 across 3 consecutive screenshots)
-  3. Unknown situations → phi4-mini LLM recovery_action() (last resort)
+  3. Unknown situations → SmolLM3-3B LLM recovery_action() (last resort)
 
 Chain:
     detect_popup()         — pattern-match known popup text → dismiss button

@@ -202,7 +202,7 @@ def main() -> list[str]:
 def _print_welcome() -> None:
     banner = """
 ======================================================================
- Connector Vision SOP Agent v3.0  (YOLO26x + phi4-mini [Offline])
+ Connector Vision SOP Agent v3.0  (YOLO26x + SmolLM3-3B [Offline])
 ======================================================================
 
 12-step OLED connector SOP automation with offline LLM assistance.
