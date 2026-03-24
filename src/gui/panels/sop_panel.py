@@ -13,12 +13,15 @@ try:
     from PyQt6.QtCore import Qt, pyqtSlot
     from PyQt6.QtGui import QColor, QTextCursor
     from PyQt6.QtWidgets import (
+        QGroupBox,
         QHBoxLayout,
         QLabel,
         QListWidget,
         QListWidgetItem,
         QPushButton,
         QSplitter,
+        QTableWidget,
+        QTableWidgetItem,
         QTextEdit,
         QVBoxLayout,
         QWidget,
@@ -101,11 +104,70 @@ class SopPanel(QWidget):  # type: ignore[misc]
         item.setForeground(QColor("#000000"))
 
     def set_running(self, running: bool) -> None:
-        """Toggle button state."""
+        """Toggle button state and clear trace on new run."""
         if not _QT_AVAILABLE:
             return
         self._btn_run.setEnabled(not running)
         self._btn_stop.setEnabled(running)
+        if running:
+            self._trace_table.setRowCount(0)
+
+    def add_trace_entry(self, trace: dict) -> None:  # noqa: ANN001
+        """Add detection trace row.
+
+        trace keys: step_id, class_type, method, success, coord, conf, roi
+        """
+        if not _QT_AVAILABLE:
+            return
+
+        step_id = str(trace.get("step_id", ""))
+        class_type = trace.get("class_type", "")
+        method = str(trace.get("method", ""))
+        success = bool(trace.get("success", False))
+        coord = trace.get("coord")
+
+        # Type display
+        type_display = "🔤 TEXT" if class_type == "TEXT" else "👁 NON_TEXT"
+
+        # Result display
+        if not success:
+            result_display = "✗"
+        elif method == "YOLO_fallback":
+            result_display = "⚠ fallback"
+        else:
+            result_display = "✓"
+
+        # Coord display
+        if coord is not None:
+            try:
+                coord_display = f"({coord[0]}, {coord[1]})"
+            except (IndexError, TypeError):
+                coord_display = str(coord)
+        else:
+            coord_display = "—"
+
+        # Row color
+        if not success:
+            row_color = QColor("#ff5252")  # red
+        elif method == "YOLO_fallback":
+            row_color = QColor("#ffd740")  # yellow
+        elif class_type != "TEXT" and method in ("YOLO", "YOLO_fallback"):
+            row_color = QColor("#40c4ff")  # cyan/blue
+        else:
+            row_color = QColor("#69f0ae")  # green (success + OCR)
+
+        row = self._trace_table.rowCount()
+        self._trace_table.insertRow(row)
+
+        for col, text in enumerate(
+            [step_id, type_display, method, result_display, coord_display]
+        ):
+            cell = QTableWidgetItem(text)
+            cell.setForeground(row_color)
+            cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self._trace_table.setItem(row, col, cell)
+
+        self._trace_table.scrollToBottom()
 
     # ------------------------------------------------------------------
     # Private — UI setup
@@ -152,6 +214,44 @@ class SopPanel(QWidget):  # type: ignore[misc]
 
         splitter.setSizes([220, 580])
         layout.addWidget(splitter)
+
+        # Detection Trace groupbox (collapsible, default collapsed)
+        self._trace_group = QGroupBox("🔍 Detection Trace")
+        self._trace_group.setCheckable(True)
+        self._trace_group.setChecked(False)  # default collapsed
+        self._trace_group.setStyleSheet(
+            "QGroupBox { font-weight: bold; } "
+            "QGroupBox::indicator { width: 14px; height: 14px; }"
+        )
+        trace_layout = QVBoxLayout(self._trace_group)
+        trace_layout.setContentsMargins(4, 4, 4, 4)
+
+        self._trace_table = QTableWidget(0, 5)
+        self._trace_table.setHorizontalHeaderLabels(
+            ["Step", "Type", "Method", "Result", "Coord"]
+        )
+        self._trace_table.horizontalHeader().setStretchLastSection(True)
+        self._trace_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers  # type: ignore[attr-defined]
+        )
+        self._trace_table.setAlternatingRowColors(False)
+        self._trace_table.setStyleSheet(
+            "font-family: Consolas, monospace; font-size: 11px; "
+            "background: #1e1e1e; color: #d4d4d4; gridline-color: #444;"
+        )
+        self._trace_table.setMaximumHeight(160)
+        self._trace_table.verticalHeader().setVisible(False)
+        # Set column widths
+        self._trace_table.setColumnWidth(0, 120)
+        self._trace_table.setColumnWidth(1, 90)
+        self._trace_table.setColumnWidth(2, 100)
+        self._trace_table.setColumnWidth(3, 80)
+        trace_layout.addWidget(self._trace_table)
+
+        # Toggle visibility of table contents when group is collapsed/expanded
+        self._trace_group.toggled.connect(self._trace_table.setVisible)
+
+        layout.addWidget(self._trace_group)
 
         # Buttons
         btn_layout = QHBoxLayout()
