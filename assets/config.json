@@ -29,7 +29,7 @@
   "llm": {
     "enabled": false,
     "backend": "ollama",
-    "model_path": "phi4-mini-reasoning",
+    "model_path": "pedrolucas/smollm3:3b-q4_k_m",
     "http_url": "http://localhost:11434/v1/chat/completions",
     "ctx_size": 8192,
     "gpu_layers": 0,
