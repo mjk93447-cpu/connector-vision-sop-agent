@@ -49,28 +49,46 @@ setx OLLAMA_MODELS "%OLLAMA_MODELS%" /M >nul 2>&1
 set "OLLAMA_MODELS=%OLLAMA_MODELS%"
 echo [OK] Model directory set: %OLLAMA_MODELS%
 
-:: --- Step 3: Verify model blobs exist ---
+:: --- Step 3: Verify model blobs AND manifests exist (offline bundle check) ---
 if not exist "%OLLAMA_MODELS%\blobs" (
-    echo [WARN] Model blobs folder not found: %OLLAMA_MODELS%\blobs
-    echo        Please extract portable-part2-smollm3 into:
-    echo        %OLLAMA_MODELS%\
-    echo        Then run this setup again.
+    echo [ERROR] Model blobs folder not found: %OLLAMA_MODELS%\blobs
+    echo         Please extract portable-part2-smollm3 into:
+    echo         %OLLAMA_MODELS%\
+    echo         Then run this setup again.
     pause
     exit /b 1
 )
 echo [OK] Model blobs found.
+
+if not exist "%OLLAMA_MODELS%\manifests" (
+    echo [ERROR] Model manifests folder not found: %OLLAMA_MODELS%\manifests
+    echo         The portable bundle must include BOTH blobs\ AND manifests\ folders.
+    echo         Please re-download portable-part2-smollm3 (full bundle).
+    pause
+    exit /b 1
+)
+echo [OK] Model manifests found.
 
 :: --- Step 4: Start Ollama server temporarily ---
 echo [INFO] Starting Ollama server for model registration...
 start "" /B "%OLLAMA_EXE%" serve
 timeout /t 5 /nobreak >nul
 
-:: --- Step 5: Pull/register model from local files ---
-echo [INFO] Registering %MODEL_NAME% model...
-"%OLLAMA_EXE%" pull %MODEL_NAME% >nul 2>&1
-if %errorLevel% neq 0 (
-    echo [WARN] Model registration returned non-zero.
-    echo        This may be normal if the model was already registered.
+:: --- Step 5: Verify model is registered (NO internet pull — fully offline) ---
+echo [INFO] Verifying %MODEL_NAME% is registered...
+"%OLLAMA_EXE%" list 2>&1 | findstr /I "smollm3" >nul
+if %errorLevel% equ 0 (
+    echo [OK] Model already registered in Ollama.
+) else (
+    echo [WARN] Model not found in ollama list.
+    echo        Attempting local registration (no internet required)...
+    "%OLLAMA_EXE%" pull %MODEL_NAME% >nul 2>&1
+    if %errorLevel% neq 0 (
+        echo [WARN] Registration returned non-zero — may already be registered.
+        echo        If LLM features fail, verify manifests\ folder matches blobs\.
+    ) else (
+        echo [OK] Model registered from local files.
+    )
 )
 
 :: --- Step 6: Quick test ---
