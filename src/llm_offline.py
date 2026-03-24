@@ -345,11 +345,6 @@ class OfflineLLM:
             "stream": False,
             "options": self._get_optimized_options(brief=brief),
         }
-        # Ollama 0.7+: think=False는 options{} 안이 아니라 payload 최상위에 위치해야 함
-        # options 안에 넣으면 llama.cpp 파라미터로 오인되어 완전히 무시됨
-        if brief:
-            payload["think"] = False
-
         # connect 10s, read 120s (non-streaming: total response timeout)
         resp = requests.post(url, json=payload, timeout=(10, 120))
         resp.raise_for_status()
@@ -396,11 +391,6 @@ class OfflineLLM:
             "stream": True,
             "options": self._get_optimized_options(brief=brief),
         }
-        # Ollama 0.7+: think=False는 payload 최상위에 위치해야 함
-        # options{} 안에 넣으면 llama.cpp 파라미터로 오인 → Ollama가 무시 → 무제한 thinking 발생
-        if brief:
-            payload["think"] = False
-
         t0 = time.perf_counter()
         answer_text = ""  # text outside <think> blocks
         _pending = ""  # partial token buffer for tag detection
