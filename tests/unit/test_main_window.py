@@ -21,13 +21,24 @@ from unittest.mock import MagicMock
 
 
 def _make_window(log_manager=None):
-    """MainWindow를 Qt 없이 인스턴스화하기 위한 최소 스텁."""
+    """MainWindow를 Qt 없이 인스턴스화하기 위한 최소 스텁.
+
+    PyQt6 최신 버전은 object.__new__(QWidget-subclass) 를 금지한다.
+    테스트 대상 메서드(_build_log_context_for_llm, _load_recent_log_events)는
+    self._log_manager 외에 Qt API를 전혀 호출하지 않으므로, 해당 메서드만
+    빌려온 순수 Python 클래스를 스텁으로 사용한다.
+    """
     import importlib
 
     mw_mod = importlib.import_module("src.gui.main_window")
-    mw = object.__new__(mw_mod.MainWindow)
-    mw._log_manager = log_manager
-    return mw
+
+    class _Stub:
+        _build_log_context_for_llm = mw_mod.MainWindow._build_log_context_for_llm
+        _load_recent_log_events = mw_mod.MainWindow._load_recent_log_events
+
+    stub = _Stub()
+    stub._log_manager = log_manager
+    return stub
 
 
 def _make_log_event(level: str, step: str, message: str):
