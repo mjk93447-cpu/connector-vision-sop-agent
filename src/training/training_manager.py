@@ -236,6 +236,7 @@ class TrainingManager:
         try:
             sys.stdout = _TeeWriter(sys.stdout, _log_file)
             sys.stderr = _TeeWriter(sys.stderr, _log_file)
+            self._apply_ultralytics_tqdm_patch()
             results = model.train(
                 data=str(dataset_yaml),
                 epochs=epochs,
@@ -338,6 +339,47 @@ class TrainingManager:
                     stale.unlink()
                 except OSError:
                     pass  # read-only or locked — skip silently
+
+    @staticmethod
+    def _apply_ultralytics_tqdm_patch() -> None:
+        """ultralytics TQDM.close()의 file=None 크래시를 근본 수정.
+
+        근본 원인 (2단계):
+          1. ultralytics.utils.VERBOSE 전역이 False이면 TQDM(disable=True)로
+             초기화되고 base tqdm이 self.file = None으로 설정한다.
+          2. TQDM.close()가 self.file.write('\\n')을 호출할 때 AttributeError 발생.
+
+        verbose=True를 model.train()에 전달해도 ultralytics.utils.VERBOSE 전역에
+        propagate되지 않으므로 이 패치가 필요하다.
+
+        이 메서드는:
+          1. ultralytics.utils.VERBOSE = True 강제 설정 (disable=False 보장)
+          2. TQDM.close()에 self.file is None 가드 추가 (2중 안전망)
+        두 가지를 동시에 적용하여 완전한 근본 해결을 보장한다.
+        """
+        try:
+            import ultralytics.utils as _ult_utils  # noqa: PLC0415
+
+            _ult_utils.VERBOSE = True  # tqdm disable=False 강제
+
+            from ultralytics.utils.tqdm import TQDM as _UltTQDM  # noqa: PLC0415
+
+            if getattr(_UltTQDM, "_safe_close_patched", False):
+                return  # 이미 패치됨 — idempotent
+
+            _orig_close = _UltTQDM.close
+
+            def _safe_close(self: object) -> None:  # noqa: ANN001
+                if getattr(self, "file", None) is None:
+                    import io as _io  # noqa: PLC0415
+
+                    self.file = sys.stderr or sys.stdout or _io.StringIO()  # type: ignore[union-attr]
+                _orig_close(self)  # type: ignore[call-arg]
+
+            _UltTQDM.close = _safe_close  # type: ignore[method-assign]
+            _UltTQDM._safe_close_patched = True  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass  # ultralytics 없거나 API 변경 시 무시 (방어적)
 
     def _find_best_weights(self, results: object) -> Optional[Path]:
         """Locate ``best.pt`` from the training run results."""

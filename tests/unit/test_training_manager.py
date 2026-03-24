@@ -822,3 +822,60 @@ class TestStdoutTeeGuard:
             "box_loss" in content
         ), f"training.log missing expected content: {content!r}"
         assert tm.last_training_log == log_path
+
+
+class TestUltralyticsTQDMPatch:
+    """Tests for _apply_ultralytics_tqdm_patch() — ultralytics tqdm file=None 근본 수정."""
+
+    def test_patch_sets_verbose_true(self) -> None:
+        """VERBOSE 전역이 True로 강제 설정되는지 확인."""
+        from src.training.training_manager import TrainingManager
+
+        import ultralytics.utils as ult_utils
+
+        original_verbose = ult_utils.VERBOSE
+        try:
+            ult_utils.VERBOSE = False  # 강제로 False로 설정 후 패치 적용
+            TrainingManager._apply_ultralytics_tqdm_patch()
+            assert ult_utils.VERBOSE is True
+        finally:
+            ult_utils.VERBOSE = original_verbose  # 테스트 종료 후 복구
+
+    def test_patch_idempotent(self) -> None:
+        """두 번 호출해도 안전하고 _safe_close_patched 플래그가 True인지 확인."""
+        from src.training.training_manager import TrainingManager
+        from ultralytics.utils.tqdm import TQDM
+
+        # 패치 플래그 초기화 후 두 번 적용
+        TQDM._safe_close_patched = False  # type: ignore[attr-defined]
+        TrainingManager._apply_ultralytics_tqdm_patch()
+        TrainingManager._apply_ultralytics_tqdm_patch()
+        assert getattr(TQDM, "_safe_close_patched", False) is True
+
+    def test_close_survives_file_none(self) -> None:
+        """패치 후 TQDM.close()가 file=None 일 때 'NoneType.write' 크래시가 없는지 확인.
+
+        bare __new__ 객체는 closed/pos 등 다른 속성이 없으므로 _orig_close가
+        별도의 AttributeError를 낼 수 있다. 우리가 고치는 버그('file' 또는 'write'
+        관련 AttributeError)만 검증하고, 그 외 누락 속성 에러는 무시한다.
+        """
+        from src.training.training_manager import TrainingManager
+        from ultralytics.utils.tqdm import TQDM
+
+        TrainingManager._apply_ultralytics_tqdm_patch()
+        bar = TQDM.__new__(TQDM)
+        bar.file = None  # type: ignore[attr-defined]
+        bar.fp = None  # type: ignore[attr-defined]
+        try:
+            bar.close()
+        except AttributeError as exc:
+            err_msg = str(exc)
+            # 우리가 수정한 버그: 'NoneType' object has no attribute 'write'
+            if "write" in err_msg or (
+                "'NoneType'" in err_msg and "file" in err_msg.lower()
+            ):
+                pytest.fail(
+                    f"TQDM.close() still crashes on file=None after patch: {exc}"
+                )
+            # 그 외 AttributeError('closed', 'pos' 등)는 bare __new__ 객체의
+            # 불완전한 초기화로 인한 것이므로 패치 검증 범위 밖 — 허용
