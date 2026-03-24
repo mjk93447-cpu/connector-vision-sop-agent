@@ -159,6 +159,8 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._flush_timer: Optional[Any] = None
         self._stop_requested: bool = False
         self._last_think_t: float = 0.0  # 마지막 think 토큰 수신 시각
+        self._stream_cursor: Any = None  # QTextCursor anchor for streaming block
+        self._first_token: bool = False  # True until first answer token arrives
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -183,6 +185,9 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             self._btn_send.setText("⏹ Stop")
             self._btn_send.setEnabled(True)  # keep enabled so user can stop
             self._t0 = time.perf_counter()
+            self._lbl_elapsed.setText(
+                "⏳ Sending... (first request: model cold start ~30-90s)"
+            )
             self._start_timer()
             self._start_flush_timer()
         else:
@@ -229,6 +234,18 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._lbl_elapsed = QLabel("")
         self._lbl_elapsed.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(self._lbl_elapsed)
+
+        # Thinking real-time panel — shows <think> tokens as they arrive
+        self._txt_think = QTextEdit()
+        self._txt_think.setReadOnly(True)
+        self._txt_think.setMaximumHeight(80)
+        self._txt_think.setStyleSheet(
+            "color: #9e9e9e; font-size: 10px; font-style: italic;"
+            "background: #f9f9f9; border: 1px solid #e0e0e0; padding: 2px;"
+        )
+        self._txt_think.setPlaceholderText("Model reasoning will appear here...")
+        self._txt_think.hide()
+        layout.addWidget(self._txt_think)
 
         # Chat display
         self._chat_display = QTextEdit()
@@ -304,16 +321,34 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
 
     def _begin_streaming_bubble(self) -> None:
-        """Insert an empty AI bubble that will be filled with streaming tokens."""
+        """Insert an AI bubble header and save a cursor anchor for streaming tokens.
+
+        Replaces the old BlockUnderCursor + insertHtml approach which caused tokens
+        to be inserted at the wrong position (invisible) on first flush.
+        The saved _stream_cursor is repositioned to just before the closing </p>
+        so that subsequent insertText() calls append text inside the bubble.
+        """
         if not _QT_AVAILABLE:
             return
         self._streaming_buffer = ""
-        html = (
-            '<p style="text-align:left; margin:4px;" id="stream_bubble">'
+        self._first_token = True
+        # Reset think panel for new message
+        self._txt_think.clear()
+        self._txt_think.hide()
+        # Insert the AI bubble header — cursor lands at End after append
+        self._chat_display.append(
+            '<p style="text-align:left; margin:4px;">'
             '<span style="background:#f1f8e9; padding:4px 8px; border-radius:8px;">'
-            "<b>AI:</b> <span id='stream_content'></span></span></p>"
+            "<b>AI:</b> </span></p>"
         )
-        self._chat_display.append(html)
+        # Move cursor to End, then back one character to be INSIDE the paragraph
+        # (before the implicit closing newline that Qt inserts after append()).
+        # All subsequent insertText() calls on this cursor will append text
+        # at this anchor position, growing the bubble content in place.
+        cursor = self._chat_display.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.movePosition(QTextCursor.MoveOperation.PreviousCharacter)
+        self._stream_cursor = QTextCursor(cursor)
         self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
 
     @pyqtSlot(str)
@@ -325,30 +360,45 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     @pyqtSlot(str)
     def on_think_token_ready(self, token: str) -> None:
-        """Handle a <think> reasoning token — update elapsed label with thinking hint."""
+        """Handle a <think> reasoning token — show in think panel + update label."""
         if not _QT_AVAILABLE:
             return
         self._last_think_t = time.perf_counter()
         elapsed = self._last_think_t - self._t0 if self._t0 > 0 else 0
-        self._lbl_elapsed.setText(f"🤔 Reasoning... {elapsed:.1f}s")
+        # Show think panel on first token
+        if not self._txt_think.isVisible():
+            self._txt_think.show()
+            self._txt_think.clear()
+        # Append token directly — no buffering, real-time display
+        self._txt_think.moveCursor(QTextCursor.MoveOperation.End)
+        self._txt_think.insertPlainText(token)
+        self._txt_think.moveCursor(QTextCursor.MoveOperation.End)
+        think_len = len(self._txt_think.toPlainText())
+        self._lbl_elapsed.setText(
+            f"\U0001f914 Reasoning... {elapsed:.1f}s | {think_len} chars"
+        )
 
     def _flush_token_buf(self) -> None:
-        """Flush the token buffer to QTextEdit in one repaint (Step 2-C)."""
+        """Flush the token buffer to QTextEdit via the saved cursor anchor (Step 2-C).
+
+        Uses self._stream_cursor.insertText() instead of the old
+        BlockUnderCursor + insertHtml() approach, which would select the wrong
+        block and render tokens invisibly on the first flush.
+        """
         if not _QT_AVAILABLE or not self._token_buf:
             return
         chunk = "".join(self._token_buf)
         self._token_buf.clear()
-        self._streaming_buffer += chunk
-        # Replace entire last block with updated content
-        cursor = self._chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
-        escaped = self._escape(self._streaming_buffer)
-        html = (
-            f'<span style="background:#f1f8e9; padding:4px 8px; border-radius:8px;">'
-            f"<b>AI:</b> {escaped}</span>"
-        )
-        cursor.insertHtml(html)
+        if self._first_token:
+            # First answer token arrived: clear cold-start label, hide think panel
+            self._first_token = False
+            self._txt_think.hide()
+            self._lbl_elapsed.setText("")
+        if self._stream_cursor is None:
+            return
+        # insertText() handles \n natively in QTextEdit rich-text documents.
+        # The cursor is anchored inside the AI bubble <p> from _begin_streaming_bubble().
+        self._stream_cursor.insertText(chunk)
         self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
 
     def _start_flush_timer(self) -> None:
@@ -512,6 +562,17 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self.set_sending(False)
         elapsed = time.perf_counter() - self._t0 if self._t0 > 0 else 0
         self._lbl_elapsed.setText(f"Response complete ({elapsed:.1f}s)")
+        # Detect empty response — typically caused by <think> block consuming
+        # the entire token budget (max_output_tokens), leaving no answer tokens.
+        if not full_text.strip():
+            self._append_system(
+                "\u26a0 No visible response generated. "
+                "The model may have used all tokens for reasoning (<think> block). "
+                "Try: 1) Turn OFF Brief mode for more tokens  "
+                "2) Rephrase as a shorter question  "
+                "3) Ask again (second request is faster after warm-up)"
+            )
+            return
         if _QT_AVAILABLE:
             patch = self._extract_patch(full_text)
             self._btn_apply.setEnabled(patch is not None)
@@ -523,11 +584,11 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             self.set_sending(False)
             return
         # timeout / connection cancel 에러 구분
-        is_timeout = "timed out" in error.lower() or "120s" in error
+        is_timeout = "timed out" in error.lower() or "300s" in error or "120s" in error
         if is_timeout:
             self._append_system(
-                "⏱ Request timed out (120s). "
-                "CPU-only mode: SmolLM3-3B may be slow without a GPU (~30-60s). "
+                "\u23f1 Request timed out (300s). "
+                "CPU-only mode: SmolLM3-3B may be slow without a GPU (~30-90s). "
                 "Solutions: 1) Install GPU (recommended) "
                 "2) Ensure Brief mode is ON "
                 "3) Check Ollama is running (start_agent.bat)"

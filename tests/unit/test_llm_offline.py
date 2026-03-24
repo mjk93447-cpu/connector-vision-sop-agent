@@ -738,3 +738,104 @@ class TestStreamingDeadlineTimer:
         timer.join(timeout=1.0)
 
         assert cancel_called, "cancel()이 호출되지 않음"
+
+
+# ---------------------------------------------------------------------------
+# _BRIEF_MAX_TOKENS 값 검증 (빈 응답 방지)
+# ---------------------------------------------------------------------------
+
+
+class TestBriefMaxTokens:
+    def test_brief_max_tokens_is_at_least_1024(self) -> None:
+        """SmolLM3-3B think 블록(300-500 tokens) + 답변 예산 확보."""
+        from src.llm_offline import _BRIEF_MAX_TOKENS
+
+        assert _BRIEF_MAX_TOKENS >= 1024, (
+            f"_BRIEF_MAX_TOKENS={_BRIEF_MAX_TOKENS} is too small — "
+            "SmolLM3-3B <think> blocks consume 300-500 tokens, leaving no budget "
+            "for the actual answer when max_tokens=512."
+        )
+
+    def test_brief_mode_uses_brief_max_tokens(self) -> None:
+        """brief=True 시 payload['max_tokens'] == _BRIEF_MAX_TOKENS."""
+        from src.llm_offline import _BRIEF_MAX_TOKENS
+
+        llm = OfflineLLM.from_config({})
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "hi"}}]}
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            llm.chat("sys", [{"role": "user", "content": "hi"}], brief=True)
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["max_tokens"] == _BRIEF_MAX_TOKENS
+
+
+# ---------------------------------------------------------------------------
+# 스트리밍 엣지케이스 — <think> 블록만 있고 answer 없음
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingEdgeCases:
+    def _make_streaming_resp(self, tokens: list) -> MagicMock:
+        import json as _json
+
+        lines = []
+        for t in tokens:
+            chunk = {"choices": [{"delta": {"content": t}}]}
+            lines.append(f"data: {_json.dumps(chunk)}".encode())
+        lines.append(b"data: [DONE]")
+        resp = MagicMock()
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        resp.raise_for_status.return_value = None
+        resp.iter_lines.return_value = lines
+        return resp
+
+    def test_empty_answer_when_all_tokens_in_think_block(self) -> None:
+        """<think> 블록만 있고 answer 없으면 answer_text='' 로 on_done 호출."""
+        llm = OfflineLLM.from_config({})
+        mock_sess = MagicMock()
+        mock_sess.post.return_value = self._make_streaming_resp(
+            ["<think>", "some reasoning", "</think>"]
+        )
+        llm._session = mock_sess
+
+        done_args: list = []
+        think_tokens: list = []
+
+        llm.stream_chat(
+            "sys",
+            [{"role": "user", "content": "hi"}],
+            on_token=lambda t: None,
+            on_done=lambda text, elapsed: done_args.append(text),
+            on_think_token=lambda t: think_tokens.append(t),
+        )
+
+        assert done_args == [
+            ""
+        ], "answer_text should be empty when all tokens are inside <think> block"
+        assert "some reasoning" in "".join(think_tokens)
+
+    def test_answer_tokens_after_think_block_are_captured(self) -> None:
+        """</think> 이후 answer 토큰이 정상 수집됨."""
+        llm = OfflineLLM.from_config({})
+        mock_sess = MagicMock()
+        mock_sess.post.return_value = self._make_streaming_resp(
+            ["<think>", "reasoning", "</think>", "Hello", " world"]
+        )
+        llm._session = mock_sess
+
+        answer_tokens: list = []
+        done_args: list = []
+
+        llm.stream_chat(
+            "sys",
+            [{"role": "user", "content": "hi"}],
+            on_token=lambda t: answer_tokens.append(t),
+            on_done=lambda text, elapsed: done_args.append(text),
+        )
+
+        assert "".join(answer_tokens) == "Hello world"
+        assert done_args == ["Hello world"]
