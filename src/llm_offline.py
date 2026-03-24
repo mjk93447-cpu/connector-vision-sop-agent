@@ -32,8 +32,9 @@ _OLLAMA_DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
 _OLLAMA_DEFAULT_MODEL = "pedrolucas/smollm3:3b-q4_k_m"
 
 # Brief mode: shorter token limit for fast responses (used when user requests quick answer)
-# SmolLM3는 reasoning 토큰 오버헤드 없으므로 256으로 충분
-_BRIEF_MAX_TOKENS = 256
+# SmolLM3-3B는 <think>...</think> 토큰을 항상 생성하므로 512 필요
+# (thinking ~200-300 tokens + brief answer ~100-150 tokens)
+_BRIEF_MAX_TOKENS = 512
 
 
 @dataclass
