@@ -102,14 +102,54 @@ class OCREngine:
     # Public API
     # ------------------------------------------------------------------
 
-    def scan_all(self, img_np: np.ndarray) -> List[TextRegion]:
-        """Scan entire image and return all detected TextRegion objects."""
+    def scan_all(
+        self,
+        img_np: np.ndarray,
+        roi: Optional[tuple] = None,  # (x, y, w, h)
+    ) -> List[TextRegion]:
+        """Scan entire image (or ROI crop) and return all detected TextRegion objects.
+
+        Parameters
+        ----------
+        img_np : BGR numpy array (screen capture).
+        roi    : Optional (x, y, w, h) region of interest in screen coordinates.
+                 If given, only that crop is scanned and returned bbox/center
+                 coordinates are offset back to original screen coordinates.
+        """
         try:
+            if roi is not None:
+                rx, ry, rw, rh = roi
+                cropped = img_np[ry : ry + rh, rx : rx + rw]
+                scan_img = cropped
+            else:
+                scan_img = img_np
+
             if self._backend == "winrt":
-                return self._scan_winrt(img_np)
-            if self._backend == "easyocr":
-                return self._scan_easyocr(img_np)
-            return self._scan_paddleocr(img_np)
+                regions = self._scan_winrt(scan_img)
+            elif self._backend == "easyocr":
+                regions = self._scan_easyocr(scan_img)
+            else:
+                regions = self._scan_paddleocr(scan_img)
+
+            if roi is not None:
+                rx, ry = roi[0], roi[1]
+                offset_regions: List[TextRegion] = []
+                for r in regions:
+                    bx, by, bw, bh = r.bbox
+                    new_bbox = (bx + rx, by + ry, bw, bh)
+                    new_center = (r.center[0] + rx, r.center[1] + ry)
+                    offset_regions.append(
+                        TextRegion(
+                            text=r.text,
+                            bbox=new_bbox,
+                            confidence=r.confidence,
+                            center=new_center,
+                            source=r.source,
+                        )
+                    )
+                return offset_regions
+
+            return regions
         except Exception as exc:
             logger.warning("OCR scan_all error (%s): %s", self._backend, exc)
             return []
@@ -120,6 +160,7 @@ class OCREngine:
         target: str,
         fuzzy: bool = True,
         threshold: Optional[float] = None,
+        roi: Optional[tuple] = None,  # (x, y, w, h)
     ) -> Optional[TextRegion]:
         """Find the best-matching TextRegion for ``target``.
 
@@ -129,9 +170,10 @@ class OCREngine:
         target : Button text to locate (e.g. "LOGIN").
         fuzzy  : Use difflib fuzzy matching (recommended).
         threshold : Override instance threshold for this call.
+        roi    : Optional (x, y, w, h) region of interest — passed to scan_all().
         """
         thr = threshold if threshold is not None else self.threshold
-        regions = self.scan_all(img_np)
+        regions = self.scan_all(img_np, roi=roi)
         # Merge adjacent word-level regions so multi-word button labels
         # (e.g. "Image Source") are searchable as a single region.
         regions = self._merge_adjacent_regions(regions)

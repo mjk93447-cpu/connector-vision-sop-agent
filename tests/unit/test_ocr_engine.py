@@ -7,7 +7,7 @@ Uses mocks for WinRT and PaddleOCR — no external dependencies required.
 from __future__ import annotations
 
 import sys
-from typing import List
+from typing import List, Optional
 from unittest.mock import MagicMock, patch
 
 import cv2
@@ -117,7 +117,7 @@ class TestScanAllPaddleOCR:
 class TestFindText:
     def _make_engine(self, regions: List[TextRegion]) -> OCREngine:
         engine = OCREngine(backend="paddleocr")
-        engine.scan_all = lambda img: regions  # type: ignore[method-assign]
+        engine.scan_all = lambda img, roi=None: regions  # type: ignore[method-assign]
         return engine
 
     def test_exact_match(self) -> None:
@@ -618,7 +618,7 @@ class TestFindTextMultiword:
 
     def _make_engine(self, regions: List[TextRegion]) -> OCREngine:
         engine = OCREngine(backend="paddleocr")
-        engine.scan_all = lambda img: regions  # type: ignore[method-assign]
+        engine.scan_all = lambda img, roi=None: regions  # type: ignore[method-assign]
         return engine
 
     def test_find_multiword_via_merge(self) -> None:
@@ -651,3 +651,91 @@ class TestFindTextMultiword:
         engine = self._make_engine(regions)
         result = engine.find_text(img, "IMAGE SOURCE")
         assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# scan_all / find_text — ROI parameter
+# ---------------------------------------------------------------------------
+
+
+class TestScanAllRoi:
+    """Tests for the roi parameter added to scan_all() and find_text()."""
+
+    def _make_engine_with_capture(self) -> tuple:
+        """Return (engine, captured_list) where captured_list[0] holds the last img passed to backend."""
+        engine = OCREngine(backend="paddleocr")
+        captured: list = []
+
+        def _mock_scan(img: np.ndarray) -> List[TextRegion]:
+            captured.append(img)
+            return [
+                TextRegion(
+                    text="LOGIN",
+                    bbox=(5, 5, 40, 15),
+                    confidence=1.0,
+                    center=(25, 12),
+                    source="mock",
+                )
+            ]
+
+        engine._scan_paddleocr = _mock_scan  # type: ignore[method-assign]
+        return engine, captured
+
+    def test_scan_all_with_roi_crops_image(self) -> None:
+        """Backend receives a cropped image matching the roi dimensions."""
+        engine, captured = self._make_engine_with_capture()
+        full = np.zeros((200, 400, 3), dtype=np.uint8)
+        roi = (50, 30, 100, 80)  # x=50, y=30, w=100, h=80
+        engine.scan_all(full, roi=roi)
+        assert len(captured) == 1
+        cropped = captured[0]
+        # Cropped shape must match (h, w) = (80, 100)
+        assert cropped.shape[0] == 80
+        assert cropped.shape[1] == 100
+
+    def test_scan_all_with_roi_offsets_coordinates(self) -> None:
+        """Returned TextRegion coords are offset by (roi_x, roi_y)."""
+        engine, captured = self._make_engine_with_capture()
+        full = np.zeros((200, 400, 3), dtype=np.uint8)
+        roi = (50, 30, 100, 80)  # offset: x+50, y+30
+        results = engine.scan_all(full, roi=roi)
+        assert len(results) == 1
+        bx, by, bw, bh = results[0].bbox
+        # Original bbox was (5,5,40,15) → should be (55, 35, 40, 15)
+        assert bx == 55
+        assert by == 35
+        assert bw == 40
+        assert bh == 15
+        # Center should also be offset
+        cx, cy = results[0].center
+        assert cx == 75  # 25 + 50
+        assert cy == 42  # 12 + 30
+
+    def test_scan_all_without_roi_unchanged(self) -> None:
+        """roi=None leaves behavior identical to the pre-ROI call."""
+        engine, captured = self._make_engine_with_capture()
+        full = np.zeros((200, 400, 3), dtype=np.uint8)
+        results = engine.scan_all(full)  # no roi arg
+        assert len(captured) == 1
+        # Full image passed — shape unchanged
+        assert captured[0].shape == (200, 400, 3)
+        # Coordinates are returned as-is (no offset applied)
+        assert results[0].bbox == (5, 5, 40, 15)
+
+    def test_find_text_passes_roi_to_scan_all(self) -> None:
+        """find_text() forwards the roi kwarg to scan_all()."""
+        engine = OCREngine(backend="paddleocr")
+        scan_all_calls: list = []
+
+        def _mock_scan_all(
+            img: np.ndarray, roi: Optional[tuple] = None
+        ) -> List[TextRegion]:
+            scan_all_calls.append(roi)
+            return [TextRegion("LOGIN", (10, 10, 60, 20), 1.0, (40, 20), "mock")]
+
+        engine.scan_all = _mock_scan_all  # type: ignore[method-assign]
+        img = np.zeros((200, 400, 3), dtype=np.uint8)
+        roi = (20, 10, 150, 80)
+        engine.find_text(img, "LOGIN", roi=roi)
+        assert len(scan_all_calls) == 1
+        assert scan_all_calls[0] == roi
