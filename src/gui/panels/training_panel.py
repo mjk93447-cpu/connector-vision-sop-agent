@@ -47,6 +47,7 @@ try:
         QGroupBox,
         QHBoxLayout,
         QLabel,
+        QLineEdit,
         QMessageBox,
         QProgressBar,
         QPushButton,
@@ -55,6 +56,8 @@ try:
         QSizePolicy,
         QSpinBox,
         QSplitter,
+        QTableWidget,
+        QTableWidgetItem,
         QTextEdit,
         QVBoxLayout,
         QWidget,
@@ -66,6 +69,7 @@ except ImportError:
     QWidget = object  # type: ignore[assignment,misc]
     pyqtSignal = object  # type: ignore[assignment]
 
+from src.class_registry import ClassRegistry
 from src.training.dataset_manager import OLED_CLASSES, DatasetManager
 
 # Extended class list: add mold + connector_pin to OLED_CLASSES if not present
@@ -405,6 +409,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
     """Tab 7: YOLO annotation + local fine-tuning panel."""
 
     training_finished: Any = pyqtSignal(str) if _QT_AVAILABLE else object()  # type: ignore[assignment]
+    registry_changed: Any = pyqtSignal() if _QT_AVAILABLE else object()  # type: ignore[assignment]
 
     def __init__(
         self,
@@ -420,6 +425,11 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._training_worker: Optional[Any] = None
         # Class selection checkboxes: {class_name: QCheckBox}
         self._class_checkboxes: Dict[str, Any] = {}
+        # Class registry (loaded once; mutated via panel UI)
+        try:
+            self._registry: ClassRegistry = ClassRegistry.load()
+        except Exception:  # noqa: BLE001
+            self._registry = ClassRegistry([], Path("assets/class_registry.json"))
 
         if _QT_AVAILABLE:
             self._setup_ui()
@@ -510,6 +520,9 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(6)
+
+        # ---- Class Registry collapsible panel (always at top) --------
+        outer.addWidget(self._setup_registry_panel())
 
         header = QLabel("🧠 YOLO26x Local Fine-Tuning (Tab 7)")
         header.setStyleSheet("font-size: 14px; font-weight: bold;")
@@ -744,6 +757,205 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         outer.addWidget(splitter)
 
         self._refresh_stats()
+
+    # ------------------------------------------------------------------
+    # Class Registry panel builder
+    # ------------------------------------------------------------------
+
+    def _setup_registry_panel(self) -> Any:
+        """Build the collapsible Class Registry panel widget and return it."""
+        container = QWidget()
+        vbox = QVBoxLayout(container)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(2)
+
+        # Toggle button
+        self._btn_registry_toggle = QPushButton("📋 Class Registry ▶")
+        self._btn_registry_toggle.setCheckable(True)
+        self._btn_registry_toggle.setChecked(False)
+        self._btn_registry_toggle.setStyleSheet(
+            "QPushButton { text-align: left; font-weight: bold; padding: 4px 8px; "
+            "background: #e3f2fd; border: 1px solid #90caf9; border-radius: 4px; } "
+            "QPushButton:checked { background: #bbdefb; }"
+        )
+        self._btn_registry_toggle.clicked.connect(self._on_registry_toggle)
+        vbox.addWidget(self._btn_registry_toggle)
+
+        # Content widget (hidden by default)
+        self._registry_content = QWidget()
+        cv = QVBoxLayout(self._registry_content)
+        cv.setContentsMargins(4, 4, 4, 4)
+        cv.setSpacing(4)
+
+        # Table: Class Name | Type | Actions
+        self._tbl_registry = QTableWidget(0, 3)
+        self._tbl_registry.setHorizontalHeaderLabels(["Class Name", "Type", "Actions"])
+        self._tbl_registry.horizontalHeader().setStretchLastSection(True)
+        self._tbl_registry.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers  # type: ignore[attr-defined]
+        )
+        self._tbl_registry.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection  # type: ignore[attr-defined]
+        )
+        self._tbl_registry.setMaximumHeight(200)
+        cv.addWidget(self._tbl_registry)
+
+        # Add row: [line edit] [combo type] [+ Add Class] [💾 Save]
+        add_row = QHBoxLayout()
+        self._edit_new_class = QLineEdit()
+        self._edit_new_class.setPlaceholderText("Class Name")
+        self._edit_new_class.setMaximumWidth(200)
+        add_row.addWidget(self._edit_new_class)
+        self._combo_new_type = QComboBox()
+        self._combo_new_type.addItems(["TEXT", "NON_TEXT"])
+        self._combo_new_type.setMaximumWidth(110)
+        add_row.addWidget(self._combo_new_type)
+        btn_add_cls = QPushButton("+ Add Class")
+        btn_add_cls.setToolTip("Add a new class to the registry")
+        btn_add_cls.clicked.connect(self._on_registry_add)
+        add_row.addWidget(btn_add_cls)
+        add_row.addStretch()
+        btn_save_reg = QPushButton("💾 Save Registry")
+        btn_save_reg.setToolTip("Save registry to assets/class_registry.json")
+        btn_save_reg.clicked.connect(self._on_registry_save)
+        add_row.addWidget(btn_save_reg)
+        cv.addLayout(add_row)
+
+        self._registry_content.setVisible(False)
+        vbox.addWidget(self._registry_content)
+
+        # Populate table from loaded registry
+        self._refresh_registry_table()
+
+        return container
+
+    def _refresh_registry_table(self) -> None:
+        """Repopulate the registry table from self._registry."""
+        if not _QT_AVAILABLE:
+            return
+        tbl = self._tbl_registry
+        tbl.setRowCount(0)
+        for entry in self._registry.all_classes():
+            row = tbl.rowCount()
+            tbl.insertRow(row)
+            tbl.setItem(row, 0, QTableWidgetItem(entry.name))
+            type_icon = "👁 NON_TEXT" if entry.type == "NON_TEXT" else "🔤 TEXT"
+            tbl.setItem(row, 1, QTableWidgetItem(type_icon))
+
+            # Actions cell: toggle type + delete
+            actions_widget = QWidget()
+            ah = QHBoxLayout(actions_widget)
+            ah.setContentsMargins(2, 0, 2, 0)
+            ah.setSpacing(4)
+
+            if entry.type == "NON_TEXT":
+                btn_toggle = QPushButton("🔤 →TEXT")
+                btn_toggle.setToolTip("Switch type to TEXT")
+            else:
+                btn_toggle = QPushButton("👁 →NON_TEXT")
+                btn_toggle.setToolTip("Switch type to NON_TEXT")
+            btn_toggle.setMaximumWidth(110)
+            # Capture name at definition time via default arg
+            btn_toggle.clicked.connect(
+                lambda _checked, n=entry.name: self._on_registry_toggle_type(n)
+            )
+            ah.addWidget(btn_toggle)
+
+            btn_del = QPushButton("🗑 Del")
+            btn_del.setToolTip(f"Remove class '{entry.name}' from registry")
+            btn_del.setMaximumWidth(70)
+            btn_del.clicked.connect(
+                lambda _checked, n=entry.name: self._on_registry_delete(n)
+            )
+            ah.addWidget(btn_del)
+            ah.addStretch()
+            tbl.setCellWidget(row, 2, actions_widget)
+
+        tbl.resizeColumnToContents(0)
+        tbl.resizeColumnToContents(1)
+
+    # ------------------------------------------------------------------
+    # Registry slots
+    # ------------------------------------------------------------------
+
+    def _on_registry_toggle(self) -> None:
+        """Expand or collapse the registry content area."""
+        expanded = self._btn_registry_toggle.isChecked()
+        self._registry_content.setVisible(expanded)
+        self._btn_registry_toggle.setText(
+            "📋 Class Registry ▼" if expanded else "📋 Class Registry ▶"
+        )
+
+    def _on_registry_add(self) -> None:
+        """Add a new class from the input line edit."""
+        if not _QT_AVAILABLE:
+            return
+        name = self._edit_new_class.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Invalid Name", "Class name cannot be empty.")
+            return
+        type_ = self._combo_new_type.currentText()
+        try:
+            self._registry.add_class(name, type_)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Add Failed", str(exc))
+            return
+        self._edit_new_class.clear()
+        self._refresh_registry_table()
+
+    def _on_registry_toggle_type(self, name: str) -> None:
+        """Toggle a class between TEXT and NON_TEXT."""
+        if not _QT_AVAILABLE:
+            return
+        current = self._registry.get_type(name)
+        new_type = "NON_TEXT" if current == "TEXT" else "TEXT"
+        try:
+            self._registry.set_type(name, new_type)
+        except KeyError as exc:
+            QMessageBox.warning(self, "Toggle Failed", str(exc))
+            return
+        self._refresh_registry_table()
+
+    def _on_registry_delete(self, name: str) -> None:
+        """Remove a class from the registry."""
+        if not _QT_AVAILABLE:
+            return
+        try:
+            self._registry.remove_class(name)
+        except KeyError as exc:
+            QMessageBox.warning(self, "Delete Failed", str(exc))
+            return
+        self._refresh_registry_table()
+
+    def _on_registry_save(self) -> None:
+        """Save registry and update annotation class combo."""
+        if not _QT_AVAILABLE:
+            return
+        try:
+            self._registry.save()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Save Failed", str(exc))
+            return
+
+        # Refresh annotation class combo with registry class names
+        reg_names = self._registry.class_names()
+        if reg_names and hasattr(self, "_combo_label"):
+            current = self._combo_label.currentText()
+            self._combo_label.blockSignals(True)
+            self._combo_label.clear()
+            self._combo_label.addItems(reg_names)
+            # Restore previous selection if still present
+            idx = self._combo_label.findText(current)
+            if idx >= 0:
+                self._combo_label.setCurrentIndex(idx)
+            self._combo_label.blockSignals(False)
+
+        try:
+            self.registry_changed.emit()
+        except Exception:  # noqa: BLE001
+            pass
+
+        self._log(f"✅ Class Registry saved ({len(reg_names)} classes)")
 
     # ------------------------------------------------------------------
     # Slots
