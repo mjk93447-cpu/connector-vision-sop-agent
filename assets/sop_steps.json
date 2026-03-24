@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "steps": [
     {
       "id": "login",
@@ -33,8 +33,10 @@
       "name": "Mold Left Label",
       "type": "click",
       "target": "mold_left_label",
+      "target_type": "NON_TEXT",
       "button_text": "MOLD LEFT",
       "description": "Click the Mold Left label to activate left mold ROI selection",
+      "roi": [0, 0, 960, 1080],
       "enabled": true
     },
     {
@@ -45,6 +47,7 @@
       "end": [800, 350],
       "description": "Drag to define the mold left region of interest. YOLO26x detects mold_left boundary for automatic start/end coordinates.",
       "yolo_detect": "mold_left",
+      "roi": [0, 0, 960, 1080],
       "enabled": true
     },
     {
@@ -52,8 +55,10 @@
       "name": "Mold Right Label",
       "type": "click",
       "target": "mold_right_label",
+      "target_type": "NON_TEXT",
       "button_text": "MOLD RIGHT",
       "description": "Click the Mold Right label to activate right mold ROI selection",
+      "roi": [960, 0, 1920, 1080],
       "enabled": true
     },
     {
@@ -80,9 +85,11 @@
       "name": "Pin Up Check",
       "type": "validate_pins",
       "description": "Validate top connector pins (20 pins expected). YOLO26x detects connector_pin in top ROI.",
+      "target_type": "NON_TEXT",
       "pin_position": "top",
       "pin_count_expected": 20,
       "yolo_detect": "connector_pin",
+      "roi": [400, 300, 1120, 480],
       "enabled": true
     },
     {
@@ -90,9 +97,11 @@
       "name": "Pin Down Check",
       "type": "validate_pins",
       "description": "Validate bottom connector pins (20 pins expected). YOLO26x detects connector_pin in bottom ROI.",
+      "target_type": "NON_TEXT",
       "pin_position": "bottom",
       "pin_count_expected": 20,
       "yolo_detect": "connector_pin",
+      "roi": [400, 600, 1120, 780],
       "enabled": true
     },
     {
