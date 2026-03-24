@@ -218,16 +218,29 @@ class VisionEngine:
         return detections
 
     def find_detection(
-        self, image: np.ndarray, label: str, min_score: float | None = None
+        self,
+        image: np.ndarray,
+        label: str,
+        min_score: float | None = None,
+        roi: tuple[int, int, int, int] | None = None,
     ) -> UiDetection | None:
-        """Return the highest-confidence detection for the requested label."""
+        """Return the highest-confidence detection for the requested label.
+
+        Args:
+            image: Full BGR image to search in.
+            label: Target class label to find.
+            min_score: Minimum confidence threshold; defaults to config value.
+            roi: Optional (x, y, w, h) region of interest.  When provided,
+                 detection is limited to that crop and bbox coordinates are
+                 offset back to original image space via ``detect_roi()``.
+        """
 
         score_threshold = min_score or self.config.confidence_threshold
-        matches = [
-            detection
-            for detection in self.detect_objects(image, conf_threshold=score_threshold)
-            if detection.label == label
-        ]
+        if roi is not None:
+            candidates = self.detect_roi(image, roi, conf_threshold=score_threshold)
+        else:
+            candidates = self.detect_objects(image, conf_threshold=score_threshold)
+        matches = [d for d in candidates if d.label == label]
         if not matches:
             return None
         return max(matches, key=lambda detection: detection.confidence)

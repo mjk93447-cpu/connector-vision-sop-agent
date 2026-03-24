@@ -274,6 +274,44 @@ class TestFindDetection:
         call_kwargs = mock_detect.call_args[1]
         assert call_kwargs.get("conf_threshold") == pytest.approx(0.8)
 
+    def test_find_detection_without_roi_uses_detect_objects(
+        self, engine: VisionEngine, blank_small: np.ndarray
+    ) -> None:
+        """roi=None → detect_objects called, detect_roi NOT called."""
+        with patch.object(
+            engine, "detect_objects", return_value=[]
+        ) as mock_do, patch.object(engine, "detect_roi") as mock_dr:
+            engine.find_detection(blank_small, "login_button")
+        mock_do.assert_called_once()
+        mock_dr.assert_not_called()
+
+    def test_find_detection_with_roi_uses_detect_roi(
+        self, engine: VisionEngine, blank_small: np.ndarray
+    ) -> None:
+        """roi given → detect_roi called, detect_objects NOT called."""
+        roi = (10, 10, 50, 50)
+        with patch.object(
+            engine, "detect_roi", return_value=[]
+        ) as mock_dr, patch.object(engine, "detect_objects") as mock_do:
+            engine.find_detection(blank_small, "login_button", roi=roi)
+        mock_dr.assert_called_once()
+        mock_do.assert_not_called()
+
+    def test_find_detection_with_roi_filters_label(
+        self, engine: VisionEngine, blank_small: np.ndarray
+    ) -> None:
+        """When roi given, only detections matching the requested label returned."""
+        roi = (0, 0, 100, 100)
+        detections = [
+            UiDetection(label="login_button", confidence=0.9, bbox=(5, 5, 40, 40)),
+            UiDetection(label="recipe_button", confidence=0.8, bbox=(50, 50, 90, 90)),
+        ]
+        with patch.object(engine, "detect_roi", return_value=detections):
+            result = engine.find_detection(blank_small, "login_button", roi=roi)
+        assert result is not None
+        assert result.label == "login_button"
+        assert result.confidence == pytest.approx(0.9)
+
 
 # ---------------------------------------------------------------------------
 # normalize_roi
