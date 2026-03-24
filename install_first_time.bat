@@ -20,7 +20,7 @@ set "BASE_DIR=%~dp0"
 set "BASE_DIR=%BASE_DIR:~0,-1%"
 set "OLLAMA_EXE=%BASE_DIR%\ollama.exe"
 set "OLLAMA_MODELS=%BASE_DIR%\ollama_models"
-set "MODEL_NAME=phi4-mini-reasoning"
+set "MODEL_NAME=pedrolucas/smollm3:3b-q4_k_m"
 
 echo ============================================================
 echo  Connector Vision SOP Agent  ^|  First-Time Setup
@@ -28,7 +28,7 @@ echo ============================================================
 echo.
 echo This setup will:
 echo   1. Register Ollama model directory
-echo   2. Load phi4-mini-reasoning LLM model from local files
+echo   2. Load SmolLM3-3B Q4_K_M LLM model from local files
 echo   3. Verify the installation
 echo.
 echo This may take 2-5 minutes. Please wait...
@@ -52,7 +52,7 @@ echo [OK] Model directory set: %OLLAMA_MODELS%
 :: --- Step 3: Verify model blobs exist ---
 if not exist "%OLLAMA_MODELS%\blobs" (
     echo [WARN] Model blobs folder not found: %OLLAMA_MODELS%\blobs
-    echo        Please extract portable-part2-phi4-mini into:
+    echo        Please extract portable-part2-smollm3 into:
     echo        %OLLAMA_MODELS%\
     echo        Then run this setup again.
     pause

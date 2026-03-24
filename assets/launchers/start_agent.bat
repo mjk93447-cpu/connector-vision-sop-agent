@@ -17,7 +17,7 @@ set no_proxy=localhost,127.0.0.1,::1
 echo ================================================================
 echo  Connector Vision SOP Agent v3.2.5  [Fully Offline]
 echo  GUI  : PyQt6 7-tab MainWindow (Vision, LLM Chat, Training...)
-echo  LLM  : phi4-mini-reasoning  (Microsoft, USA)
+echo  LLM  : SmolLM3-3B Q4_K_M  (HuggingFace)
 echo  YOLO : yolo26x embedded in EXE
 echo ================================================================
 echo.

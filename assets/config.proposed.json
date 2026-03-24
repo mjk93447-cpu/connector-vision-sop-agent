@@ -1,7 +1,9 @@
 {
-  "_comment": "Apply these values to assets/config.json after review. Do NOT commit assets/config.json changes.",
+  "_comment": "SmolLM3-3B Q4_K_M 교체 제안 — 수동으로 assets/config.json llm 섹션에 적용",
   "llm": {
-    "timeout_sec": 120,
-    "max_output_tokens": 256
+    "model_path": "pedrolucas/smollm3:3b-q4_k_m",
+    "ctx_size": 8192,
+    "max_input_tokens": 6144,
+    "max_output_tokens": 512
   }
 }

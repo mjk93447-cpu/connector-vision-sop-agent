@@ -1,12 +1,12 @@
 name: Build Connector Vision Agent (All-in-One)
 
-# All-in-One build: EXE + Ollama + YOLO26x + OCR (winsdk/easyocr) + phi4-mini LLM
+# All-in-One build: EXE + Ollama + YOLO26x + OCR (winsdk/easyocr) + SmolLM3-3B LLM
 #
 # MANDATORY: YOLO26x (yolo26x.pt) ONLY. YOLOv8/v9/v10/v11 ABSOLUTELY FORBIDDEN.
 #
 # Produces 2 artifacts:
 #   connector-agent-app  ~500 MB  EXE + Ollama + YOLO26x + OCR + config
-#   connector-agent-llm  ~2.5 GB  phi4-mini-reasoning model blobs
+#   connector-agent-llm  ~2.1 GB  SmolLM3-3B Q4_K_M model blobs
 #
 # On-site deployment:
 #   1. Extract connector-agent-app.zip → connector_agent\ folder
@@ -100,11 +100,11 @@ jobs:
           Copy-Item "dist_build\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
           Copy-Item "ollama_bin\ollama.exe"                 "$pkg\ollama.exe"
 
-          # Config: enable LLM (phi4-mini-reasoning via Ollama)
+          # Config: enable LLM (SmolLM3-3B Q4_K_M via Ollama)
           $cfg = Get-Content assets\config.json -Raw | ConvertFrom-Json
           $cfg.llm.enabled    = $true
           $cfg.llm.backend    = "ollama"
-          $cfg.llm.model_path = "phi4-mini-reasoning"
+          $cfg.llm.model_path = "pedrolucas/smollm3:3b-q4_k_m"
           $cfg.llm.http_url   = "http://127.0.0.1:11434/v1/chat/completions"
           $cfg | ConvertTo-Json -Depth 10 | Set-Content "$pkg\assets\config.json" -Encoding UTF8
 
@@ -146,11 +146,11 @@ jobs:
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────────────
-  # Job 2: phi4-mini-reasoning LLM model blobs (~2.5 GB)
+  # Job 2: SmolLM3-3B Q4_K_M model blobs (~2.1 GB)
   #         Separate job due to disk space constraints
   # ─────────────────────────────────────────────────────────────────────
   build-llm:
-    name: LLM (phi4-mini-reasoning model blobs)
+    name: LLM (SmolLM3-3B Q4_K_M model blobs)
     runs-on: windows-latest
     permissions:
       contents: read
@@ -188,12 +188,12 @@ jobs:
           Start-Sleep -Seconds 20
           Write-Host "[OK] Ollama server ready"
 
-      - name: Pull phi4-mini-reasoning (~2.5 GB)
+      - name: Pull SmolLM3-3B Q4_K_M (~2.1 GB)
         shell: pwsh
         run: |
           $env:OLLAMA_HOST = "127.0.0.1:11434"
-          Write-Host "Downloading phi4-mini-reasoning (Microsoft, ~2.5 GB)..."
-          & ollama_bin\ollama.exe pull phi4-mini-reasoning
+          Write-Host "Downloading SmolLM3-3B Q4_K_M (HuggingFace, ~2.1 GB)..."
+          & ollama_bin\ollama.exe pull pedrolucas/smollm3:3b-q4_k_m
           if ($LASTEXITCODE -ne 0) { throw "Model download failed (exit $LASTEXITCODE)" }
           Write-Host "[OK] Download complete"
           & ollama_bin\ollama.exe list

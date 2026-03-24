@@ -14,7 +14,7 @@ installation.
 |---------|---------|
 | **Vision** | YOLO26x (NMS-free, highest mAP in the YOLO26 family) |
 | **OCR** | WinSDK/WinRT (primary) → EasyOCR → PaddleOCR auto-fallback |
-| **LLM** | phi4-mini-reasoning via Ollama — fully offline |
+| **LLM** | SmolLM3-3B Q4_K_M via Ollama — fully offline |
 | **GUI** | PyQt6 — 7 tabs (SOP Runner, Vision, LLM Chat, SOP Editor, Config, Audit, Training) |
 | **Training** | In-app YOLO fine-tuning with bbox annotation (Tab 7) |
 | **OS** | Windows 10 Pro 1803+ / Windows 11 (64-bit only) |
@@ -43,7 +43,7 @@ src/
   ocr_engine.py         WinSDK/WinRT OCR + EasyOCR/PaddleOCR fallback
   control_engine.py     PyAutoGUI click/drag/type automation
   sop_executor.py       12-step SOP orchestration
-  llm_offline.py        Ollama HTTP backend (phi4-mini-reasoning)
+  llm_offline.py        Ollama HTTP backend (SmolLM3-3B Q4_K_M)
   config_loader.py      JSON config loader (EXE-safe path resolution)
   exception_handler.py  Pop-up detection, freeze guard, LLM 3-stage chain
   cycle_detector.py     Success pattern recording (JSONL)
@@ -91,7 +91,7 @@ gh workflow run "Build Connector Vision Agent (All-in-One)" --ref main
 | Artifact | Size | Contents |
 |----------|------|----------|
 | `connector-agent-app` | ~500 MB | EXE + Ollama + YOLO26x + OCR + launchers |
-| `connector-agent-llm` | ~2.5 GB | phi4-mini-reasoning model blobs |
+| `connector-agent-llm` | ~2.1 GB | SmolLM3-3B Q4_K_M model blobs |
 
 **Assembly on line PC:**
 1. Extract `connector-agent-app.zip` → `connector_agent\`
@@ -152,7 +152,7 @@ python tools/dummy_ollama_server.py
   "llm": {
     "enabled": false,
     "backend": "ollama",
-    "model_path": "phi4-mini-reasoning",
+    "model_path": "pedrolucas/smollm3:3b-q4_k_m",
     "http_url": "http://localhost:11434/v1/chat/completions"
   }
 }
@@ -203,7 +203,7 @@ Fine-tune YOLO26x on new connector types directly in the GUI:
 | 3.1.0 | 2026-03-17 | OCR-first pipeline, ExceptionHandler, CycleDetector, LLM streaming, English UI |
 | 3.0.0 | 2026-03-17 | GUI 7-tab, Training panel, YOLO26x pretrain CI, get_base_dir() EXE fix |
 | 2.1.0 | 2026-03 | YOLO26x exclusive, GUI 7-tab layout |
-| 2.0.0 | 2026-02 | phi4-mini LLM, Ollama backend, config v2.0.0 |
+| 2.0.0 | 2026-02 | SmolLM3-3B LLM, Ollama backend, config v2.0.0 |
 | 1.0.0 | 2025-12 | Initial release |
 
 ---

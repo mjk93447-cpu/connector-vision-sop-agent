@@ -226,7 +226,7 @@ If button names change in the factory software or step order needs adjustment:
 
 ## 7. LLM AI Assistant
 
-The AI assistant (phi4-mini) helps analyze failures and answer questions.
+The AI assistant (SmolLM3-3B) helps analyze failures and answer questions.
 
 ### Using LLM Chat (Tab 3)
 
@@ -317,7 +317,7 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 | 3.1.0 | 2026-03-17 | OCR-first detection, LLM streaming, exception handler, English UI |
 | 3.0.0 | 2026-03-17 | GUI 7-tab, Training panel, YOLO26x pretrain CI |
 | 2.1 | 2026-03 | YOLO26x exclusive, GUI 7-tab layout, TrainingPanel |
-| 2.0 | 2026-02 | phi4-mini LLM, Ollama backend |
+| 2.0 | 2026-02 | SmolLM3-3B LLM, Ollama backend |
 | 1.0 | 2025-12 | Initial release |
 
 ---
