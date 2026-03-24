@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -32,28 +31,40 @@ def _patch_registry_path(monkeypatch, path: Path):
 # ---------------------------------------------------------------------------
 
 
+_FULL_REGISTRY_ENTRIES = [
+    {"name": "login_button", "type": "TEXT"},
+    {"name": "recipe_button", "type": "TEXT"},
+    {"name": "register_button", "type": "TEXT"},
+    {"name": "open_icon", "type": "TEXT"},
+    {"name": "image_source", "type": "TEXT"},
+    {"name": "mold_left_label", "type": "NON_TEXT"},
+    {"name": "mold_right_label", "type": "NON_TEXT"},
+    {"name": "pin_cluster", "type": "NON_TEXT"},
+    {"name": "apply_button", "type": "TEXT"},
+    {"name": "save_button", "type": "TEXT"},
+    {"name": "axis_mark", "type": "TEXT"},
+    {"name": "connector_pin", "type": "NON_TEXT"},
+]
+
+
 class TestLoadFromJson:
-    def test_load_from_json(self, tmp_path):
+    def test_load_from_json(self, tmp_path, monkeypatch):
         """Load from actual-style class_registry.json — verify 12 classes."""
-        registry_path = Path(
-            "C:/connector-vision-sop-agent/.worktrees/feature/v3.5.0-class-registry-roi/assets/class_registry.json"
-        )
+        registry_path = _make_registry_at(tmp_path, _FULL_REGISTRY_ENTRIES)
+        _patch_registry_path(monkeypatch, registry_path)
         from src.class_registry import ClassRegistry
 
-        with patch("src.class_registry._get_registry_path", return_value=registry_path):
-            registry = ClassRegistry.load()
+        registry = ClassRegistry.load()
 
         assert len(registry.all_classes()) == 12
 
-    def test_class_names_present(self, tmp_path):
+    def test_class_names_present(self, tmp_path, monkeypatch):
         """All 12 expected names should be present."""
-        registry_path = Path(
-            "C:/connector-vision-sop-agent/.worktrees/feature/v3.5.0-class-registry-roi/assets/class_registry.json"
-        )
+        registry_path = _make_registry_at(tmp_path, _FULL_REGISTRY_ENTRIES)
+        _patch_registry_path(monkeypatch, registry_path)
         from src.class_registry import ClassRegistry
 
-        with patch("src.class_registry._get_registry_path", return_value=registry_path):
-            registry = ClassRegistry.load()
+        registry = ClassRegistry.load()
 
         names = registry.class_names()
         expected = [
