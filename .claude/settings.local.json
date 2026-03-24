@@ -1,5 +1,9 @@
 {
   "permissions": {
+    "deny": [
+      "mcp__Claude_Preview__*",
+      "mcp__Claude_in_Chrome__*"
+    ],
     "allow": [
       "Bash(*)",
       "Edit(*)",
@@ -10,7 +14,28 @@
       "WebFetch(*)",
       "WebSearch(*)",
       "mcp__b4d8e858-8098-41e7-be5e-d0b90dabb595__hub_repo_details",
-      "mcp__b4d8e858-8098-41e7-be5e-d0b90dabb595__hub_repo_search"
+      "mcp__b4d8e858-8098-41e7-be5e-d0b90dabb595__hub_repo_search",
+      "mcp__Desktop_Commander__read_multiple_files",
+      "mcp__Desktop_Commander__read_file",
+      "mcp__Desktop_Commander__write_file",
+      "mcp__Desktop_Commander__edit_block",
+      "mcp__Desktop_Commander__list_directory",
+      "mcp__Desktop_Commander__start_process",
+      "mcp__Desktop_Commander__read_process_output",
+      "mcp__Desktop_Commander__start_search",
+      "mcp__Desktop_Commander__get_more_search_results",
+      "mcp__Desktop_Commander__stop_search",
+      "mcp__Desktop_Commander__list_processes",
+      "mcp__Desktop_Commander__kill_process",
+      "mcp__Desktop_Commander__get_file_info",
+      "mcp__Desktop_Commander__move_file",
+      "mcp__Desktop_Commander__create_directory",
+      "mcp__Windows_MCP__screenshot",
+      "mcp__Windows_MCP__click",
+      "mcp__Windows_MCP__type_text",
+      "mcp__Windows_MCP__find_element",
+      "mcp__Windows_MCP__key_press",
+      "mcp__Windows_MCP__get_screen_info"
     ]
   },
   "model": "claude-sonnet-4-6",
