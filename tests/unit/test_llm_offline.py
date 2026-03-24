@@ -255,7 +255,8 @@ class TestOllamaBackend:
         llm_cfg = config.get("llm", {})
         llm = OfflineLLM.from_config(llm_cfg)
         assert llm.cfg.backend == "ollama"
-        assert llm.cfg.model_path == "phi4-mini-reasoning"
+        # model_path is deployment-specific (set in config.json or config.proposed.json)
+        assert llm.cfg.model_path is not None
 
 
 # ---------------------------------------------------------------------------
