@@ -348,11 +348,28 @@ class ControlEngine:
                 error=str(exc),
             )
 
-    def click_target(self, target_name: str) -> ControlResult:
+    def click_target(
+        self,
+        target_name: str,
+        roi: Optional[Tuple[int, int, int, int]] = None,
+        step_id: Optional[str] = None,
+        target_type: Optional[str] = None,
+    ) -> ControlResult:
         """Locate a named UI target and click it with retries.
 
         After each failed attempt the engine waits ``retry_delay`` seconds
         before trying again (configurable via ``config.control.retry_delay``).
+
+        Parameters
+        ----------
+        target_name:
+            UI target class name.
+        roi:
+            Optional (x, y, w, h) region to restrict detection.
+        step_id:
+            Step identifier passed through to trace callback.
+        target_type:
+            Override class type: "TEXT", "NON_TEXT", or None (auto-detect).
         """
 
         start = time.perf_counter()
@@ -368,7 +385,13 @@ class ControlEngine:
                 if self._exception_handler is not None:
                     self._exception_handler.record_screenshot(screenshot)
 
-                coords = self._resolve_target_coordinates(target_name, image=screenshot)
+                coords = self._resolve_target_coordinates(
+                    target_name,
+                    image=screenshot,
+                    roi=roi,
+                    step_id=step_id,
+                    target_type=target_type,
+                )
                 if coords is None:
                     last_error = (
                         f"Target '{target_name}' not found "

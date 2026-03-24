@@ -185,9 +185,21 @@ class SopExecutor:
         step_id = step.get("id", "?")
         step_name = step.get("name", step_id)
 
+        # Extract optional ROI and target_type fields added in v3.5.0
+        roi: Optional[Tuple[int, int, int, int]] = (
+            tuple(step["roi"]) if step.get("roi") else None  # type: ignore[assignment]
+        )
+        target_type: Optional[str] = step.get("target_type")
+
         if step_type == "click":
             target = step.get("target", step_id)
-            result: SopStepResult = self._click_with_trace(target, step_name)
+            result: SopStepResult = self._click_with_trace(
+                target,
+                step_name,
+                roi=roi,
+                step_id=step_id,
+                target_type=target_type,
+            )
             return result.success, result.details
 
         elif step_type == "drag":
@@ -206,7 +218,13 @@ class SopExecutor:
             targets = step.get("targets", [])
             details_parts = []
             for tgt in targets:
-                res = self._click_with_trace(tgt, step_name)
+                res = self._click_with_trace(
+                    tgt,
+                    step_name,
+                    roi=roi,
+                    step_id=step_id,
+                    target_type=target_type,
+                )
                 details_parts.append(res.details)
                 if not res.success:
                     return False, " | ".join(details_parts)
@@ -219,10 +237,22 @@ class SopExecutor:
     # Individual SOP step implementations
     # ------------------------------------------------------------------
 
-    def _click_with_trace(self, target_name: str, step_name: str) -> SopStepResult:
+    def _click_with_trace(
+        self,
+        target_name: str,
+        step_name: str,
+        roi: Optional[Tuple[int, int, int, int]] = None,
+        step_id: Optional[str] = None,
+        target_type: Optional[str] = None,
+    ) -> SopStepResult:
         """Helper to run a click step and convert to ``SopStepResult``."""
 
-        result: ControlResult = self.control.click_target(target_name)
+        result: ControlResult = self.control.click_target(
+            target_name,
+            roi=roi,
+            step_id=step_id,
+            target_type=target_type,
+        )
         if result.success:
             coords_repr = f"@{result.coords}" if result.coords else "@?"
             details = f"clicked {target_name}{coords_repr} in {result.duration:.3f}s"
