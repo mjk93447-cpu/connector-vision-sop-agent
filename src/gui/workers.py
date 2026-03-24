@@ -246,13 +246,14 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
     # Hard cutoff for streaming LLM requests (seconds).
     # concurrent.futures.future.result(timeout=...) guarantees the UI thread
     # is unblocked after this duration even if iter_lines() is still blocking.
-    _STREAM_TIMEOUT_SECS: int = 120
+    # 300s: SmolLM3-3B CPU cold-start ~30-90s 첫 토큰 + 생성 완료 버퍼
+    _STREAM_TIMEOUT_SECS: int = 300
 
     def run(self) -> None:
         """Thread entry point — streams tokens and emits signals.
 
-        Uses concurrent.futures so the 120s wall-clock timeout is guaranteed:
-        future.result(timeout=120) raises FuturesTimeoutError regardless of
+        Uses concurrent.futures so the 300s wall-clock timeout is guaranteed:
+        future.result(timeout=300) raises FuturesTimeoutError regardless of
         whether the underlying requests.iter_lines() is still blocked.
         The background executor thread continues until Ollama finishes or the
         session is closed by self._llm.cancel().
@@ -297,7 +298,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
         try:
             future.result(timeout=self._STREAM_TIMEOUT_SECS)
         except FuturesTimeoutError:
-            # UI unblocked after 120s — suppress any late signals from the
+            # UI unblocked after 300s — suppress any late signals from the
             # background thread, then try to close the HTTP session.
             self._running = False
             cancel = getattr(self._llm, "cancel", None)

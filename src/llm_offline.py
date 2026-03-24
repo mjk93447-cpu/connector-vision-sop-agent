@@ -407,10 +407,13 @@ class OfflineLLM:
         _in_think = False  # True while inside a <think> block
 
         session = self._get_session()
-        # 타임아웃은 workers.py의 concurrent.futures(120s)가 담당.
-        # timeout=(10, 30): TCP 연결 10s + 첫 응답 헤더 수신 30s
+        # timeout=(10, 180): TCP 연결 10s + 첫 바이트 수신 180s
+        # SmolLM3-3B CPU cold-start 첫 토큰: 30~90s → 30s read timeout은 반드시 500 유발
+        # workers.py concurrent.futures(120s)는 전체 스트림 완료 타임아웃이므로 별도 역할
         try:
-            with session.post(url, json=payload, stream=True, timeout=(10, 30)) as resp:
+            with session.post(
+                url, json=payload, stream=True, timeout=(10, 180)
+            ) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():
                     if not line:
