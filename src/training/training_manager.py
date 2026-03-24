@@ -19,8 +19,10 @@ Usage
 
 from __future__ import annotations
 
+import io
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -153,36 +155,46 @@ class TrainingManager:
 
             model.add_callback("on_train_epoch_end", _epoch_cb)
 
-        # Run training (blocking; call from a QThread for GUI use).
-        #
-        # workers=0   : single-process DataLoader — avoids Windows multiprocessing
-        #               spawn failures (common in PyInstaller-bundled EXEs and when
-        #               QThread + subprocess conflict).
-        # exist_ok=True: overwrite previous run directory instead of creating
-        #               train2/, train3/ … clutter.
-        # rect=False  : disable rectangular training mode (can fail with mixed
-        #               aspect-ratio images from screen captures).
-        # verbose=True is REQUIRED — do NOT set False.
-        #
-        # ultralytics' custom TQDM class sets self.file = None when disable=True
-        # (which verbose=False triggers).  TQDM.close() then calls
-        # self.file.write("\n") unconditionally → AttributeError: 'NoneType'
-        # object has no attribute 'write'.  This crash fires on the very first
-        # tqdm iteration inside cache_labels(), even on a first-ever training run
-        # before any stale cache exists.  Setting verbose=True keeps tqdm enabled
-        # so self.file always points at a valid stream (sys.stdout).
-        results = model.train(
-            data=str(dataset_yaml),
-            epochs=epochs,
-            imgsz=image_size,
-            batch=batch,
-            device="cpu",
-            workers=0,  # single-process DataLoader (Windows multiprocessing fix)
-            exist_ok=True,  # overwrite previous run directory
-            rect=False,  # disable rectangular training
-            verbose=True,  # must stay True — see comment above
-            plots=False,
-        )
+        # ------------------------------------------------------------------ #
+        # Guard: PyInstaller console=False sets sys.stdout / sys.stderr to  #
+        # None.  ultralytics TQDM initialises self.file = file or            #
+        # sys.stdout, so when sys.stdout is None the field becomes None.     #
+        # TQDM.close() then calls self.file.write("\n") — unconditionally    #
+        # when disable=False — raising AttributeError.                       #
+        #                                                                    #
+        # NOTE: verbose=True (disable=False) makes this WORSE than           #
+        # verbose=False: with disable=True the write is skipped entirely,    #
+        # but with disable=False TQDM actively tries to write progress.      #
+        # Neither value is safe when sys.stdout is None.                     #
+        #                                                                    #
+        # Fix: temporarily replace None stdout/stderr with an io.StringIO()  #
+        # sink for the duration of model.train().  The sink is discarded     #
+        # afterwards; we keep verbose=True so dev-environment training still #
+        # shows progress to the real console.                                #
+        # ------------------------------------------------------------------ #
+        _orig_stdout = sys.stdout
+        _orig_stderr = sys.stderr
+        if sys.stdout is None:
+            sys.stdout = io.StringIO()
+        if sys.stderr is None:
+            sys.stderr = io.StringIO()
+
+        try:
+            results = model.train(
+                data=str(dataset_yaml),
+                epochs=epochs,
+                imgsz=image_size,
+                batch=batch,
+                device="cpu",
+                workers=0,  # single-process DataLoader (Windows multiprocessing fix)
+                exist_ok=True,  # overwrite previous run directory
+                rect=False,  # disable rectangular training
+                verbose=True,
+                plots=False,
+            )
+        finally:
+            sys.stdout = _orig_stdout
+            sys.stderr = _orig_stderr
 
         # Copy best weights to target location.
         best_pt = self._find_best_weights(results)

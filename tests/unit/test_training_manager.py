@@ -523,16 +523,16 @@ class TestTrainingManagerVerbose:
     """model.train() must be called with verbose=True.
 
     Root cause of 'NoneType object has no attribute write':
-      training_manager.py passed verbose=False to model.train().
-      ultralytics' custom TQDM class sets self.file = None when disable=True
-      (triggered by verbose=False).  TQDM.close() then calls
-      self.file.write("\\n") unconditionally → AttributeError.
+      PyInstaller console=False sets sys.stdout = None.
+      ultralytics TQDM.__init__ assigns self.file = file or sys.stdout.
+      When sys.stdout is None, self.file becomes None.
+      TQDM.close() calls self.file.write("\\n") when disable=False
+      (i.e. verbose=True) — raising AttributeError.
 
-      This crash fires on the FIRST iteration of cache_labels(), even before
-      any stale-cache cleanup can help, because the tqdm is disabled immediately
-      at construction time.
-
-    Fix: pass verbose=True so tqdm keeps self.file pointing at a real stream.
+      NOTE: verbose=True (disable=False) is actually *worse* than verbose=False
+      in this scenario — with disable=True the write block is skipped entirely.
+      The real fix is the sys.stdout None-guard (TestStdoutNoneGuard below).
+      verbose=True is kept so dev-environment training shows progress.
     """
 
     def test_model_train_called_with_verbose_true(self, tmp_path: Path) -> None:
@@ -607,3 +607,140 @@ class TestTrainingManagerVerbose:
         assert (
             call_kwargs.get("verbose") is True
         ), "verbose must be explicitly True to guarantee tqdm is not disabled"
+
+
+class TestStdoutNoneGuard:
+    """sys.stdout=None guard: PyInstaller console=False EXE fix.
+
+    PyInstaller builds with console=False set sys.stdout = None.
+    ultralytics TQDM sets self.file = file or sys.stdout.
+    When sys.stdout is None → self.file = None → TQDM.close() calls
+    self.file.write("\\n") → AttributeError: 'NoneType' has no attribute 'write'.
+
+    Fix: training_manager.train() patches sys.stdout/stderr to io.StringIO()
+    before model.train() when they are None, and restores them in a finally block.
+    """
+
+    def test_stdout_none_is_patched_during_train(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """sys.stdout=None is replaced with StringIO() for the duration of train()."""
+        import io
+        import sys
+
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+        target = tmp_path / "target.pt"
+        _write_dummy_pt(target)
+
+        tm = TrainingManager(
+            base_model=str(target),
+            target_weights=tmp_path / "out.pt",
+        )
+
+        captured_stdout_inside: list = []
+
+        def fake_train(**kwargs):
+            captured_stdout_inside.append(sys.stdout)
+            result = MagicMock()
+            result.save_dir = None
+            return result
+
+        monkeypatch.setattr(sys, "stdout", None)
+        monkeypatch.setattr(sys, "stderr", None)
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_model.train.side_effect = fake_train
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except Exception:
+                pass
+
+        assert len(captured_stdout_inside) == 1, "fake_train was not called"
+        inside_stdout = captured_stdout_inside[0]
+        assert inside_stdout is not None, (
+            "sys.stdout was still None inside model.train() — "
+            "the None-guard is not working"
+        )
+        assert isinstance(
+            inside_stdout, io.StringIO
+        ), f"Expected io.StringIO inside train(), got {type(inside_stdout)}"
+
+    def test_stdout_restored_after_train(self, tmp_path: Path, monkeypatch) -> None:
+        """sys.stdout is restored to original value after train() completes."""
+        import sys
+
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+        target = tmp_path / "target.pt"
+        _write_dummy_pt(target)
+
+        tm = TrainingManager(
+            base_model=str(target),
+            target_weights=tmp_path / "out.pt",
+        )
+
+        monkeypatch.setattr(sys, "stdout", None)
+        monkeypatch.setattr(sys, "stderr", None)
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_result = MagicMock()
+            mock_result.save_dir = None
+            mock_model.train.return_value = mock_result
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except Exception:
+                pass
+
+        assert sys.stdout is None, "sys.stdout was not restored to None after train()"
+        assert sys.stderr is None, "sys.stderr was not restored to None after train()"
+
+    def test_stdout_valid_is_not_replaced(self, tmp_path: Path) -> None:
+        """If sys.stdout is already valid, it must NOT be replaced."""
+        import sys
+
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+        target = tmp_path / "target.pt"
+        _write_dummy_pt(target)
+
+        tm = TrainingManager(
+            base_model=str(target),
+            target_weights=tmp_path / "out.pt",
+        )
+
+        original_stdout = sys.stdout
+        captured: list = []
+
+        def fake_train(**kwargs):
+            captured.append(sys.stdout)
+            result = MagicMock()
+            result.save_dir = None
+            return result
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_model.train.side_effect = fake_train
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except Exception:
+                pass
+
+        if captured:
+            assert (
+                captured[0] is original_stdout
+            ), "sys.stdout was replaced even though it was already valid"
