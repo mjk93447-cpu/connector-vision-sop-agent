@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
-    from PyQt6.QtGui import QTextCursor
+    from PyQt6.QtGui import QColor, QTextCharFormat, QTextCursor
     from PyQt6.QtWidgets import (
         QCheckBox,
         QDialog,
@@ -160,6 +160,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._stop_requested: bool = False
         self._last_think_t: float = 0.0  # 마지막 think 토큰 수신 시각
         self._stream_cursor: Any = None  # QTextCursor anchor for streaming block
+        self._think_cursor: Any = None  # QTextCursor anchor for think text in main chat
         self._first_token: bool = False  # True until first answer token arrives
         self._setup_ui()
 
@@ -332,6 +333,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             return
         self._streaming_buffer = ""
         self._first_token = True
+        self._think_cursor = None  # reset per-message think anchor
         # Reset think panel for new message
         self._txt_think.clear()
         self._txt_think.hide()
@@ -360,7 +362,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     @pyqtSlot(str)
     def on_think_token_ready(self, token: str) -> None:
-        """Handle a <think> reasoning token — show in think panel + update label."""
+        """Handle a <think> reasoning token — show in think panel + main chat + label."""
         if not _QT_AVAILABLE:
             return
         self._last_think_t = time.perf_counter()
@@ -369,7 +371,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if not self._txt_think.isVisible():
             self._txt_think.show()
             self._txt_think.clear()
-        # Append token directly — no buffering, real-time display
+        # Append token to small think panel (no buffering)
         self._txt_think.moveCursor(QTextCursor.MoveOperation.End)
         self._txt_think.insertPlainText(token)
         self._txt_think.moveCursor(QTextCursor.MoveOperation.End)
@@ -377,6 +379,22 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._lbl_elapsed.setText(
             f"\U0001f914 Reasoning... {elapsed:.1f}s | {think_len} chars"
         )
+        # Also render in main chat as grey italic — eliminates the "silent" gap
+        # before answer tokens arrive (first think token triggers immediate output)
+        fmt_think = QTextCharFormat()
+        fmt_think.setForeground(QColor("#bdbdbd"))
+        fmt_think.setFontItalic(True)
+        if self._think_cursor is None:
+            # First think token: insert "💭 " header in main chat at current end
+            cursor = self._chat_display.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            fmt_hdr = QTextCharFormat()
+            fmt_hdr.setForeground(QColor("#9e9e9e"))
+            fmt_hdr.setFontItalic(True)
+            cursor.insertText("\U0001f4ad ", fmt_hdr)
+            self._think_cursor = QTextCursor(cursor)
+        self._think_cursor.insertText(token, fmt_think)
+        self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
 
     def _flush_token_buf(self) -> None:
         """Flush the token buffer to QTextEdit via the saved cursor anchor (Step 2-C).
@@ -394,6 +412,14 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             self._first_token = False
             self._txt_think.hide()
             self._lbl_elapsed.setText("")
+            # If think tokens were written to main chat, insert a line break
+            # between the grey reasoning text and the normal answer text,
+            # then re-anchor _stream_cursor at the new end position.
+            if self._think_cursor is not None:
+                cursor = self._chat_display.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                cursor.insertText("\n")
+                self._stream_cursor = cursor  # cursor already at End after insertText
         if self._stream_cursor is None:
             return
         # insertText() handles \n natively in QTextEdit rich-text documents.
