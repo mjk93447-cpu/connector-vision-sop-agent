@@ -310,6 +310,20 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         # H1: Wire training_finished → update status bar + reload notification
         self._training_panel.training_finished.connect(self._on_training_finished)
 
+        # v3.5.0: Wire ControlEngine._trace_cb → SopPanel.add_trace_entry
+        if self._sop_executor is not None:
+            control_engine = getattr(self._sop_executor, "control", None)
+            if control_engine is not None and hasattr(control_engine, "_trace_cb"):
+                sop_panel_ref = self._sop_panel
+
+                def _on_trace(trace: dict) -> None:
+                    sop_panel_ref.add_trace_entry(trace)
+
+                control_engine._trace_cb = _on_trace
+
+        # v3.5.0: Wire TrainingPanel.registry_changed → SopEditorPanel refresh
+        self._training_panel.registry_changed.connect(self._on_registry_changed)
+
         # Make LlmPanel's parent calls work
         # (LlmPanel calls self.parent().on_llm_send() etc.)
 
@@ -623,6 +637,18 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             return
         self._lbl_status.setText("Status: MODEL UPDATED — capture to verify")
         self._lbl_status.setToolTip(f"New weights: {weights_path}")
+
+    def _on_registry_changed(self) -> None:
+        """Called when TrainingPanel.registry_changed is emitted (new class saved).
+
+        Reloads SopEditorPanel steps so the target-class dropdown picks up
+        any newly registered classes without requiring a restart.
+        """
+        if hasattr(self._sop_editor_panel, "_load_steps"):
+            try:
+                self._sop_editor_panel._load_steps()
+            except Exception:  # noqa: BLE001
+                pass
 
     # ------------------------------------------------------------------
     # M2: ExceptionHandler periodic popup monitor
