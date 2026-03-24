@@ -193,8 +193,8 @@ class TestResolveTargetCoordinates:
         img = _make_bgr()
         coords = engine._resolve_target_coordinates("login_button", image=img)
 
-        # Should use button_text "LOGIN" from map
-        mock_ocr.find_text.assert_called_once_with(img, "LOGIN", fuzzy=True)
+        # Should use button_text "LOGIN" from map (roi=None when not provided)
+        mock_ocr.find_text.assert_called_once_with(img, "LOGIN", fuzzy=True, roi=None)
         assert coords == expected_region.center
 
     def test_ocr_normalized_fallback_when_no_map_entry(
@@ -209,7 +209,7 @@ class TestResolveTargetCoordinates:
         # OCR returns a match for "login" candidate
         login_region = _make_region("login", x=300, y=150)
 
-        def find_text_side_effect(img, text, fuzzy=True):
+        def find_text_side_effect(img, text, fuzzy=True, roi=None):
             if text.lower() == "login":
                 return login_region
             return None
@@ -231,7 +231,7 @@ class TestResolveTargetCoordinates:
 
         login_button_region = _make_region("login button", x=400, y=200)
 
-        def find_text_side_effect(img, text, fuzzy=True):
+        def find_text_side_effect(img, text, fuzzy=True, roi=None):
             if text.lower() == "login button":
                 return login_button_region
             return None
@@ -300,3 +300,143 @@ class TestResolveTargetCoordinates:
             engine._resolve_target_coordinates("login_button", image=None)
 
         cap.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# NON_TEXT / ROI / trace_cb tests (Task 4 — v3.5.0)
+# ---------------------------------------------------------------------------
+
+
+class TestNonTextAndRoi:
+    def test_non_text_skips_ocr(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """When registry reports is_non_text=True, OCR must not be called."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        # Patch registry so target is NON_TEXT
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.return_value = True
+
+        yolo_detection = _make_detection("mold_left_label")
+        with patch.object(ctrl.vision, "find_detection", return_value=yolo_detection):
+            img = _make_bgr()
+            coords = ctrl._resolve_target_coordinates("mold_left_label", image=img)
+
+        mock_ocr.find_text.assert_not_called()
+        assert coords == (55, 30)
+
+    def test_text_uses_ocr(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """When registry reports is_non_text=False, OCR must be called."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.return_value = False
+
+        login_region = _make_region("login")
+        mock_ocr.find_text.return_value = login_region
+
+        img = _make_bgr()
+        ctrl._resolve_target_coordinates("login_button", image=img)
+
+        mock_ocr.find_text.assert_called()
+
+    def test_roi_passed_to_ocr(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """roi=(10,20,100,50) must be forwarded to find_text."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.return_value = False
+
+        roi = (10, 20, 100, 50)
+        login_region = _make_region("login")
+        mock_ocr.find_text.return_value = login_region
+
+        img = _make_bgr()
+        ctrl._resolve_target_coordinates("login_button", image=img, roi=roi)
+
+        # At least one call must have roi=roi
+        calls = mock_ocr.find_text.call_args_list
+        assert any(call.kwargs.get("roi") == roi for call in calls)
+
+    def test_roi_passed_to_yolo(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """roi must be forwarded to find_detection for NON_TEXT targets."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.return_value = True
+
+        roi = (10, 20, 100, 50)
+        yolo_detection = _make_detection("mold_left_label")
+
+        with patch.object(
+            ctrl.vision, "find_detection", return_value=yolo_detection
+        ) as mock_find:
+            img = _make_bgr()
+            ctrl._resolve_target_coordinates("mold_left_label", image=img, roi=roi)
+
+        mock_find.assert_called_once_with(img, label="mold_left_label", roi=roi)
+
+    def test_trace_cb_fired_on_success(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """_trace_cb must be called with expected dict keys on success."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.return_value = True
+
+        trace_calls: list = []
+        ctrl._trace_cb = trace_calls.append
+
+        yolo_detection = _make_detection("pin_cluster")
+        with patch.object(ctrl.vision, "find_detection", return_value=yolo_detection):
+            img = _make_bgr()
+            ctrl._resolve_target_coordinates(
+                "pin_cluster", image=img, step_id="step_07"
+            )
+
+        assert len(trace_calls) == 1
+        record = trace_calls[0]
+        assert record["step_id"] == "step_07"
+        assert record["target"] == "pin_cluster"
+        assert record["class_type"] == "NON_TEXT"
+        assert record["method"] == "YOLO"
+        assert record["success"] is True
+        assert record["coord"] is not None
+        assert "conf" in record
+        assert "roi" in record
+
+    def test_trace_cb_not_required(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """_trace_cb=None (default) must not raise any exception."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.return_value = True
+
+        # _trace_cb is None by default — should not crash
+        with patch.object(ctrl.vision, "find_detection", return_value=None):
+            img = _make_bgr()
+            result = ctrl._resolve_target_coordinates("mold_left_label", image=img)
+
+        assert result is None

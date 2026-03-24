@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
     import pyautogui
@@ -29,6 +29,7 @@ except Exception as exc:  # pragma: no cover - depends on display availability.
 else:  # pragma: no cover - environment dependent branch.
     PYAUTOGUI_IMPORT_ERROR = None
 
+from src.class_registry import ClassRegistry
 from src.vision_engine import VisionEngine
 
 logger = logging.getLogger(__name__)
@@ -100,6 +101,9 @@ class ControlEngine:
                 if sid and btn_txt:
                     self._button_text_map[sid] = btn_txt
 
+        self._registry = ClassRegistry.load()
+        self._trace_cb: Optional[Callable[[dict], None]] = None
+
         if config is not None:
             cfg = _read_control_cfg(config)
             self.retries = cfg["retries"]
@@ -163,32 +167,113 @@ class ControlEngine:
 
         return candidates
 
+    def _emit_trace(
+        self,
+        step_id: Optional[str],
+        target: str,
+        class_type: str,
+        method: str,
+        success: bool,
+        coord: Optional[Tuple[int, int]],
+        conf: Optional[float],
+        roi: Optional[Tuple[int, int, int, int]],
+    ) -> None:
+        """Fire the trace callback if registered."""
+        if self._trace_cb is not None:
+            self._trace_cb(
+                {
+                    "step_id": step_id,
+                    "target": target,
+                    "class_type": class_type,
+                    "method": method,
+                    "success": success,
+                    "coord": coord,
+                    "conf": conf,
+                    "roi": roi,
+                }
+            )
+
     def _resolve_target_coordinates(
         self,
         target_name: str,
         image: Optional[Any] = None,
+        roi: Optional[Tuple[int, int, int, int]] = None,
+        step_id: Optional[str] = None,
+        target_type: Optional[str] = None,
     ) -> Optional[Tuple[int, int]]:
         """OCR-first target resolution.
 
-        1. OCR via button_text_map (explicit label from sop_steps.json)
-        2. OCR via normalized target_name (e.g. "login_button" → "login")
-        3. YOLO26x: detect by class label (fallback / visual targets)
+        1. NON_TEXT classes → skip OCR, go directly to YOLO26x (with roi)
+        2. OCR via button_text_map (explicit label from sop_steps.json)
+        3. OCR via normalized target_name (e.g. "login_button" → "login")
+        4. YOLO26x: detect by class label (fallback / visual targets)
+
+        Parameters
+        ----------
+        target_name:
+            UI target class name.
+        image:
+            BGR screenshot to search within. Captured from screen if None.
+        roi:
+            Optional (x, y, w, h) region to restrict detection.
+        step_id:
+            Step identifier passed through to trace callback.
+        target_type:
+            Override class type: "TEXT", "NON_TEXT", or None (auto-detect via registry).
         """
         if image is None:
             image = self.vision.capture_screen()
 
+        # Determine if NON_TEXT
+        is_non_text = (target_type == "NON_TEXT") or (
+            target_type is None and self._registry.is_non_text(target_name)
+        )
+
+        if is_non_text:
+            # Skip OCR entirely — go directly to YOLO26x
+            detection = self.vision.find_detection(image, label=target_name, roi=roi)
+            if detection is not None:
+                coord = self._center_of_bbox(detection.bbox)
+                self._emit_trace(
+                    step_id,
+                    target_name,
+                    "NON_TEXT",
+                    "YOLO",
+                    True,
+                    coord,
+                    detection.confidence,
+                    roi,
+                )
+                return coord
+            else:
+                self._emit_trace(
+                    step_id, target_name, "NON_TEXT", "YOLO", False, None, None, roi
+                )
+                return None
+
+        # TEXT path: OCR-first, then YOLO fallback
         # --- Priority 1: OCR with explicit button_text from sop_steps.json ---
         if self._ocr is not None:
             button_text = self._get_button_text(target_name)
             if button_text:
-                region = self._ocr.find_text(image, button_text, fuzzy=True)
+                region = self._ocr.find_text(image, button_text, fuzzy=True, roi=roi)
                 if region is not None:
                     logger.debug("OCR found '%s' at %s", button_text, region.center)
+                    self._emit_trace(
+                        step_id,
+                        target_name,
+                        "TEXT",
+                        "OCR",
+                        True,
+                        region.center,
+                        region.confidence,
+                        roi,
+                    )
                     return region.center
 
             # --- Priority 2: OCR with normalized target_name candidates ---
             for candidate in self._normalize_target_name(target_name):
-                region = self._ocr.find_text(image, candidate, fuzzy=True)
+                region = self._ocr.find_text(image, candidate, fuzzy=True, roi=roi)
                 if region is not None:
                     logger.debug(
                         "OCR found '%s' (normalized from '%s') at %s",
@@ -196,12 +281,22 @@ class ControlEngine:
                         target_name,
                         region.center,
                     )
+                    self._emit_trace(
+                        step_id,
+                        target_name,
+                        "TEXT",
+                        "OCR",
+                        True,
+                        region.center,
+                        region.confidence,
+                        roi,
+                    )
                     return region.center
 
         # OCR が存在したが全候補で失敗した場合の診断ログ
         if self._ocr is not None:
             try:
-                all_regions = self._ocr.scan_all(image)
+                all_regions = self._ocr.scan_all(image, roi=roi)
                 detected = [r.text for r in all_regions[:10]]
                 logger.warning(
                     "[OCR] '%s' not found. scan_all=%d region(s): %s",
@@ -213,10 +308,24 @@ class ControlEngine:
                 logger.debug("[OCR] diagnostic scan failed: %s", _diag_exc)
 
         # --- Priority 3: YOLO26x (fallback / visual targets) ---
-        detection = self.vision.find_detection(image, label=target_name)
+        detection = self.vision.find_detection(image, label=target_name, roi=roi)
         if detection is not None:
-            return self._center_of_bbox(detection.bbox)
+            coord = self._center_of_bbox(detection.bbox)
+            self._emit_trace(
+                step_id,
+                target_name,
+                "TEXT",
+                "YOLO_fallback",
+                True,
+                coord,
+                detection.confidence,
+                roi,
+            )
+            return coord
 
+        self._emit_trace(
+            step_id, target_name, "TEXT", "YOLO_fallback", False, None, None, roi
+        )
         return None
 
     def click_at(self, x: int, y: int) -> ControlResult:
