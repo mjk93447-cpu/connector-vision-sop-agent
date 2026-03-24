@@ -423,6 +423,34 @@ class TestNonTextAndRoi:
         assert "conf" in record
         assert "roi" in record
 
+    def test_trace_cb_fired_on_failure(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """_trace_cb must be called with success=False when find_detection returns None."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.return_value = True
+
+        trace_calls: list = []
+        ctrl._trace_cb = trace_calls.append
+
+        with patch.object(ctrl.vision, "find_detection", return_value=None):
+            img = _make_bgr()
+            ctrl._resolve_target_coordinates(
+                "pin_cluster", image=img, step_id="step_08"
+            )
+
+        assert len(trace_calls) == 1
+        record = trace_calls[0]
+        assert record["step_id"] == "step_08"
+        assert record["target"] == "pin_cluster"
+        assert record["class_type"] == "NON_TEXT"
+        assert record["method"] == "YOLO"
+        assert record["success"] is False
+
     def test_trace_cb_not_required(
         self,
         vision: VisionEngine,
