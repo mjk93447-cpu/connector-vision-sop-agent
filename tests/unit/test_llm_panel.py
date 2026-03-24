@@ -8,8 +8,21 @@ patching _QT_AVAILABLE to False and calling methods directly on a stub panel.
 
 from __future__ import annotations
 
+import importlib.util
+
+import pytest
+
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+# These tests use object.__new__(LlmPanel) which only works when PyQt6 is
+# absent (LlmPanel falls back to a plain Python class in that case).
+# Skip the entire module on environments where PyQt6 is installed.
+if importlib.util.find_spec("PyQt6") is not None:
+    pytest.skip(
+        "test_llm_panel: headless tests require PyQt6 to be absent",
+        allow_module_level=True,
+    )
 
 
 # ---------------------------------------------------------------------------
