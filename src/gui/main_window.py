@@ -21,8 +21,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
+    from PyQt6.QtCore import QTimer
     from PyQt6.QtGui import QImage, QPixmap
     from PyQt6.QtWidgets import (
+        QApplication,
         QLabel,
         QMainWindow,
         QMessageBox,
@@ -79,6 +81,18 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._steps: List[Dict[str, Any]] = []
         self._worker: Optional[Any] = None
         self._llm_worker: Optional[Any] = None
+
+        # ExceptionHandler for M2 popup monitoring during SOP execution
+        self._exception_handler: Optional[Any] = None
+        try:
+            from src.exception_handler import ExceptionHandler  # noqa: PLC0415
+
+            self._exception_handler = ExceptionHandler(config=self._config)
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Timer for periodic popup detection during SOP runs (M2)
+        self._exc_monitor_timer: Optional[Any] = None
 
         self._load_steps()
         self._setup_ui()
@@ -272,6 +286,16 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         # Refresh audit every time the Audit tab is shown
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
+        # Exception monitor timer — started when SOP runs, stopped on finish (M2)
+        if _QT_AVAILABLE:
+            self._exc_monitor_timer = QTimer(self)
+            self._exc_monitor_timer.setInterval(5000)  # check every 5 s
+            self._exc_monitor_timer.timeout.connect(self._on_exception_popup_tick)
+
+        # Deferred preflight: resolution + OCR health (H4 + H2 + M3)
+        if _QT_AVAILABLE:
+            QTimer.singleShot(500, self._run_preflight)
+
     def _connect_signals(self) -> None:
         if not _QT_AVAILABLE:
             return
@@ -282,6 +306,9 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
 
         # LLM apply patch
         self._llm_panel.apply_patch_requested.connect(self._on_apply_patch)
+
+        # H1: Wire training_finished → update status bar + reload notification
+        self._training_panel.training_finished.connect(self._on_training_finished)
 
         # Make LlmPanel's parent calls work
         # (LlmPanel calls self.parent().on_llm_send() etc.)
@@ -320,6 +347,10 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._sop_panel.set_running(True)
         self._sop_panel.append_log("=" * 60)
         self._lbl_status.setText("Status: RUNNING")
+
+        # M2: start popup monitor during SOP execution
+        if self._exc_monitor_timer is not None:
+            self._exc_monitor_timer.start()
 
         # Create a fresh LogManager for this run
         try:
@@ -393,6 +424,9 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._sop_panel.on_sop_finished(success, summary)
         status = "DONE" if success else "FAILED"
         self._lbl_status.setText(f"Status: {status}")
+        # M2: stop popup monitor
+        if self._exc_monitor_timer is not None:
+            self._exc_monitor_timer.stop()
         # Finalize LogManager
         if self._log_manager is not None:
             try:
@@ -574,3 +608,109 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             return "RECENT ISSUES:\n" + "\n".join(lines)
         except Exception:
             return ""
+
+    # ------------------------------------------------------------------
+    # H1: Training completion handler
+    # ------------------------------------------------------------------
+
+    def _on_training_finished(self, weights_path: str) -> None:
+        """Called when TrainingPanel emits training_finished.
+
+        Updates the status bar so the operator knows the Vision model
+        has been refreshed without needing to check the Training tab.
+        """
+        if not _QT_AVAILABLE:
+            return
+        self._lbl_status.setText("Status: MODEL UPDATED — capture to verify")
+        self._lbl_status.setToolTip(f"New weights: {weights_path}")
+
+    # ------------------------------------------------------------------
+    # M2: ExceptionHandler periodic popup monitor
+    # ------------------------------------------------------------------
+
+    def _on_exception_popup_tick(self) -> None:
+        """Periodic popup scanner running every 5 s during SOP execution.
+
+        Detects Windows dialogs (Update, Activation, UAC, SmartScreen) that
+        would block SOP button clicks.  Logs a warning in the SOP panel so
+        the operator can manually dismiss the popup.  Full auto-recovery via
+        ExceptionHandler.handle_exception() is not attempted here to avoid
+        interfering with the in-progress SOP worker thread.
+        """
+        if self._exception_handler is None:
+            return
+        if self._worker is None or not self._worker.isRunning():
+            return
+        try:
+            popup = self._exception_handler.detect_popup()
+            if popup:
+                title = popup.get("title", "Unknown dialog")
+                msg = f"⚠ Popup detected: '{title}' — please dismiss manually"
+                self._sop_panel.append_log(msg)
+                self._lbl_status.setText("Status: POPUP DETECTED")
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ------------------------------------------------------------------
+    # H2 + H4 + M3: Startup preflight checks
+    # ------------------------------------------------------------------
+
+    def _run_preflight(self) -> None:
+        """Run resolution + OCR health checks after the UI is fully shown.
+
+        Deferred 500 ms via QTimer so the main window is visible first.
+        """
+        self._check_screen_resolution()  # H4
+        self._run_ocr_health_check()  # H2
+
+    def _check_screen_resolution(self) -> None:
+        """H4: Warn if the primary screen is not 1920×1080."""
+        if not _QT_AVAILABLE:
+            return
+        try:
+            screen = QApplication.primaryScreen()
+            if screen is None:
+                return
+            size = screen.size()
+            w, h = size.width(), size.height()
+            if w != 1920 or h != 1080:
+                QMessageBox.warning(
+                    self,
+                    "Screen Resolution Warning",
+                    f"Current resolution: {w}×{h}\n"
+                    "Recommended: 1920×1080\n\n"
+                    "YOLO26x detection and OCR are calibrated for 1920×1080.\n"
+                    "SOP step failures may occur at other resolutions.\n\n"
+                    "To fix: Right-click desktop → Display settings → Resolution.",
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _run_ocr_health_check(self) -> None:
+        """H2: Quick OCR self-test and update status bar indicator."""
+        if not _QT_AVAILABLE or self._ocr is None:
+            return
+        try:
+            import cv2  # noqa: PLC0415
+            import numpy as np  # noqa: PLC0415
+
+            img = np.ones((60, 200, 3), dtype=np.uint8) * 255
+            cv2.putText(
+                img, "Login", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 2
+            )
+            regions = self._ocr.scan_all(img)
+            backend = getattr(self._ocr, "_backend", "?")
+            if regions:
+                self._lbl_ocr.setText(f"OCR: {backend} ✓")
+                self._lbl_ocr.setToolTip(
+                    f"OCR health: OK — {len(regions)} region(s) detected"
+                )
+            else:
+                self._lbl_ocr.setText(f"OCR: {backend} ⚠")
+                self._lbl_ocr.setToolTip(
+                    "OCR health: 0 regions — button detection may be unreliable"
+                )
+        except Exception as exc:  # noqa: BLE001
+            backend = getattr(self._ocr, "_backend", "?")
+            self._lbl_ocr.setText(f"OCR: {backend} ⚠")
+            self._lbl_ocr.setToolTip(f"OCR health check failed: {exc}")

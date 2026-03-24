@@ -216,9 +216,20 @@ class ConfigPanel(QWidget):  # type: ignore[misc]
         )
         btn_save.clicked.connect(self._on_save_proposed)
 
+        btn_apply = QPushButton("✅ Apply to config.json")
+        btn_apply.setStyleSheet(
+            "background-color: #2e7d32; color: white; font-weight: bold; padding: 8px 16px;"
+        )
+        btn_apply.setToolTip(
+            "Save changes to config.proposed.json, then copy them into config.json.\n"
+            "A backup of the original config.json is saved as config.json.bak."
+        )
+        btn_apply.clicked.connect(self._on_apply_to_config)
+
         btn_row.addWidget(btn_reload)
         btn_row.addStretch()
         btn_row.addWidget(btn_save)
+        btn_row.addWidget(btn_apply)
         outer.addLayout(btn_row)
 
         self._populate_values()
@@ -316,6 +327,64 @@ class ConfigPanel(QWidget):  # type: ignore[misc]
             QMessageBox.information(self, "Saved", msg)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save Error", str(exc))
+
+    def _on_apply_to_config(self) -> None:
+        """M1: Save proposed changes and write them into config.json.
+
+        Steps:
+          1. Build patch from current UI values.
+          2. Write config.proposed.json (same as Save button).
+          3. Ask for confirmation.
+          4. Backup config.json → config.json.bak.
+          5. Write updated config to config.json.
+        """
+        if not _QT_AVAILABLE:
+            return
+        try:
+            from src.sop_advisor import (  # noqa: PLC0415
+                apply_config_patch,
+                write_proposed_config,
+            )
+            import shutil  # noqa: PLC0415
+
+            patch = self._collect_patch()
+            new_cfg, warnings = apply_config_patch(self._config, patch)
+            write_proposed_config(self._config_path, new_cfg)
+
+            warn_text = ""
+            if warnings:
+                warn_text = "\n\nWarnings:\n" + "\n".join(warnings)
+
+            reply = QMessageBox.question(
+                self,
+                "Apply to config.json",
+                f"This will overwrite config.json with values from config.proposed.json.\n"
+                f"A backup will be saved as config.json.bak.\n"
+                f"{warn_text}\n\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Backup existing config.json
+            bak = self._config_path.with_suffix(".json.bak")
+            if self._config_path.exists():
+                shutil.copy2(self._config_path, bak)
+
+            # Write proposed → config.json
+            import json  # noqa: PLC0415
+
+            self._config_path.write_text(
+                json.dumps(new_cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            self._config = new_cfg
+            QMessageBox.information(
+                self,
+                "Applied",
+                f"config.json updated successfully!\nBackup: {bak}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Apply Error", str(exc))
 
     def _make_widget(self, key: str, field_type: str, lo: Any, hi: Any) -> Any:
         if not _QT_AVAILABLE:
