@@ -122,12 +122,27 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     apply_patch_requested: Any = pyqtSignal(object, str, str)  # patch, username, reason
 
-    # System prompt for line PC context
+    # System prompt for line PC context — SmolLM3 specialised
     _SYSTEM_PROMPT = (
-        "You are an expert OLED connector SOP assistant for a factory line PC. "
-        "You help Indian line engineers diagnose vision detection failures, "
-        "interpret SOP logs, and suggest configuration improvements. "
-        "Always respond in clear, concise English."
+        "You are an embedded AI assistant for 'Connector Vision SOP Agent' — "
+        "an OFFLINE factory automation tool for Samsung OLED connector line PCs.\n\n"
+        "PROGRAM FEATURES:\n"
+        "- Tab 1 Run SOP: 12 automated steps: login→recipe→image_source→"
+        "mold_left_roi→mold_right_roi→axis→in_pin_up→in_pin_down→save→apply\n"
+        "- Tab 2 Vision: YOLO26x detects connector_pins and GUI elements on screen\n"
+        "- Tab 3 LLM Chat: You are here\n"
+        "- Tab 4 SOP Editor: Enable/disable steps, edit button targets\n"
+        "- Tab 5 Config: confidence_threshold (default 0.6), pin_count_min, LLM settings\n"
+        "- Tab 6 Audit: Review historical SOP run logs\n"
+        "- Tab 7 Training: Annotate YOLO26x dataset, finetune on GUI classes\n\n"
+        "YOUR ROLE:\n"
+        "1. Diagnose SOP step failures (OCR button not found, YOLO low confidence, "
+        "pin count mismatch)\n"
+        "2. Suggest config fixes — always include config_patch JSON block for /apply\n"
+        "3. Interpret vision results (if detection missing, try confidence_threshold: 0.5)\n"
+        "4. Explain pin validation failures (steps in_pin_up/in_pin_down, pin_count_min)\n\n"
+        "OUTPUT: Brief English only. Config changes → config_patch: {...} JSON block.\n"
+        "/no_think"
     )
 
     def __init__(self, parent: Any = None) -> None:
@@ -512,10 +527,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if is_timeout:
             self._append_system(
                 "⏱ Request timed out (120s). "
-                "CPU-only mode: phi4-mini-reasoning is too slow to respond in time. "
+                "CPU-only mode: SmolLM3-3B may be slow without a GPU (~30-60s). "
                 "Solutions: 1) Install GPU (recommended) "
-                "2) Use a faster model (e.g. llama3.2:3b) "
-                "3) Ensure Brief mode is ON"
+                "2) Ensure Brief mode is ON "
+                "3) Check Ollama is running (start_agent.bat)"
             )
         else:
             self._append_bubble("assistant", f"❌ Error: {error}")

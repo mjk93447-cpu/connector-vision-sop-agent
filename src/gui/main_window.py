@@ -147,9 +147,13 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
                 "Respond in English, using technical terms where appropriate."
             )
 
+        # Inject recent run log context into system prompt
+        log_ctx = self._build_log_context_for_llm()
+        enriched_system = system + ("\n\n" + log_ctx if log_ctx else "")
+
         if streaming:
             worker = LLMStreamWorker(
-                self._llm, system_prompt=system, history=history, brief=brief
+                self._llm, system_prompt=enriched_system, history=history, brief=brief
             )
             worker.token_ready.connect(self._llm_panel.on_token_ready)
             worker.think_token_ready.connect(self._llm_panel.on_think_token_ready)
@@ -161,7 +165,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             worker.start()
         else:
             self._llm_worker = LLMWorker(
-                self._llm, system_prompt=system, history=history
+                self._llm, system_prompt=enriched_system, history=history
             )
             self._llm_worker.response_ready.connect(self._llm_panel.on_llm_response)
             self._llm_worker.error_occurred.connect(self._llm_panel.on_llm_error)
@@ -466,3 +470,107 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         # Refresh audit log when Audit tab (index 5) is shown
         if index == 5 and self._audit_panel:
             self._audit_panel.refresh()
+
+    # ------------------------------------------------------------------
+    # LLM log context injection helpers
+    # ------------------------------------------------------------------
+
+    def _load_recent_log_events(self, max_events: int = 20) -> list:
+        """Load last ``max_events`` log entries from the most recent logs/ run dir.
+
+        Returns a list of ``types.SimpleNamespace`` objects with
+        ``.level``, ``.step``, ``.message`` attributes.
+        Never raises — returns [] on any error.
+        """
+        import types
+
+        try:
+            logs_dir = Path("logs")
+            if not logs_dir.exists():
+                return []
+            run_dirs = sorted(
+                [p for p in logs_dir.iterdir() if p.is_dir()],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for run_dir in run_dirs[:3]:
+                events_file = run_dir / "events.jsonl"
+                if not events_file.exists():
+                    continue
+                try:
+                    raw = events_file.read_text(encoding="utf-8").strip().splitlines()
+                    events = []
+                    for line in raw[-max_events:]:
+                        try:
+                            d = json.loads(line)
+                            ev = types.SimpleNamespace(
+                                level=d.get("level", "INFO"),
+                                step=d.get("step", ""),
+                                message=d.get("message", ""),
+                            )
+                            events.append(ev)
+                        except Exception:
+                            continue
+                    if events:
+                        return events
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return []
+
+    def _build_log_context_for_llm(self) -> str:
+        """Build a compact recent-log summary to inject into the LLM system prompt.
+
+        Priority:
+        1. Active ``_log_manager`` in-memory events (current run).
+        2. Most recent ``logs/{run_id}/events.jsonl`` on disk.
+        3. CycleDetector sample count if available.
+
+        Returns empty string when no log data is found.
+        """
+        try:
+            events: list = []
+            run_summary = ""
+
+            if self._log_manager is not None and getattr(
+                self._log_manager, "events", None
+            ):
+                events = self._log_manager.events[-20:]
+                try:
+                    summary_path = self._log_manager.run_dir / "summary.json"
+                    if summary_path.exists():
+                        s = json.loads(summary_path.read_text())
+                        status = "SUCCESS" if s.get("success") else "FAILED"
+                        err = s.get("error", "")
+                        run_summary = "Run " + status + (f": {err}" if err else "")
+                except Exception:
+                    pass
+            else:
+                events = self._load_recent_log_events(20)
+
+            if not events:
+                return ""
+
+            lines = [run_summary] if run_summary else []
+            for ev in events:
+                lvl = getattr(ev, "level", "INFO")
+                step = getattr(ev, "step", "")
+                msg = getattr(ev, "message", "")[:80]
+                prefix = "⚠" if lvl in ("ERROR", "WARNING") else "·"
+                lines.append(f"{prefix}[{step}] {msg}")
+
+            # Append CycleDetector stats if available
+            try:
+                from src.cycle_detector import CycleDetector  # noqa: PLC0415
+
+                cd_summary = CycleDetector().build_improvement_summary(n_recent=10)
+                count = cd_summary.get("sample_count", 0)
+                if count > 0:
+                    lines.append(f"CYCLE: {count} recent runs recorded")
+            except Exception:
+                pass
+
+            return "RECENT ISSUES:\n" + "\n".join(lines)
+        except Exception:
+            return ""
