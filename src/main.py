@@ -40,9 +40,39 @@ This means every change is traceable: who, when, what, why.
 
 from __future__ import annotations
 
+# ---------------------------------------------------------------------------
+# PyInstaller console=False stdout guard — MUST execute before any import.
+#
+# PyInstaller EXE built with console=False sets sys.stdout = sys.stderr = None.
+# Any module that calls write() on stdout (ultralytics TQDM, logging, etc.)
+# then raises AttributeError: 'NoneType' object has no attribute 'write'.
+#
+# Fix: at EXE startup redirect stdout/stderr to a persistent log file so
+# EVERY module in the process has a valid output stream for its entire lifetime.
+# This is the root-level fix; training_manager adds a second layer (_TeeWriter)
+# to also capture training-specific output to a dedicated training.log.
+# ---------------------------------------------------------------------------
+import sys
+
+if getattr(sys, "frozen", False) and sys.stdout is None:
+    from pathlib import Path as _Path
+
+    _exe_log = _Path(sys.executable).parent / "connector_agent.log"
+    try:
+        _log_fd = _exe_log.open("w", encoding="utf-8", buffering=1)
+        sys.stdout = _log_fd
+        if sys.stderr is None:
+            sys.stderr = _log_fd
+    except OSError:
+        import io as _io
+
+        _fallback = _io.StringIO()
+        sys.stdout = _fallback
+        if sys.stderr is None:
+            sys.stderr = _fallback
+
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 

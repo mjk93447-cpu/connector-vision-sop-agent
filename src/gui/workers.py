@@ -379,6 +379,7 @@ class TrainingWorker(QThread):  # type: ignore[misc]
 
     progress: Any = pyqtSignal(int, int)
     finished_ok: Any = pyqtSignal(str)
+    log_ready: Any = pyqtSignal(str)  # path to training.log after completion
     error_occurred: Any = pyqtSignal(str)
 
     def __init__(
@@ -413,6 +414,8 @@ class TrainingWorker(QThread):  # type: ignore[misc]
                 progress_cb=_progress_cb,
             )
             self.finished_ok.emit(str(weights))
+            if tm.last_training_log is not None:
+                self.log_ready.emit(str(tm.last_training_log))
         except Exception as exc:  # noqa: BLE001
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{exc}\n{tb}")

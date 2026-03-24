@@ -34,6 +34,54 @@ _DEFAULT_BASE_MODEL = (
 _TARGET_WEIGHTS = get_base_dir() / "assets/models/yolo26x.pt"
 
 
+class _TeeWriter:
+    """Write to two streams simultaneously.
+
+    Primary stream  — the original sys.stdout (console in dev, connector_agent.log
+                      in PyInstaller console=False EXE after main.py's startup guard).
+    Secondary stream — a dedicated ``training.log`` file that the GUI can read and
+                       display after training completes.
+
+    Handles a None primary gracefully (EXE cold-start edge case) so the class
+    never raises AttributeError regardless of environment.
+    This replaces the previous io.StringIO() hack which silently discarded all
+    ultralytics TQDM / training output.
+    """
+
+    def __init__(self, primary: object, secondary: object) -> None:
+        self._primary = primary
+        self._secondary = secondary
+
+    def write(self, s: str) -> int:
+        count = 0
+        for stream in (self._primary, self._secondary):
+            if stream is not None:
+                try:
+                    n = stream.write(s)
+                    if n:
+                        count = max(count, int(n))
+                except Exception:  # noqa: BLE001
+                    pass
+        return count
+
+    def flush(self) -> None:
+        for stream in (self._primary, self._secondary):
+            if stream is not None:
+                try:
+                    stream.flush()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def fileno(self) -> int:
+        for stream in (self._primary, self._secondary):
+            if stream is not None:
+                try:
+                    return stream.fileno()  # type: ignore[union-attr]
+                except Exception:  # noqa: BLE001
+                    pass
+        raise io.UnsupportedOperation("fileno")
+
+
 class TrainingManager:
     """Wraps ultralytics YOLO fine-tuning for local offline use."""
 
@@ -54,6 +102,9 @@ class TrainingManager:
         base_model: Optional[str] = None,
         progress_cb: Optional[Callable[[int, int], None]] = None,
     ) -> Path:
+        # last_training_log is set inside _run_training(); initialise here so
+        # callers can always inspect it even if training raises an exception.
+        self.last_training_log: Optional[Path] = None
         """Fine-tune the model and save the best weights.
 
         Parameters
@@ -156,30 +207,35 @@ class TrainingManager:
             model.add_callback("on_train_epoch_end", _epoch_cb)
 
         # ------------------------------------------------------------------ #
-        # Guard: PyInstaller console=False sets sys.stdout / sys.stderr to  #
-        # None.  ultralytics TQDM initialises self.file = file or            #
-        # sys.stdout, so when sys.stdout is None the field becomes None.     #
-        # TQDM.close() then calls self.file.write("\n") — unconditionally    #
-        # when disable=False — raising AttributeError.                       #
+        # Tee stdout/stderr to a dedicated training.log file.               #
         #                                                                    #
-        # NOTE: verbose=True (disable=False) makes this WORSE than           #
-        # verbose=False: with disable=True the write is skipped entirely,    #
-        # but with disable=False TQDM actively tries to write progress.      #
-        # Neither value is safe when sys.stdout is None.                     #
+        # Root cause of AttributeError 'NoneType.write':                    #
+        #   PyInstaller console=False → sys.stdout = None.                  #
+        #   ultralytics TQDM: self.file = file or sys.stdout = None.        #
+        #   TQDM.close() calls self.file.write("\n") → AttributeError.      #
         #                                                                    #
-        # Fix: temporarily replace None stdout/stderr with an io.StringIO()  #
-        # sink for the duration of model.train().  The sink is discarded     #
-        # afterwards; we keep verbose=True so dev-environment training still #
-        # shows progress to the real console.                                #
+        # Two-layer fix:                                                     #
+        #   Layer 1 (app-level): main.py redirects sys.stdout to            #
+        #     connector_agent.log at EXE startup (permanent, whole app).    #
+        #   Layer 2 (training-level, here): _TeeWriter routes every write   #
+        #     to BOTH the current sys.stdout AND a training-specific        #
+        #     training.log file.                                             #
+        #     • If sys.stdout is still None (edge case), _TeeWriter skips   #
+        #       the None stream and writes only to training.log — no crash. #
+        #     • training.log preserves the full ultralytics output           #
+        #       (loss curves, mAP, TQDM lines) for the GUI to display.      #
+        #                                                                    #
+        # Previous approach (io.StringIO) silently discarded all output.    #
         # ------------------------------------------------------------------ #
+        training_log = dataset_yaml.parent / "training.log"
+        self.last_training_log = training_log
+
         _orig_stdout = sys.stdout
         _orig_stderr = sys.stderr
-        if sys.stdout is None:
-            sys.stdout = io.StringIO()
-        if sys.stderr is None:
-            sys.stderr = io.StringIO()
-
+        _log_file = training_log.open("w", encoding="utf-8", buffering=1)
         try:
+            sys.stdout = _TeeWriter(sys.stdout, _log_file)
+            sys.stderr = _TeeWriter(sys.stderr, _log_file)
             results = model.train(
                 data=str(dataset_yaml),
                 epochs=epochs,
@@ -195,6 +251,7 @@ class TrainingManager:
         finally:
             sys.stdout = _orig_stdout
             sys.stderr = _orig_stderr
+            _log_file.close()
 
         # Copy best weights to target location.
         best_pt = self._find_best_weights(results)

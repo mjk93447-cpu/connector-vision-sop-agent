@@ -609,26 +609,65 @@ class TestTrainingManagerVerbose:
         ), "verbose must be explicitly True to guarantee tqdm is not disabled"
 
 
-class TestStdoutNoneGuard:
-    """sys.stdout=None guard: PyInstaller console=False EXE fix.
+class TestTeeWriter:
+    """_TeeWriter unit tests — write to two streams simultaneously."""
 
-    PyInstaller builds with console=False set sys.stdout = None.
-    ultralytics TQDM sets self.file = file or sys.stdout.
-    When sys.stdout is None → self.file = None → TQDM.close() calls
-    self.file.write("\\n") → AttributeError: 'NoneType' has no attribute 'write'.
+    def test_write_reaches_both_streams(self) -> None:
+        """write() sends data to both primary and secondary streams."""
+        import io
 
-    Fix: training_manager.train() patches sys.stdout/stderr to io.StringIO()
-    before model.train() when they are None, and restores them in a finally block.
+        from src.training.training_manager import _TeeWriter
+
+        primary = io.StringIO()
+        secondary = io.StringIO()
+        tee = _TeeWriter(primary, secondary)
+        tee.write("hello")
+        assert primary.getvalue() == "hello"
+        assert secondary.getvalue() == "hello"
+
+    def test_none_primary_skipped(self) -> None:
+        """None primary is silently skipped; secondary still receives data."""
+        import io
+
+        from src.training.training_manager import _TeeWriter
+
+        secondary = io.StringIO()
+        tee = _TeeWriter(None, secondary)
+        tee.write("data")  # must not raise AttributeError
+        assert secondary.getvalue() == "data"
+
+    def test_flush_does_not_raise_on_none_primary(self) -> None:
+        """flush() with None primary must not raise."""
+        import io
+
+        from src.training.training_manager import _TeeWriter
+
+        secondary = io.StringIO()
+        tee = _TeeWriter(None, secondary)
+        tee.flush()  # no exception
+
+
+class TestStdoutTeeGuard:
+    """TeeWriter replaces StringIO guard: fundamental fix for PyInstaller EXE.
+
+    PyInstaller console=False → sys.stdout = None.
+    ultralytics TQDM: self.file = file or sys.stdout = None → AttributeError.
+
+    Fix (two layers):
+      Layer 1 — main.py: sets sys.stdout to connector_agent.log at EXE startup.
+      Layer 2 — train(): _TeeWriter(sys.stdout, training.log) so output goes to
+                 BOTH the app log and a dedicated training.log file.
+    The _TeeWriter handles None primary gracefully, eliminating the crash even
+    if Layer 1 hasn't run (e.g. in tests or non-GUI contexts).
     """
 
-    def test_stdout_none_is_patched_during_train(
+    def test_stdout_is_tee_writer_during_train(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        """sys.stdout=None is replaced with StringIO() for the duration of train()."""
-        import io
+        """sys.stdout is replaced with _TeeWriter for the duration of train()."""
         import sys
 
-        from src.training.training_manager import TrainingManager
+        from src.training.training_manager import TrainingManager, _TeeWriter
 
         yaml_path = tmp_path / "dataset.yaml"
         _write_minimal_yaml(yaml_path)
@@ -640,10 +679,54 @@ class TestStdoutNoneGuard:
             target_weights=tmp_path / "out.pt",
         )
 
-        captured_stdout_inside: list = []
+        captured: list = []
 
         def fake_train(**kwargs):
-            captured_stdout_inside.append(sys.stdout)
+            captured.append(sys.stdout)
+            result = MagicMock()
+            result.save_dir = None
+            return result
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_model.train.side_effect = fake_train
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except Exception:
+                pass
+
+        assert len(captured) == 1, "fake_train was not called"
+        assert isinstance(
+            captured[0], _TeeWriter
+        ), f"Expected _TeeWriter inside train(), got {type(captured[0])}"
+
+    def test_tee_writer_with_none_primary_no_crash(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """train() must not crash when sys.stdout is None (EXE console=False)."""
+        import sys
+
+        from src.training.training_manager import TrainingManager, _TeeWriter
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+        target = tmp_path / "target.pt"
+        _write_dummy_pt(target)
+
+        tm = TrainingManager(
+            base_model=str(target),
+            target_weights=tmp_path / "out.pt",
+        )
+
+        captured: list = []
+
+        def fake_train(**kwargs):
+            captured.append(sys.stdout)
+            # Simulate TQDM writing to self.file (= sys.stdout = _TeeWriter)
+            sys.stdout.write("Epoch 1/1 — loss 0.123\n")
+            sys.stdout.flush()
             result = MagicMock()
             result.save_dir = None
             return result
@@ -659,20 +742,15 @@ class TestStdoutNoneGuard:
             try:
                 tm.train(dataset_yaml=yaml_path, epochs=1)
             except Exception:
-                pass
+                pass  # errors other than AttributeError are OK
 
-        assert len(captured_stdout_inside) == 1, "fake_train was not called"
-        inside_stdout = captured_stdout_inside[0]
-        assert inside_stdout is not None, (
-            "sys.stdout was still None inside model.train() — "
-            "the None-guard is not working"
-        )
-        assert isinstance(
-            inside_stdout, io.StringIO
-        ), f"Expected io.StringIO inside train(), got {type(inside_stdout)}"
+        assert len(captured) == 1
+        assert isinstance(captured[0], _TeeWriter)
+        # TeeWriter._primary is None; write() must not have raised
+        assert captured[0]._primary is None
 
     def test_stdout_restored_after_train(self, tmp_path: Path, monkeypatch) -> None:
-        """sys.stdout is restored to original value after train() completes."""
+        """sys.stdout/stderr are restored to their original values after train()."""
         import sys
 
         from src.training.training_manager import TrainingManager
@@ -705,8 +783,8 @@ class TestStdoutNoneGuard:
         assert sys.stdout is None, "sys.stdout was not restored to None after train()"
         assert sys.stderr is None, "sys.stderr was not restored to None after train()"
 
-    def test_stdout_valid_is_not_replaced(self, tmp_path: Path) -> None:
-        """If sys.stdout is already valid, it must NOT be replaced."""
+    def test_training_log_file_created(self, tmp_path: Path) -> None:
+        """training.log is created beside dataset.yaml and captures output."""
         import sys
 
         from src.training.training_manager import TrainingManager
@@ -721,11 +799,8 @@ class TestStdoutNoneGuard:
             target_weights=tmp_path / "out.pt",
         )
 
-        original_stdout = sys.stdout
-        captured: list = []
-
         def fake_train(**kwargs):
-            captured.append(sys.stdout)
+            sys.stdout.write("Epoch 1/1 box_loss 0.5 mAP50 0.123\n")
             result = MagicMock()
             result.save_dir = None
             return result
@@ -740,7 +815,10 @@ class TestStdoutNoneGuard:
             except Exception:
                 pass
 
-        if captured:
-            assert (
-                captured[0] is original_stdout
-            ), "sys.stdout was replaced even though it was already valid"
+        log_path = tmp_path / "training.log"
+        assert log_path.exists(), "training.log was not created"
+        content = log_path.read_text(encoding="utf-8")
+        assert (
+            "box_loss" in content
+        ), f"training.log missing expected content: {content!r}"
+        assert tm.last_training_log == log_path

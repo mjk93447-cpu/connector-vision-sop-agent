@@ -475,6 +475,26 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         except Exception:  # noqa: BLE001
             pass
 
+    def on_training_log_ready(self, log_path: str) -> None:
+        """Called when training.log is ready; show last lines in the log panel."""
+        if not _QT_AVAILABLE:
+            return
+        self._training_log_path = log_path
+        self._log(f"📋 YOLO training log: {log_path}")
+        try:
+            lines = (
+                Path(log_path)
+                .read_text(encoding="utf-8", errors="replace")
+                .splitlines()
+            )
+            tail = lines[-30:] if len(lines) > 30 else lines
+            self._log("─── YOLO26x training output (last 30 lines) ───")
+            for line in tail:
+                self._log(line)
+            self._log("─────────────────────────────────────────────")
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"⚠ Could not read training log: {exc}")
+
     def on_training_error(self, err: str) -> None:
         if not _QT_AVAILABLE:
             return
@@ -881,6 +901,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         )
         self._training_worker.progress.connect(self.on_training_progress)
         self._training_worker.finished_ok.connect(self.on_training_done)
+        self._training_worker.log_ready.connect(self.on_training_log_ready)
         self._training_worker.error_occurred.connect(self.on_training_error)
         self._training_worker.start()
 
