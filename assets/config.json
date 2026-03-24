@@ -27,7 +27,7 @@
   },
 
   "llm": {
-    "enabled": false,
+    "enabled": true,
     "backend": "ollama",
     "model_path": "pedrolucas/smollm3:3b-q4_k_m",
     "http_url": "http://localhost:11434/v1/chat/completions",
