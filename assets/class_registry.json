@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "classes": [
+    {"name": "login_button",     "type": "TEXT"},
+    {"name": "recipe_button",    "type": "TEXT"},
+    {"name": "register_button",  "type": "TEXT"},
+    {"name": "open_icon",        "type": "TEXT"},
+    {"name": "image_source",     "type": "TEXT"},
+    {"name": "mold_left_label",  "type": "NON_TEXT"},
+    {"name": "mold_right_label", "type": "NON_TEXT"},
+    {"name": "pin_cluster",      "type": "NON_TEXT"},
+    {"name": "apply_button",     "type": "TEXT"},
+    {"name": "save_button",      "type": "TEXT"},
+    {"name": "axis_mark",        "type": "TEXT"},
+    {"name": "connector_pin",    "type": "NON_TEXT"}
+  ]
+}
