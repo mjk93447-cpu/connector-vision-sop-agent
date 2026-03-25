@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from PyQt6.QtCore import QRect, Qt
-    from PyQt6.QtGui import QPainter, QPen, QPixmap
+    from PyQt6.QtCore import QRect, Qt, pyqtSignal
+    from PyQt6.QtGui import QColor, QFont, QPainter, QPen
     from PyQt6.QtWidgets import (
         QAbstractItemView,
+        QApplication,
         QCheckBox,
         QComboBox,
         QDialog,
@@ -45,226 +46,303 @@ _TARGET_TYPES = ["auto", "TEXT", "NON_TEXT"]
 
 
 # ---------------------------------------------------------------------------
-# ROI Picker Dialog
+# ROI Overlay Window (fullscreen transparent — replaces _RoiPickerDialog)
 # ---------------------------------------------------------------------------
 
 
-class _RoiPickerDialog(QDialog):  # type: ignore[misc]
-    """Screenshot-based ROI selector. Shows current screen, user drags to select area."""
+class _RoiOverlayWindow(QWidget):  # type: ignore[misc]
+    """
+    Fullscreen transparent overlay for ROI selection.
+
+    Covers the primary screen with a semi-transparent dark layer. User
+    clicks twice (click-move-click) to define a rectangle; a _ConfirmPanel
+    then lets them fine-tune coordinates before confirming.
+
+    Signals (when PyQt6 available):
+        roi_confirmed(int, int, int, int) — emitted with (x, y, w, h)
+        roi_cancelled                     — emitted on ESC / Cancel / close
+    """
+
+    if _QT_AVAILABLE:
+        roi_confirmed = pyqtSignal(int, int, int, int)
+        roi_cancelled = pyqtSignal()
 
     def __init__(self, parent: Any = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Pick ROI")
-        self.setMinimumSize(600, 480)
+        self._click_start: Optional[Any] = None
+        self._hover_pos: Optional[Any] = None
         self._roi: Optional[Tuple[int, int, int, int]] = None
-        self._scale_x: float = 1.0
-        self._scale_y: float = 1.0
-        self._orig_pixmap: Optional[Any] = None
-        self._display_pixmap: Optional[Any] = None
-        self._click_start: Optional[Any] = (
-            None  # first click position (click-move-click)
-        )
-        self._hover_pos: Optional[Any] = None  # current mouse position for live preview
-        self._manual_mode = False
-        self._setup_ui()
+        self._closed: bool = False
+        self._confirm_panel: Optional[Any] = None
 
-    def _setup_ui(self) -> None:
         if not _QT_AVAILABLE:
             return
-        layout = QVBoxLayout(self)
 
-        header = QLabel(
-            "Click to set start point, move to preview, click again to confirm ROI."
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
         )
-        layout.addWidget(header)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
-        btn_capture = QPushButton("📷 Capture")
-        btn_capture.clicked.connect(self._on_capture)
-        layout.addWidget(btn_capture)
+        screen = QApplication.primaryScreen()
+        self.setGeometry(screen.geometry())
 
-        # Image label for displaying screenshot
-        self._img_label = QLabel("(No screenshot yet — click Capture)")
-        self._img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._img_label.setMinimumHeight(300)
-        self._img_label.setStyleSheet("background: #222; color: #aaa;")
-        self._img_label.setMouseTracking(True)
-        self._img_label.mousePressEvent = self._on_mouse_press  # type: ignore[method-assign]
-        self._img_label.mouseMoveEvent = self._on_mouse_move  # type: ignore[method-assign]
-        layout.addWidget(self._img_label)
+    # ------------------------------------------------------------------
+    # Coordinate state machine — pure Python, testable headless
+    # ------------------------------------------------------------------
 
-        self._coord_label = QLabel("x=0 y=0 w=0 h=0")
-        layout.addWidget(self._coord_label)
+    def _handle_press(self, local_pos: Any) -> None:
+        """Click-move-click state machine. Called from mousePressEvent."""
+        if self._click_start is None:
+            self._click_start = local_pos  # first click: set start
+        else:
+            g_start = self._to_global(self._click_start)
+            g_end = self._to_global(local_pos)
+            self._compute_roi(g_start, g_end)  # sets self._roi
+            self._click_start = None  # reset for next selection
+            self._show_confirm_panel()
 
-        # Manual input (fallback mode)
-        self._manual_widget = QWidget()
-        manual_layout = QHBoxLayout(self._manual_widget)
-        manual_layout.setContentsMargins(0, 0, 0, 0)
-        manual_layout.addWidget(QLabel("x:"))
-        self._spin_x = QSpinBox()
-        self._spin_x.setRange(0, 1920)
-        manual_layout.addWidget(self._spin_x)
-        manual_layout.addWidget(QLabel("y:"))
-        self._spin_y = QSpinBox()
-        self._spin_y.setRange(0, 1080)
-        manual_layout.addWidget(self._spin_y)
-        manual_layout.addWidget(QLabel("w:"))
-        self._spin_w = QSpinBox()
-        self._spin_w.setRange(0, 1920)
-        manual_layout.addWidget(self._spin_w)
-        manual_layout.addWidget(QLabel("h:"))
-        self._spin_h = QSpinBox()
-        self._spin_h.setRange(0, 1080)
-        manual_layout.addWidget(self._spin_h)
-        self._manual_widget.setVisible(False)
-        layout.addWidget(self._manual_widget)
+    def _to_global(self, local_pos: Any) -> Any:
+        """Convert widget-local QPoint to global screen QPoint.
+        Instance attribute overrides class method in headless tests:
+            d._to_global = lambda pos: pos
+        """
+        if _QT_AVAILABLE:
+            return self.mapToGlobal(local_pos)
+        return local_pos
 
-        btns = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        btns.accepted.connect(self._on_accept)
-        btns.rejected.connect(self.reject)
-        layout.addWidget(btns)
+    def _compute_roi(self, g_start: Any, g_end: Any) -> None:
+        """Pure arithmetic — no Qt calls. g_start/g_end have .x() and .y()."""
+        x = min(g_start.x(), g_end.x())
+        y = min(g_start.y(), g_end.y())
+        w = abs(g_end.x() - g_start.x())
+        h = abs(g_end.y() - g_start.y())
+        self._roi = (x, y, w, h)
 
-    def _on_capture(self) -> None:
+    # ------------------------------------------------------------------
+    # Cancel — handles all states
+    # ------------------------------------------------------------------
+
+    def _cancel(self) -> None:
+        """Cancel from any state. Sets _closed BEFORE emitting to prevent
+        double-emission if closeEvent fires after close()."""
+        self._closed = True
+        self._click_start = None
+        self._roi = None
+        if hasattr(self, "roi_cancelled"):
+            self.roi_cancelled.emit()
+        if _QT_AVAILABLE:
+            self.close()
+
+    # ------------------------------------------------------------------
+    # Qt UI — requires display
+    # ------------------------------------------------------------------
+
+    def _show_confirm_panel(self) -> None:
+        if not _QT_AVAILABLE or self._roi is None:
+            return
+        if self._confirm_panel is not None:
+            self._confirm_panel.deleteLater()
+        # _ConfirmPanel reads self._roi (set by _compute_roi) for initial values
+        self._confirm_panel = _ConfirmPanel(self._roi, parent=self)
+        panel_w = self._confirm_panel.sizeHint().width()
+        panel_h = self._confirm_panel.sizeHint().height()
+        cx = max(0, (self.width() - panel_w) // 2)
+
+        # Place at bottom; shift to top if selection occupies the lower half.
+        # Use self.parent().height() is N/A — self IS the overlay (fullscreen).
+        # self.height() == screen height. _roi coords are global; subtract
+        # overlay origin to get widget-local Y.
+        screen = QApplication.primaryScreen()
+        oy = screen.geometry().y()
+        rx, ry, rw, rh = self._roi
+        roi_center_local_y = (ry - oy) + rh // 2
+        if roi_center_local_y > self.height() // 2:
+            cy = 20
+        else:
+            cy = max(0, self.height() - panel_h - 20)
+
+        self._confirm_panel.setGeometry(cx, cy, panel_w, panel_h)
+        self._confirm_panel.show()
+        self.update()
+
+    def _get_selection_rect_local(self) -> Optional[Any]:
+        """Return selection rect in widget-local coordinates for painting."""
+        if not _QT_AVAILABLE:
+            return None
+        screen = QApplication.primaryScreen()
+        ox = screen.geometry().x()
+        oy = screen.geometry().y()
+
+        if self._roi is not None:
+            rx, ry, rw, rh = self._roi
+            return QRect(rx - ox, ry - oy, rw, rh)
+        if self._click_start is not None and self._hover_pos is not None:
+            return QRect(self._click_start, self._hover_pos).normalized()
+        return None
+
+    def paintEvent(self, event: Any) -> None:
         if not _QT_AVAILABLE:
             return
-        try:
-            import pyautogui  # type: ignore[import-untyped]
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
-            screenshot = pyautogui.screenshot()
-            orig_w, orig_h = screenshot.size
+        # Semi-transparent dark overlay covering entire screen
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 150))
 
-            # Convert PIL image to QPixmap
-            from PyQt6.QtGui import QImage
-
-            img_bytes = screenshot.tobytes("raw", "RGB")
-            qimg = QImage(
-                img_bytes, orig_w, orig_h, orig_w * 3, QImage.Format.Format_RGB888
+        sel = self._get_selection_rect_local()
+        if sel is not None and sel.width() > 0 and sel.height() > 0:
+            # Spotlight: clear selection so real screen shows through
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            painter.fillRect(sel, Qt.GlobalColor.transparent)
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
             )
-            self._orig_pixmap = QPixmap.fromImage(qimg)
-
-            # Scale to max 900x500
-            max_w, max_h = 900, 500
-            scaled = self._orig_pixmap.scaled(
-                max_w,
-                max_h,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+            # Red border: dashed during preview, solid after confirmation
+            pen = QPen(QColor("red"), 2)
+            pen.setStyle(
+                Qt.PenStyle.DashLine
+                if self._click_start is not None
+                else Qt.PenStyle.SolidLine
             )
-            display_w = scaled.width()
-            display_h = scaled.height()
-            self._scale_x = orig_w / display_w
-            self._scale_y = orig_h / display_h
-            self._display_pixmap = scaled
-            self._img_label.setPixmap(scaled)
-            self._click_start = None
-            self._hover_pos = None
-            self._roi = None
-            self._coord_label.setText("x=0 y=0 w=0 h=0")
-        except Exception:  # noqa: BLE001
-            # Fallback: show manual spinboxes
-            self._manual_mode = True
-            self._manual_widget.setVisible(True)
-            self._img_label.setText(
-                "(Screenshot unavailable — enter coordinates manually)"
+            painter.setPen(pen)
+            painter.drawRect(sel)
+
+        # Hint text when nothing selected yet
+        if self._click_start is None and self._roi is None:
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
+            painter.setPen(QColor(255, 255, 255, 220))
+            painter.setFont(QFont("Arial", 14))
+            painter.drawText(
+                self.rect().adjusted(0, 20, 0, 0),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                "Click to set start point — move mouse — click again to confirm"
+                "  (ESC to cancel)",
             )
 
-    def _on_mouse_press(self, event: Any) -> None:
-        if not _QT_AVAILABLE or self._display_pixmap is None:
+        painter.end()
+
+    def mousePressEvent(self, event: Any) -> None:
+        if not _QT_AVAILABLE or self._confirm_panel is not None:
             return
-        self._handle_press(event.pos())
-        self._update_overlay()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._handle_press(event.pos())
+            self.update()
 
-    def _on_mouse_move(self, event: Any) -> None:
-        if not _QT_AVAILABLE or self._display_pixmap is None:
+    def mouseMoveEvent(self, event: Any) -> None:
+        if not _QT_AVAILABLE:
             return
         self._hover_pos = event.pos()
-        if self._click_start is not None:  # only preview after first click
-            self._update_overlay()
+        if self._click_start is not None and self._confirm_panel is None:
+            self.update()
 
-    def _handle_press(self, pos: Any) -> None:
-        """Click-move-click state machine — pure logic, testable without Qt."""
-        if self._click_start is None:
-            self._click_start = pos  # first click: set start point
+    def keyPressEvent(self, event: Any) -> None:
+        if not _QT_AVAILABLE:
+            return
+        if event.key() == Qt.Key.Key_Escape:
+            self._cancel()
         else:
-            self._compute_roi(self._click_start, pos)  # second click: finalize
-            self._click_start = None  # reset for next selection
+            super().keyPressEvent(event)
 
-    def _update_overlay(self) -> None:
-        if not _QT_AVAILABLE or self._display_pixmap is None:
-            return
-        pixmap_copy = self._display_pixmap.copy()
-        painter = QPainter(pixmap_copy)
-        pen = QPen(Qt.GlobalColor.red)
-        pen.setWidth(2)
-        if self._click_start is not None and self._hover_pos is not None:
-            # First click set — show dashed preview rectangle while moving
-            pen.setStyle(Qt.PenStyle.DashLine)
-            painter.setPen(pen)
-            rect = QRect(self._click_start, self._hover_pos).normalized()
-            painter.drawRect(rect)
-        elif self._roi is not None:
-            # ROI confirmed — show solid rectangle
-            pen.setStyle(Qt.PenStyle.SolidLine)
-            painter.setPen(pen)
-            # Re-draw in display coordinates
-            dx, dy, dw, dh = self._roi
-            # Convert back to display coords using scale and offset
-            pix_w = self._display_pixmap.width()
-            pix_h = self._display_pixmap.height()
-            ox = (self._img_label.width() - pix_w) // 2
-            oy = (self._img_label.height() - pix_h) // 2
-            rx = int(dx / self._scale_x) + ox
-            ry = int(dy / self._scale_y) + oy
-            rw = int(dw / self._scale_x)
-            rh = int(dh / self._scale_y)
-            painter.drawRect(QRect(rx, ry, rw, rh))
-        painter.end()
-        self._img_label.setPixmap(pixmap_copy)
+    def closeEvent(self, event: Any) -> None:
+        if not self._closed:
+            self._closed = True
+            if _QT_AVAILABLE:
+                self.roi_cancelled.emit()
+        super().closeEvent(event)
 
-    def _compute_roi(self, start: Any, end: Any) -> None:
-        if self._display_pixmap is None:
-            return
-        # Pure-Python normalized rect (no Qt dependency — keeps method testable headless)
-        x1, y1 = start.x(), start.y()
-        x2, y2 = end.x(), end.y()
-        left = min(x1, x2)
-        top = min(y1, y2)
-        width = abs(x2 - x1)
-        height = abs(y2 - y1)
 
-        # Centering offsets: KeepAspectRatio may leave margins around the pixmap
-        pix_w = self._display_pixmap.width()
-        pix_h = self._display_pixmap.height()
-        ox = (self._img_label.width() - pix_w) // 2
-        oy = (self._img_label.height() - pix_h) // 2
+# ---------------------------------------------------------------------------
+# ROI Confirm Panel (child of _RoiOverlayWindow)
+# ---------------------------------------------------------------------------
 
-        # Strip centering offset, clamp to pixmap bounds
-        rx = max(0, left - ox)
-        ry = max(0, top - oy)
-        rw = min(width, pix_w - rx)
-        rh = min(height, pix_h - ry)
 
-        # Scale to original screen coordinates
-        dx = int(rx * self._scale_x)
-        dy = int(ry * self._scale_y)
-        dw = int(rw * self._scale_x)
-        dh = int(rh * self._scale_y)
-        self._roi = (dx, dy, dw, dh)
-        self._coord_label.setText(f"x={dx} y={dy} w={dw} h={dh}")
+class _ConfirmPanel(QWidget):  # type: ignore[misc]
+    """Small panel for fine-tuning ROI after click selection."""
 
-    def _on_accept(self) -> None:
-        if self._manual_mode:
+    def __init__(self, roi: Tuple[int, int, int, int], parent: Any = None) -> None:
+        super().__init__(parent)
+        if _QT_AVAILABLE:
+            self._setup_ui(roi)
+
+    def _setup_ui(self, roi: Tuple[int, int, int, int]) -> None:
+        self.setStyleSheet(
+            "background: rgba(255,255,255,230);"
+            "border: 1px solid #aaa; border-radius: 6px; padding: 2px;"
+        )
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(6)
+
+        layout.addWidget(QLabel("ROI Confirm:"))
+
+        x, y, w, h = roi
+        self._spin_x = QSpinBox()
+        self._spin_x.setRange(0, 3840)
+        self._spin_x.setValue(x)
+        self._spin_y = QSpinBox()
+        self._spin_y.setRange(0, 2160)
+        self._spin_y.setValue(y)
+        self._spin_w = QSpinBox()
+        self._spin_w.setRange(0, 3840)
+        self._spin_w.setValue(w)
+        self._spin_h = QSpinBox()
+        self._spin_h.setRange(0, 2160)
+        self._spin_h.setValue(h)
+
+        for lbl, spin in [
+            ("x:", self._spin_x),
+            ("y:", self._spin_y),
+            ("w:", self._spin_w),
+            ("h:", self._spin_h),
+        ]:
+            layout.addWidget(QLabel(lbl))
+            layout.addWidget(spin)
+
+        for spin in (self._spin_x, self._spin_y, self._spin_w, self._spin_h):
+            spin.valueChanged.connect(self._on_spinbox_changed)
+
+        btn_ok = QPushButton("OK")
+        btn_ok.setDefault(True)
+        btn_ok.clicked.connect(self._on_ok)
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(self._on_cancel)
+        layout.addWidget(btn_ok)
+        layout.addWidget(btn_cancel)
+        self.adjustSize()
+
+    def _on_spinbox_changed(self) -> None:
+        overlay = self.parent()
+        if overlay is not None and _QT_AVAILABLE:
+            overlay._roi = (
+                self._spin_x.value(),
+                self._spin_y.value(),
+                self._spin_w.value(),
+                self._spin_h.value(),
+            )
+            overlay.update()
+
+    def _on_ok(self) -> None:
+        overlay = self.parent()
+        if overlay is not None and _QT_AVAILABLE:
             x = self._spin_x.value()
             y = self._spin_y.value()
             w = self._spin_w.value()
             h = self._spin_h.value()
-            self._roi = (x, y, w, h)
-        self.accept()
+            overlay._closed = True
+            overlay.roi_confirmed.emit(x, y, w, h)
+            overlay.close()
 
-    @property
-    def roi(self) -> Optional[Tuple[int, int, int, int]]:
-        return self._roi
+    def _on_cancel(self) -> None:
+        overlay = self.parent()
+        if overlay is not None:
+            overlay._cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -335,18 +413,52 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         tt_container.setLayout(tt_row)
         form.addRow("Target Type:", tt_container)
 
-        # ROI field
-        self._roi_label = QLabel("full screen")
-        self._roi_label.setStyleSheet("font-style: italic; color: #555555;")
-        btn_roi = QPushButton("🎯 Pick ROI")
+        # ROI — always-visible spinboxes + fullscreen picker button
+        btn_roi = QPushButton("🎯 Pick ROI (Fullscreen)")
         btn_roi.clicked.connect(self._on_pick_roi)
-        roi_row = QHBoxLayout()
-        roi_row.addWidget(btn_roi)
-        roi_row.addWidget(self._roi_label)
-        roi_row.addStretch()
-        roi_container = QWidget()
-        roi_container.setLayout(roi_row)
-        form.addRow("ROI:", roi_container)
+        btn_clear_roi = QPushButton("✕ Clear ROI")
+        btn_clear_roi.clicked.connect(self._on_clear_roi)
+        roi_btn_row = QHBoxLayout()
+        roi_btn_row.addWidget(btn_roi)
+        roi_btn_row.addWidget(btn_clear_roi)
+        roi_btn_row.addStretch()
+        roi_btn_container = QWidget()
+        roi_btn_container.setLayout(roi_btn_row)
+        form.addRow("", roi_btn_container)
+
+        # Create spinboxes (set values BEFORE connecting valueChanged signals)
+        self._spin_x = QSpinBox()
+        self._spin_x.setRange(0, 3840)
+        self._spin_x.setPrefix("x: ")
+        self._spin_y = QSpinBox()
+        self._spin_y.setRange(0, 2160)
+        self._spin_y.setPrefix("y: ")
+        self._spin_w = QSpinBox()
+        self._spin_w.setRange(0, 3840)
+        self._spin_w.setPrefix("w: ")
+        self._spin_h = QSpinBox()
+        self._spin_h.setRange(0, 2160)
+        self._spin_h.setPrefix("h: ")
+
+        # Populate spinboxes from existing ROI BEFORE connecting signals
+        if self._roi is not None:
+            x, y, w, h = self._roi
+            self._spin_x.setValue(x)
+            self._spin_y.setValue(y)
+            self._spin_w.setValue(w)
+            self._spin_h.setValue(h)
+
+        # Connect valueChanged AFTER values are initialized
+        for spin in (self._spin_x, self._spin_y, self._spin_w, self._spin_h):
+            spin.valueChanged.connect(self._sync_roi_from_spinboxes)
+
+        roi_spin_row = QHBoxLayout()
+        for spin in (self._spin_x, self._spin_y, self._spin_w, self._spin_h):
+            roi_spin_row.addWidget(spin)
+        roi_spin_row.addStretch()
+        roi_spin_container = QWidget()
+        roi_spin_container.setLayout(roi_spin_row)
+        form.addRow("ROI:", roi_spin_container)
 
         # button_text field (existing concept, now with enable/disable)
         self._button_text_edit = QLineEdit(self._step.get("button_text", ""))
@@ -370,12 +482,6 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         btns.accepted.connect(self._on_accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
-
-        # Initialize ROI label
-        if self._roi is not None:
-            x, y, w, h = self._roi
-            self._roi_label.setText(f"x={x} y={y} w={w} h={h}")
-            self._roi_label.setStyleSheet("color: black;")
 
         # Initialize field states
         self._update_field_states(self._target_type_combo.currentText())
@@ -426,17 +532,47 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
             self._yolo_class_edit.setEnabled(False)
             self._yolo_class_edit.setStyleSheet("color: #333333; background: #dddddd;")
 
+    def _sync_roi_from_spinboxes(self) -> None:
+        """Single source of truth: spinboxes → self._roi."""
+        x = self._spin_x.value()
+        y = self._spin_y.value()
+        w = self._spin_w.value()
+        h = self._spin_h.value()
+        self._roi = (x, y, w, h) if (w > 0 or h > 0) else None
+
+    def _on_clear_roi(self) -> None:
+        """Reset all spinboxes to 0 — triggers _sync_roi_from_spinboxes via valueChanged."""
+        for spin in (self._spin_x, self._spin_y, self._spin_w, self._spin_h):
+            spin.setValue(0)
+
+    def _on_roi_confirmed(self, x: int, y: int, w: int, h: int) -> None:
+        """Called when overlay emits roi_confirmed signal."""
+        self.window().show()
+        self.window().raise_()
+        # Block signals while setting to prevent double-sync
+        for spin in (self._spin_x, self._spin_y, self._spin_w, self._spin_h):
+            spin.blockSignals(True)
+        self._spin_x.setValue(x)
+        self._spin_y.setValue(y)
+        self._spin_w.setValue(w)
+        self._spin_h.setValue(h)
+        for spin in (self._spin_x, self._spin_y, self._spin_w, self._spin_h):
+            spin.blockSignals(False)
+        self._roi = (x, y, w, h)
+
+    def _on_roi_cancelled(self) -> None:
+        """Called when overlay emits roi_cancelled signal."""
+        self.window().show()
+        self.window().raise_()
+
     def _on_pick_roi(self) -> None:
         if not _QT_AVAILABLE:
             return
-        dlg = _RoiPickerDialog(parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            roi = dlg.roi
-            if roi is not None:
-                self._roi = roi
-                x, y, w, h = roi
-                self._roi_label.setText(f"x={x} y={y} w={w} h={h}")
-                self._roi_label.setStyleSheet("color: black;")
+        self.window().hide()
+        overlay = _RoiOverlayWindow(parent=None)
+        overlay.roi_confirmed.connect(self._on_roi_confirmed)
+        overlay.roi_cancelled.connect(self._on_roi_cancelled)
+        overlay.show()
 
     def _on_accept(self) -> None:
         if not _QT_AVAILABLE:
