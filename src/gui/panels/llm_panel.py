@@ -158,6 +158,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._token_buf: List[str] = []
         self._flush_timer: Optional[Any] = None
         self._stop_requested: bool = False
+        self._pending_prompt: Optional[str] = None  # queued prompt during generation
         self._last_think_t: float = 0.0  # 마지막 think 토큰 수신 시각
         self._stream_cursor: Any = None  # QTextCursor anchor for streaming block
         self._think_cursor: Any = None  # QTextCursor anchor for think text in main chat
@@ -195,8 +196,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             self._btn_send.setText("📤 Send")
             self._btn_send.setEnabled(True)
             self._stop_timer()
-            self._stop_flush_timer()
-            self._flush_token_buf()  # flush any remaining buffered tokens
+            self._stop_flush_and_finalize()  # drain buffer then stop timer
             self._lbl_elapsed.setText("")
             self._stop_requested = False
 
@@ -428,17 +428,31 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
 
     def _start_flush_timer(self) -> None:
-        """Start the 50ms flush timer for batched token rendering."""
+        """Start the 16ms flush timer for batched token rendering (~60 fps)."""
         if not _QT_AVAILABLE:
             return
         if self._flush_timer is None:
             self._flush_timer = QTimer(self)
             self._flush_timer.timeout.connect(self._flush_token_buf)
-        self._flush_timer.start(50)
+        self._flush_timer.start(16)
 
     def _stop_flush_timer(self) -> None:
         if self._flush_timer is not None:
             self._flush_timer.stop()
+
+    def _stop_flush_and_finalize(self) -> None:
+        """Drain token buffer completely before stopping timer — prevents burst output."""
+        self._flush_token_buf()                  # ① render all buffered tokens
+        self._token_buf.clear()                  # ② clear any residual
+        if self._flush_timer is not None and self._flush_timer.isActive():
+            self._flush_timer.stop()             # ③ stop timer
+
+    def _process_pending_prompt(self) -> None:
+        """Auto-send queued prompt after current generation finishes."""
+        if self._pending_prompt:
+            prompt, self._pending_prompt = self._pending_prompt, None
+            self._input.setText(prompt)
+            self._on_send()
 
     @pyqtSlot(float)
     def on_elapsed_tick(self, elapsed: float) -> None:
@@ -504,14 +518,16 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
 
-        # Step 2-D: if we're already sending, this acts as Stop
+        # If worker is running, queue the new prompt instead of interrupting
         if self._worker is not None and hasattr(self._worker, "isRunning"):
             try:
                 if self._worker.isRunning():
-                    self._stop_requested = True
-                    self._worker.stop()
-                    self.set_sending(False)
-                    self._append_system("⏹ Generation stopped by user.")
+                    text = self._input.text().strip()
+                    if text:
+                        self._pending_prompt = text
+                        self._input.clear()
+                        preview = text[:40] + ("..." if len(text) > 40 else "")
+                        self._append_system(f'⏳ Queued: "{preview}"')
                     return
             except Exception:  # noqa: BLE001
                 pass
@@ -598,10 +614,12 @@ class LlmPanel(QWidget):  # type: ignore[misc]
                 "2) Rephrase as a shorter question  "
                 "3) Ask again (second request is faster after warm-up)"
             )
+            self._process_pending_prompt()
             return
         if _QT_AVAILABLE:
             patch = self._extract_patch(full_text)
             self._btn_apply.setEnabled(patch is not None)
+        self._process_pending_prompt()
 
     @pyqtSlot(str)
     def on_llm_error(self, error: str) -> None:
@@ -626,6 +644,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
                 "and LLM settings are correct in Tab 5 Config."
             )
         self.set_sending(False)
+        self._process_pending_prompt()
 
     @pyqtSlot(object)
     def on_analysis_ready(self, result: Any) -> None:

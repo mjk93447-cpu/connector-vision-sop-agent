@@ -47,6 +47,7 @@ def _make_panel() -> Any:
         panel._token_buf = []
         panel._flush_timer = None
         panel._stop_requested = False
+        panel._pending_prompt = None
         panel._last_think_t = 0.0
         panel._stream_cursor = None
         panel._first_token = False
@@ -289,3 +290,110 @@ class TestBriefMaxTokensConfig:
         from src.llm_offline import _BRIEF_MAX_TOKENS
 
         assert _BRIEF_MAX_TOKENS >= 1024
+
+
+# ---------------------------------------------------------------------------
+# TestStopFlushAndFinalize (Issue 5: burst output fix)
+# ---------------------------------------------------------------------------
+
+
+class TestStopFlushAndFinalize:
+    def test_flushes_before_stopping_timer(self) -> None:
+        """_stop_flush_and_finalize must call _flush_token_buf before stopping timer."""
+        panel = _make_panel()
+        call_order: list = []
+        panel._token_buf = ["hello", " world"]
+        panel._flush_token_buf = lambda: call_order.append("flush")
+
+        mock_timer = MagicMock()
+        mock_timer.isActive.return_value = True
+        mock_timer.stop.side_effect = lambda: call_order.append("timer_stop")
+        panel._flush_timer = mock_timer
+        panel._stream_cursor = None
+
+        panel._stop_flush_and_finalize()
+
+        assert "flush" in call_order, "flush must be called"
+        assert "timer_stop" in call_order, "timer must be stopped"
+        assert call_order.index("flush") < call_order.index("timer_stop"), \
+            "flush must come before timer_stop"
+
+    def test_clears_token_buf_after_flush(self) -> None:
+        """Token buffer is empty after _stop_flush_and_finalize."""
+        panel = _make_panel()
+        panel._token_buf = ["leftover"]
+        panel._flush_token_buf = lambda: None  # stub — don't actually flush
+        mock_timer = MagicMock()
+        mock_timer.isActive.return_value = False
+        panel._flush_timer = mock_timer
+
+        panel._stop_flush_and_finalize()
+
+        assert panel._token_buf == [], "token_buf must be cleared"
+
+    def test_no_crash_when_flush_timer_none(self) -> None:
+        """_stop_flush_and_finalize must not crash when _flush_timer is None."""
+        panel = _make_panel()
+        panel._token_buf = []
+        panel._flush_token_buf = lambda: None
+        panel._flush_timer = None  # no timer created yet
+
+        panel._stop_flush_and_finalize()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# TestPromptQueue (Issue 6: queue during generation)
+# ---------------------------------------------------------------------------
+
+
+class TestPromptQueue:
+    def test_prompt_queued_when_worker_running(self) -> None:
+        """New prompt while generating is stored in _pending_prompt, not sent."""
+        panel = _make_panel()
+        panel._pending_prompt = None
+        panel._worker = MagicMock()
+        panel._worker.isRunning.return_value = True
+        panel._input.text.return_value = "new question"
+        system_msgs: list = []
+        panel._append_system = lambda m: system_msgs.append(m)
+
+        with patch("src.gui.panels.llm_panel._QT_AVAILABLE", True):
+            panel._on_send()
+
+        assert panel._pending_prompt == "new question", \
+            "prompt should be stored in _pending_prompt"
+        assert any("Queued" in m for m in system_msgs), \
+            "user should see a Queued confirmation"
+
+    def test_process_pending_prompt_auto_sends(self) -> None:
+        """After generation, _process_pending_prompt fires _on_send with queued text."""
+        panel = _make_panel()
+        panel._pending_prompt = "queued question"
+        sent: list = []
+        panel._on_send = lambda: sent.append(True)
+        panel._input.setText = MagicMock()
+
+        panel._process_pending_prompt()
+
+        assert panel._pending_prompt is None, "_pending_prompt must be cleared"
+        assert sent, "_on_send must be called"
+        panel._input.setText.assert_called_once_with("queued question")
+
+    def test_process_pending_prompt_noop_when_empty(self) -> None:
+        """_process_pending_prompt does nothing when queue is empty."""
+        panel = _make_panel()
+        panel._pending_prompt = None
+        called: list = []
+        panel._on_send = lambda: called.append(True)
+
+        panel._process_pending_prompt()
+
+        assert not called, "_on_send must not be called when no pending prompt"
+
+    def test_flush_timer_interval_is_16ms(self) -> None:
+        """Flush timer interval must be 16ms (≈ 60 fps) for smooth streaming."""
+        import inspect
+        from src.gui.panels.llm_panel import LlmPanel
+
+        src = inspect.getsource(LlmPanel._start_flush_timer)
+        assert "16" in src, "flush timer must use 16ms interval"
