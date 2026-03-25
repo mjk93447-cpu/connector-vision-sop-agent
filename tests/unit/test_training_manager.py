@@ -887,7 +887,9 @@ class TestUltralyticsTQDMPatch:
 
 
 class TestCheckMemoryRequirements:
-    def test_raises_when_ram_below_threshold(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_when_ram_below_threshold(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """_check_memory_requirements raises RuntimeError with English message when RAM < 1.5 GB."""
         import psutil
 
@@ -900,7 +902,9 @@ class TestCheckMemoryRequirements:
         with pytest.raises(RuntimeError, match="Insufficient memory"):
             mgr._check_memory_requirements()
 
-    def test_no_raise_when_ram_sufficient(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_raise_when_ram_sufficient(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """_check_memory_requirements does not raise when RAM >= 1.5 GB."""
         import psutil
 
@@ -912,7 +916,9 @@ class TestCheckMemoryRequirements:
         mgr = TrainingManager.__new__(TrainingManager)
         mgr._check_memory_requirements()  # should not raise
 
-    def test_skips_check_when_psutil_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skips_check_when_psutil_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """_check_memory_requirements silently skips when psutil is not installed."""
         import builtins
 
@@ -966,9 +972,9 @@ class TestHandleTrainOom:
             TrainingManager._handle_train_oom(exc)
         except RuntimeError as e:
             msg = str(e)
-            assert all(ord(c) < 0xAC00 or ord(c) > 0xD7A3 for c in msg), (
-                f"Error message contains Korean characters: {msg}"
-            )
+            assert all(
+                ord(c) < 0xAC00 or ord(c) > 0xD7A3 for c in msg
+            ), f"Error message contains Korean characters: {msg}"
 
 
 class TestBatchDefault:
@@ -979,6 +985,6 @@ class TestBatchDefault:
         from src.training.training_manager import TrainingManager
 
         sig = inspect.signature(TrainingManager.train)
-        assert sig.parameters["batch"].default == 2, (
-            "Default batch must be 2 for CPU-only environments"
-        )
+        assert (
+            sig.parameters["batch"].default == 2
+        ), "Default batch must be 2 for CPU-only environments"

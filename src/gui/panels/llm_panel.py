@@ -442,10 +442,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     def _stop_flush_and_finalize(self) -> None:
         """Drain token buffer completely before stopping timer — prevents burst output."""
-        self._flush_token_buf()                  # ① render all buffered tokens
-        self._token_buf.clear()                  # ② clear any residual
+        self._flush_token_buf()  # ① render all buffered tokens
+        self._token_buf.clear()  # ② clear any residual
         if self._flush_timer is not None and self._flush_timer.isActive():
-            self._flush_timer.stop()             # ③ stop timer
+            self._flush_timer.stop()  # ③ stop timer
 
     def _process_pending_prompt(self) -> None:
         """Auto-send queued prompt after current generation finishes."""

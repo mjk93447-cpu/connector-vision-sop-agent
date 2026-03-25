@@ -783,7 +783,11 @@ class TestFindTextSpaceNormalization:
         """Query 'LOG IN' must match OCR result 'LOGIN' (space normalization)."""
         engine = self._make_engine()
         fake = TextRegion(
-            text="LOGIN", bbox=(10, 10, 80, 30), center=(50, 25), confidence=0.9, source="easyocr"
+            text="LOGIN",
+            bbox=(10, 10, 80, 30),
+            center=(50, 25),
+            confidence=0.9,
+            source="easyocr",
         )
         monkeypatch.setattr(engine, "scan_all", lambda img, roi=None: [fake])
         img = np.zeros((100, 300, 3), dtype=np.uint8)
@@ -794,7 +798,11 @@ class TestFindTextSpaceNormalization:
         """Query 'LOGIN' must match OCR result 'LOG IN' (space normalization, reverse)."""
         engine = self._make_engine()
         fake = TextRegion(
-            text="LOG IN", bbox=(10, 10, 80, 30), center=(50, 25), confidence=0.9, source="easyocr"
+            text="LOG IN",
+            bbox=(10, 10, 80, 30),
+            center=(50, 25),
+            confidence=0.9,
+            source="easyocr",
         )
         monkeypatch.setattr(engine, "scan_all", lambda img, roi=None: [fake])
         img = np.zeros((100, 300, 3), dtype=np.uint8)
@@ -805,7 +813,11 @@ class TestFindTextSpaceNormalization:
         """Normal exact matching still works after adding space normalization."""
         engine = self._make_engine()
         fake = TextRegion(
-            text="Submit", bbox=(10, 10, 80, 30), center=(50, 25), confidence=0.9, source="easyocr"
+            text="Submit",
+            bbox=(10, 10, 80, 30),
+            center=(50, 25),
+            confidence=0.9,
+            source="easyocr",
         )
         monkeypatch.setattr(engine, "scan_all", lambda img, roi=None: [fake])
         img = np.zeros((100, 300, 3), dtype=np.uint8)

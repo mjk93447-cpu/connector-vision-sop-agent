@@ -315,8 +315,9 @@ class TestStopFlushAndFinalize:
 
         assert "flush" in call_order, "flush must be called"
         assert "timer_stop" in call_order, "timer must be stopped"
-        assert call_order.index("flush") < call_order.index("timer_stop"), \
-            "flush must come before timer_stop"
+        assert call_order.index("flush") < call_order.index(
+            "timer_stop"
+        ), "flush must come before timer_stop"
 
     def test_clears_token_buf_after_flush(self) -> None:
         """Token buffer is empty after _stop_flush_and_finalize."""
@@ -360,10 +361,12 @@ class TestPromptQueue:
         with patch("src.gui.panels.llm_panel._QT_AVAILABLE", True):
             panel._on_send()
 
-        assert panel._pending_prompt == "new question", \
-            "prompt should be stored in _pending_prompt"
-        assert any("Queued" in m for m in system_msgs), \
-            "user should see a Queued confirmation"
+        assert (
+            panel._pending_prompt == "new question"
+        ), "prompt should be stored in _pending_prompt"
+        assert any(
+            "Queued" in m for m in system_msgs
+        ), "user should see a Queued confirmation"
 
     def test_process_pending_prompt_auto_sends(self) -> None:
         """After generation, _process_pending_prompt fires _on_send with queued text."""

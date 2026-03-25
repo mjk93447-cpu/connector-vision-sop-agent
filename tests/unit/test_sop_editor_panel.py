@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 
 
 class _FakePos:
@@ -57,7 +56,7 @@ def _make_stub(
     pix_w: int = 960,
     pix_h: int = 540,
     label_w: int = 1020,  # label wider than pixmap → ox = 30
-    label_h: int = 580,   # label taller than pixmap → oy = 20
+    label_h: int = 580,  # label taller than pixmap → oy = 20
 ) -> Any:
     """Build a _RoiPickerDialog stub without Qt — pure coordinate logic only."""
     from src.gui.panels.sop_editor_panel import _RoiPickerDialog
@@ -135,18 +134,20 @@ class TestComputeRoiCoordinates:
         click2=(230,220): rw=100, rh=100
         expected roi=(200,200,200,200)
         """
-        d = _make_stub(scale_x=2.0, scale_y=2.0, pix_w=960, pix_h=540,
-                       label_w=1020, label_h=580)
+        d = _make_stub(
+            scale_x=2.0, scale_y=2.0, pix_w=960, pix_h=540, label_w=1020, label_h=580
+        )
         d._handle_press(_FakePos(130, 120))
         d._handle_press(_FakePos(230, 220))
         assert d._roi == (200, 200, 200, 200)
 
     def test_first_click_at_offset_origin_maps_to_screen_zero(self) -> None:
         """Click exactly at (ox, oy) should map to screen coordinate (0, 0)."""
-        d = _make_stub(scale_x=2.0, scale_y=2.0, pix_w=960, pix_h=540,
-                       label_w=1020, label_h=580)
+        d = _make_stub(
+            scale_x=2.0, scale_y=2.0, pix_w=960, pix_h=540, label_w=1020, label_h=580
+        )
         # ox=30, oy=20
-        d._handle_press(_FakePos(30, 20))   # exactly at offset origin
+        d._handle_press(_FakePos(30, 20))  # exactly at offset origin
         d._handle_press(_FakePos(130, 120))  # 100px right/down
         rx, ry, rw, rh = d._roi
         assert rx == 0 and ry == 0, f"Expected (0,0) but got ({rx},{ry})"
@@ -154,8 +155,9 @@ class TestComputeRoiCoordinates:
 
     def test_no_offset_when_pixmap_fills_label(self) -> None:
         """When pixmap and label are same size, ox=oy=0 and coordinates are direct."""
-        d = _make_stub(scale_x=2.0, scale_y=2.0, pix_w=900, pix_h=500,
-                       label_w=900, label_h=500)
+        d = _make_stub(
+            scale_x=2.0, scale_y=2.0, pix_w=900, pix_h=500, label_w=900, label_h=500
+        )
         d._handle_press(_FakePos(50, 50))
         d._handle_press(_FakePos(150, 150))
         # rx=50, ry=50, rw=100, rh=100 → *2 = (100, 100, 200, 200)
@@ -163,8 +165,9 @@ class TestComputeRoiCoordinates:
 
     def test_selection_clamped_to_pixmap_bounds(self) -> None:
         """Selection cannot extend beyond pixmap edges."""
-        d = _make_stub(scale_x=2.0, scale_y=2.0, pix_w=100, pix_h=100,
-                       label_w=100, label_h=100)
+        d = _make_stub(
+            scale_x=2.0, scale_y=2.0, pix_w=100, pix_h=100, label_w=100, label_h=100
+        )
         # Click way outside pixmap bounds
         d._handle_press(_FakePos(0, 0))
         d._handle_press(_FakePos(9999, 9999))

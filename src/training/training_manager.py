@@ -237,7 +237,7 @@ class TrainingManager:
         _orig_stderr = sys.stderr
         _log_file = training_log.open("w", encoding="utf-8", buffering=1)
         try:
-            self._apply_ultralytics_tqdm_patch()            # ① patch first
+            self._apply_ultralytics_tqdm_patch()  # ① patch first
             sys.stdout = _TeeWriter(sys.stdout, _log_file)  # ② then wrap
             sys.stderr = _TeeWriter(sys.stderr, _log_file)
             try:

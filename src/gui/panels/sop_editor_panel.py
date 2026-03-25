@@ -61,8 +61,10 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
         self._scale_y: float = 1.0
         self._orig_pixmap: Optional[Any] = None
         self._display_pixmap: Optional[Any] = None
-        self._click_start: Optional[Any] = None   # first click position (click-move-click)
-        self._hover_pos: Optional[Any] = None     # current mouse position for live preview
+        self._click_start: Optional[Any] = (
+            None  # first click position (click-move-click)
+        )
+        self._hover_pos: Optional[Any] = None  # current mouse position for live preview
         self._manual_mode = False
         self._setup_ui()
 
@@ -71,7 +73,9 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
             return
         layout = QVBoxLayout(self)
 
-        header = QLabel("Click to set start point, move to preview, click again to confirm ROI.")
+        header = QLabel(
+            "Click to set start point, move to preview, click again to confirm ROI."
+        )
         layout.addWidget(header)
 
         btn_capture = QPushButton("📷 Capture")
@@ -175,16 +179,16 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
         if not _QT_AVAILABLE or self._display_pixmap is None:
             return
         self._hover_pos = event.pos()
-        if self._click_start is not None:   # only preview after first click
+        if self._click_start is not None:  # only preview after first click
             self._update_overlay()
 
     def _handle_press(self, pos: Any) -> None:
         """Click-move-click state machine — pure logic, testable without Qt."""
         if self._click_start is None:
-            self._click_start = pos          # first click: set start point
+            self._click_start = pos  # first click: set start point
         else:
             self._compute_roi(self._click_start, pos)  # second click: finalize
-            self._click_start = None         # reset for next selection
+            self._click_start = None  # reset for next selection
 
     def _update_overlay(self) -> None:
         if not _QT_AVAILABLE or self._display_pixmap is None:
@@ -224,9 +228,9 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
         # Pure-Python normalized rect (no Qt dependency — keeps method testable headless)
         x1, y1 = start.x(), start.y()
         x2, y2 = end.x(), end.y()
-        left   = min(x1, x2)
-        top    = min(y1, y2)
-        width  = abs(x2 - x1)
+        left = min(x1, x2)
+        top = min(y1, y2)
+        width = abs(x2 - x1)
         height = abs(y2 - y1)
 
         # Centering offsets: KeepAspectRatio may leave margins around the pixmap
@@ -238,7 +242,7 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
         # Strip centering offset, clamp to pixmap bounds
         rx = max(0, left - ox)
         ry = max(0, top - oy)
-        rw = min(width,  pix_w - rx)
+        rw = min(width, pix_w - rx)
         rh = min(height, pix_h - ry)
 
         # Scale to original screen coordinates

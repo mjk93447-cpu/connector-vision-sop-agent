@@ -692,7 +692,9 @@ class OCREngine:
 
         # V5: 2× bicubic upscale + OTSU — for large-font / button text (e.g. "LOG IN")
         h, w = gray.shape[:2]
-        upscaled = cv2.resize(gray, (int(w * 2), int(h * 2)), interpolation=cv2.INTER_CUBIC)
+        upscaled = cv2.resize(
+            gray, (int(w * 2), int(h * 2)), interpolation=cv2.INTER_CUBIC
+        )
         _, v5_bin = cv2.threshold(upscaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         variants.append(_to_bgr_padded(v5_bin))
 
