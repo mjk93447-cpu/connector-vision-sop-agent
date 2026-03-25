@@ -7,8 +7,19 @@ math is tested without a display server.
 
 from __future__ import annotations
 
+import importlib.util
 from typing import Any
 
+import pytest
+
+# object.__new__(_RoiPickerDialog) is only safe when PyQt6 is absent
+# (QDialog becomes plain `object`).  Skip entire module when PyQt6 is installed.
+if importlib.util.find_spec("PyQt6") is not None:
+    pytest.skip(
+        "test_sop_editor_panel: headless tests require PyQt6 to be absent"
+        " — object.__new__ incompatible with C++ extension classes",
+        allow_module_level=True,
+    )
 
 
 class _FakePos:
