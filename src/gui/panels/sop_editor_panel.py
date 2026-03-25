@@ -283,7 +283,7 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         self._target_type_combo.currentTextChanged.connect(self._on_target_type_changed)
 
         self._registry_hint = QLabel("")
-        self._registry_hint.setStyleSheet("color: gray; font-size: 11px;")
+        self._registry_hint.setStyleSheet("color: #555555; font-size: 11px;")
 
         tt_row = QHBoxLayout()
         tt_row.addWidget(self._target_type_combo)
@@ -295,7 +295,7 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
 
         # ROI field
         self._roi_label = QLabel("full screen")
-        self._roi_label.setStyleSheet("font-style: italic; color: gray;")
+        self._roi_label.setStyleSheet("font-style: italic; color: #555555;")
         btn_roi = QPushButton("🎯 Pick ROI")
         btn_roi.clicked.connect(self._on_pick_roi)
         roi_row = QHBoxLayout()
@@ -374,7 +374,7 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
             return
         if target_type == "NON_TEXT":
             self._button_text_edit.setEnabled(False)
-            self._button_text_edit.setStyleSheet("color: gray; background: #eee;")
+            self._button_text_edit.setStyleSheet("color: #333333; background: #dddddd;")
             self._yolo_class_edit.setEnabled(True)
             self._yolo_class_edit.setStyleSheet("")
         else:
@@ -382,7 +382,7 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
             self._button_text_edit.setEnabled(True)
             self._button_text_edit.setStyleSheet("")
             self._yolo_class_edit.setEnabled(False)
-            self._yolo_class_edit.setStyleSheet("color: gray; background: #eee;")
+            self._yolo_class_edit.setStyleSheet("color: #333333; background: #dddddd;")
 
     def _on_pick_roi(self) -> None:
         if not _QT_AVAILABLE:

@@ -233,7 +233,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
         # Elapsed timer label
         self._lbl_elapsed = QLabel("")
-        self._lbl_elapsed.setStyleSheet("color: #888; font-size: 11px;")
+        self._lbl_elapsed.setStyleSheet("color: #555555; font-size: 11px;")
         layout.addWidget(self._lbl_elapsed)
 
         # Thinking real-time panel — shows <think> tokens as they arrive
@@ -241,8 +241,8 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._txt_think.setReadOnly(True)
         self._txt_think.setMaximumHeight(80)
         self._txt_think.setStyleSheet(
-            "color: #9e9e9e; font-size: 10px; font-style: italic;"
-            "background: #f9f9f9; border: 1px solid #e0e0e0; padding: 2px;"
+            "color: #333333; font-size: 10px; font-style: italic;"
+            "background: #f0f0f0; border: 1px solid #cccccc; padding: 2px;"
         )
         self._txt_think.setPlaceholderText("Model reasoning will appear here...")
         self._txt_think.hide()
@@ -315,7 +315,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             return
         html = (
             f'<p style="text-align:center; margin:4px;">'
-            f'<span style="color:#888; font-size:11px; font-style:italic;">'
+            f'<span style="color:#555555; font-size:11px; font-style:italic;">'
             f"{self._escape(text)}</span></p>"
         )
         self._chat_display.append(html)
@@ -382,14 +382,14 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         # Also render in main chat as grey italic — eliminates the "silent" gap
         # before answer tokens arrive (first think token triggers immediate output)
         fmt_think = QTextCharFormat()
-        fmt_think.setForeground(QColor("#bdbdbd"))
+        fmt_think.setForeground(QColor("#444444"))
         fmt_think.setFontItalic(True)
         if self._think_cursor is None:
             # First think token: insert "💭 " header in main chat at current end
             cursor = self._chat_display.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
             fmt_hdr = QTextCharFormat()
-            fmt_hdr.setForeground(QColor("#9e9e9e"))
+            fmt_hdr.setForeground(QColor("#555555"))
             fmt_hdr.setFontItalic(True)
             cursor.insertText("\U0001f4ad ", fmt_hdr)
             self._think_cursor = QTextCursor(cursor)
