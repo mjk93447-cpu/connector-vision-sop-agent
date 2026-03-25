@@ -879,3 +879,106 @@ class TestUltralyticsTQDMPatch:
                 )
             # 그 외 AttributeError('closed', 'pos' 등)는 bare __new__ 객체의
             # 불완전한 초기화로 인한 것이므로 패치 검증 범위 밖 — 허용
+
+
+# ---------------------------------------------------------------------------
+# OOM guard tests (v3.5.1)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckMemoryRequirements:
+    def test_raises_when_ram_below_threshold(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_check_memory_requirements raises RuntimeError with English message when RAM < 1.5 GB."""
+        import psutil
+
+        from src.training.training_manager import TrainingManager
+
+        mock_mem = type("M", (), {"available": int(1.0 * 1024**3)})()
+        monkeypatch.setattr(psutil, "virtual_memory", lambda: mock_mem)
+
+        mgr = TrainingManager.__new__(TrainingManager)
+        with pytest.raises(RuntimeError, match="Insufficient memory"):
+            mgr._check_memory_requirements()
+
+    def test_no_raise_when_ram_sufficient(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_check_memory_requirements does not raise when RAM >= 1.5 GB."""
+        import psutil
+
+        from src.training.training_manager import TrainingManager
+
+        mock_mem = type("M", (), {"available": int(2.0 * 1024**3)})()
+        monkeypatch.setattr(psutil, "virtual_memory", lambda: mock_mem)
+
+        mgr = TrainingManager.__new__(TrainingManager)
+        mgr._check_memory_requirements()  # should not raise
+
+    def test_skips_check_when_psutil_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_check_memory_requirements silently skips when psutil is not installed."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def mock_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "psutil":
+                raise ImportError("psutil not installed")
+            return real_import(name, *args, **kwargs)
+
+        from src.training.training_manager import TrainingManager
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        mgr = TrainingManager.__new__(TrainingManager)
+        mgr._check_memory_requirements()  # should not raise
+
+
+class TestHandleTrainOom:
+    def test_converts_allocator_error_to_friendly_message(self) -> None:
+        """DefaultCPUAllocator error is re-raised with actionable English message."""
+        from src.training.training_manager import TrainingManager
+
+        exc = RuntimeError(
+            "DefaultCPUAllocator: not enough memory: you tried to allocate 393216 bytes"
+        )
+        with pytest.raises(RuntimeError, match="Reduce batch"):
+            TrainingManager._handle_train_oom(exc)
+
+    def test_converts_out_of_memory_error(self) -> None:
+        """Generic OOM error is re-raised with friendly message."""
+        from src.training.training_manager import TrainingManager
+
+        exc = RuntimeError("CUDA out of memory")
+        with pytest.raises(RuntimeError, match="CPU out of memory"):
+            TrainingManager._handle_train_oom(exc)
+
+    def test_re_raises_non_oom_errors_unchanged(self) -> None:
+        """Non-OOM RuntimeError is re-raised as-is."""
+        from src.training.training_manager import TrainingManager
+
+        exc = RuntimeError("some other error")
+        with pytest.raises(RuntimeError, match="some other error"):
+            TrainingManager._handle_train_oom(exc)
+
+    def test_error_message_is_english(self) -> None:
+        """OOM error message must be in English (no Korean characters)."""
+        from src.training.training_manager import TrainingManager
+
+        exc = RuntimeError("not enough memory")
+        try:
+            TrainingManager._handle_train_oom(exc)
+        except RuntimeError as e:
+            msg = str(e)
+            assert all(ord(c) < 0xAC00 or ord(c) > 0xD7A3 for c in msg), (
+                f"Error message contains Korean characters: {msg}"
+            )
+
+
+class TestBatchDefault:
+    def test_default_batch_is_2(self) -> None:
+        """train() default batch must be 2 (CPU-only safe default)."""
+        import inspect
+
+        from src.training.training_manager import TrainingManager
+
+        sig = inspect.signature(TrainingManager.train)
+        assert sig.parameters["batch"].default == 2, (
+            "Default batch must be 2 for CPU-only environments"
+        )

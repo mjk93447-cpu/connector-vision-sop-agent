@@ -98,7 +98,7 @@ class TrainingManager:
         dataset_yaml: str | Path,
         epochs: int = 10,
         image_size: int = 640,
-        batch: int = 4,
+        batch: int = 2,  # CPU-only default: smaller batch to avoid OOM
         base_model: Optional[str] = None,
         progress_cb: Optional[Callable[[int, int], None]] = None,
     ) -> Path:
@@ -187,6 +187,9 @@ class TrainingManager:
         # ------------------------------------------------------------------ #
         self._clean_stale_caches(dataset_yaml)
 
+        # Guard: sufficient RAM must be available for YOLO26x model init
+        self._check_memory_requirements()
+
         # Guard: model file must exist — never auto-download from GitHub
         if not Path(start_weights).exists():
             raise FileNotFoundError(
@@ -234,21 +237,24 @@ class TrainingManager:
         _orig_stderr = sys.stderr
         _log_file = training_log.open("w", encoding="utf-8", buffering=1)
         try:
-            sys.stdout = _TeeWriter(sys.stdout, _log_file)
+            self._apply_ultralytics_tqdm_patch()            # ① patch first
+            sys.stdout = _TeeWriter(sys.stdout, _log_file)  # ② then wrap
             sys.stderr = _TeeWriter(sys.stderr, _log_file)
-            self._apply_ultralytics_tqdm_patch()
-            results = model.train(
-                data=str(dataset_yaml),
-                epochs=epochs,
-                imgsz=image_size,
-                batch=batch,
-                device="cpu",
-                workers=0,  # single-process DataLoader (Windows multiprocessing fix)
-                exist_ok=True,  # overwrite previous run directory
-                rect=False,  # disable rectangular training
-                verbose=True,
-                plots=False,
-            )
+            try:
+                results = model.train(
+                    data=str(dataset_yaml),
+                    epochs=epochs,
+                    imgsz=image_size,
+                    batch=batch,
+                    device="cpu",
+                    workers=0,  # single-process DataLoader (Windows multiprocessing fix)
+                    exist_ok=True,  # overwrite previous run directory
+                    rect=False,  # disable rectangular training
+                    verbose=True,
+                    plots=False,
+                )
+            except RuntimeError as _oom_exc:
+                self._handle_train_oom(_oom_exc)
         finally:
             sys.stdout = _orig_stdout
             sys.stderr = _orig_stderr
@@ -372,14 +378,45 @@ class TrainingManager:
             def _safe_close(self: object) -> None:  # noqa: ANN001
                 if getattr(self, "file", None) is None:
                     import io as _io  # noqa: PLC0415
+                    import sys as _sys  # noqa: PLC0415 — re-read at call time (TeeWriter may be active)
 
-                    self.file = sys.stderr or sys.stdout or _io.StringIO()  # type: ignore[union-attr]
+                    self.file = _sys.stderr or _sys.stdout or _io.StringIO()  # type: ignore[union-attr]
                 _orig_close(self)  # type: ignore[call-arg]
 
             _UltTQDM.close = _safe_close  # type: ignore[method-assign]
             _UltTQDM._safe_close_patched = True  # type: ignore[attr-defined]
         except Exception:  # noqa: BLE001
             pass  # ultralytics 없거나 API 변경 시 무시 (방어적)
+
+    _MIN_FREE_GB: float = 1.5
+
+    def _check_memory_requirements(self) -> None:
+        """Raise early with a clear English message when RAM is insufficient."""
+        try:
+            import psutil  # noqa: PLC0415
+
+            free_gb = psutil.virtual_memory().available / (1024**3)
+            if free_gb < self._MIN_FREE_GB:
+                raise RuntimeError(
+                    f"Insufficient memory: {free_gb:.1f} GB available, "
+                    f"{self._MIN_FREE_GB} GB required. "
+                    "Close other applications or reduce batch size."
+                )
+        except ImportError:
+            pass  # psutil not installed — skip check
+
+    @staticmethod
+    def _handle_train_oom(exc: RuntimeError) -> None:
+        """Convert PyTorch CPU OOM errors into actionable English messages."""
+        msg = str(exc).lower()
+        if "not enough memory" in msg or "alloc" in msg or "out of memory" in msg:
+            raise RuntimeError(
+                "Training failed: CPU out of memory.\n"
+                "Fix: 1) Reduce batch to 1-2   "
+                "2) Close other apps   "
+                "3) Reduce image size 640 \u2192 320"
+            ) from exc
+        raise exc
 
     def _find_best_weights(self, results: object) -> Optional[Path]:
         """Locate ``best.pt`` from the training run results."""
