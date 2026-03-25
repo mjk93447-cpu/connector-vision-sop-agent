@@ -61,8 +61,8 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
         self._scale_y: float = 1.0
         self._orig_pixmap: Optional[Any] = None
         self._display_pixmap: Optional[Any] = None
-        self._drag_start: Optional[Any] = None
-        self._drag_end: Optional[Any] = None
+        self._click_start: Optional[Any] = None   # first click position (click-move-click)
+        self._hover_pos: Optional[Any] = None     # current mouse position for live preview
         self._manual_mode = False
         self._setup_ui()
 
@@ -71,7 +71,7 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
             return
         layout = QVBoxLayout(self)
 
-        header = QLabel("Drag to select ROI area. Press OK to confirm.")
+        header = QLabel("Click to set start point, move to preview, click again to confirm ROI.")
         layout.addWidget(header)
 
         btn_capture = QPushButton("📷 Capture")
@@ -86,7 +86,6 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
         self._img_label.setMouseTracking(True)
         self._img_label.mousePressEvent = self._on_mouse_press  # type: ignore[method-assign]
         self._img_label.mouseMoveEvent = self._on_mouse_move  # type: ignore[method-assign]
-        self._img_label.mouseReleaseEvent = self._on_mouse_release  # type: ignore[method-assign]
         layout.addWidget(self._img_label)
 
         self._coord_label = QLabel("x=0 y=0 w=0 h=0")
@@ -154,8 +153,8 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
             self._scale_y = orig_h / display_h
             self._display_pixmap = scaled
             self._img_label.setPixmap(scaled)
-            self._drag_start = None
-            self._drag_end = None
+            self._click_start = None
+            self._hover_pos = None
             self._roi = None
             self._coord_label.setText("x=0 y=0 w=0 h=0")
         except Exception:  # noqa: BLE001
@@ -169,45 +168,84 @@ class _RoiPickerDialog(QDialog):  # type: ignore[misc]
     def _on_mouse_press(self, event: Any) -> None:
         if not _QT_AVAILABLE or self._display_pixmap is None:
             return
-        self._drag_start = event.pos()
-        self._drag_end = event.pos()
+        self._handle_press(event.pos())
+        self._update_overlay()
 
     def _on_mouse_move(self, event: Any) -> None:
-        if not _QT_AVAILABLE or self._drag_start is None:
+        if not _QT_AVAILABLE or self._display_pixmap is None:
             return
-        self._drag_end = event.pos()
-        self._update_overlay()
+        self._hover_pos = event.pos()
+        if self._click_start is not None:   # only preview after first click
+            self._update_overlay()
 
-    def _on_mouse_release(self, event: Any) -> None:
-        if not _QT_AVAILABLE or self._drag_start is None:
-            return
-        self._drag_end = event.pos()
-        self._update_overlay()
-        self._compute_roi()
+    def _handle_press(self, pos: Any) -> None:
+        """Click-move-click state machine — pure logic, testable without Qt."""
+        if self._click_start is None:
+            self._click_start = pos          # first click: set start point
+        else:
+            self._compute_roi(self._click_start, pos)  # second click: finalize
+            self._click_start = None         # reset for next selection
 
     def _update_overlay(self) -> None:
         if not _QT_AVAILABLE or self._display_pixmap is None:
-            return
-        if self._drag_start is None or self._drag_end is None:
             return
         pixmap_copy = self._display_pixmap.copy()
         painter = QPainter(pixmap_copy)
         pen = QPen(Qt.GlobalColor.red)
         pen.setWidth(2)
-        painter.setPen(pen)
-        rect = QRect(self._drag_start, self._drag_end).normalized()
-        painter.drawRect(rect)
+        if self._click_start is not None and self._hover_pos is not None:
+            # First click set — show dashed preview rectangle while moving
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            rect = QRect(self._click_start, self._hover_pos).normalized()
+            painter.drawRect(rect)
+        elif self._roi is not None:
+            # ROI confirmed — show solid rectangle
+            pen.setStyle(Qt.PenStyle.SolidLine)
+            painter.setPen(pen)
+            # Re-draw in display coordinates
+            dx, dy, dw, dh = self._roi
+            # Convert back to display coords using scale and offset
+            pix_w = self._display_pixmap.width()
+            pix_h = self._display_pixmap.height()
+            ox = (self._img_label.width() - pix_w) // 2
+            oy = (self._img_label.height() - pix_h) // 2
+            rx = int(dx / self._scale_x) + ox
+            ry = int(dy / self._scale_y) + oy
+            rw = int(dw / self._scale_x)
+            rh = int(dh / self._scale_y)
+            painter.drawRect(QRect(rx, ry, rw, rh))
         painter.end()
         self._img_label.setPixmap(pixmap_copy)
 
-    def _compute_roi(self) -> None:
-        if not _QT_AVAILABLE or self._drag_start is None or self._drag_end is None:
+    def _compute_roi(self, start: Any, end: Any) -> None:
+        if self._display_pixmap is None:
             return
-        rect = QRect(self._drag_start, self._drag_end).normalized()
-        dx = int(rect.x() * self._scale_x)
-        dy = int(rect.y() * self._scale_y)
-        dw = int(rect.width() * self._scale_x)
-        dh = int(rect.height() * self._scale_y)
+        # Pure-Python normalized rect (no Qt dependency — keeps method testable headless)
+        x1, y1 = start.x(), start.y()
+        x2, y2 = end.x(), end.y()
+        left   = min(x1, x2)
+        top    = min(y1, y2)
+        width  = abs(x2 - x1)
+        height = abs(y2 - y1)
+
+        # Centering offsets: KeepAspectRatio may leave margins around the pixmap
+        pix_w = self._display_pixmap.width()
+        pix_h = self._display_pixmap.height()
+        ox = (self._img_label.width() - pix_w) // 2
+        oy = (self._img_label.height() - pix_h) // 2
+
+        # Strip centering offset, clamp to pixmap bounds
+        rx = max(0, left - ox)
+        ry = max(0, top - oy)
+        rw = min(width,  pix_w - rx)
+        rh = min(height, pix_h - ry)
+
+        # Scale to original screen coordinates
+        dx = int(rx * self._scale_x)
+        dy = int(ry * self._scale_y)
+        dw = int(rw * self._scale_x)
+        dh = int(rh * self._scale_y)
         self._roi = (dx, dy, dw, dh)
         self._coord_label.setText(f"x={dx} y={dy} w={dw} h={dh}")
 
