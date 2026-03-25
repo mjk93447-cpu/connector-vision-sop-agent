@@ -739,3 +739,75 @@ class TestScanAllRoi:
         engine.find_text(img, "LOGIN", roi=roi)
         assert len(scan_all_calls) == 1
         assert scan_all_calls[0] == roi
+
+
+# ---------------------------------------------------------------------------
+# Large-font detection tests (v3.5.1)
+# ---------------------------------------------------------------------------
+
+
+class TestPreprocessVariantsV5:
+    def _make_engine(self) -> OCREngine:
+        return OCREngine(backend="paddleocr")
+
+    def test_returns_five_variants(self) -> None:
+        """_preprocess_variants must return 5 variants (V1-V4 existing + V5 upscale)."""
+        img = np.zeros((60, 200, 3), dtype=np.uint8)
+        variants = OCREngine._preprocess_variants(img)
+        assert len(variants) == 5, f"Expected 5 variants, got {len(variants)}"
+
+    def test_v5_is_2x_upscaled(self) -> None:
+        """V5 (index 4) must be 2× upscaled compared to original + padding."""
+        h, w = 60, 200
+        img = np.zeros((h, w, 3), dtype=np.uint8)
+        variants = OCREngine._preprocess_variants(img)
+        v5 = variants[4]
+        pad = 4
+        expected_h = h * 2 + 2 * pad
+        expected_w = w * 2 + 2 * pad
+        assert v5.shape[0] == expected_h, f"V5 height {v5.shape[0]} != {expected_h}"
+        assert v5.shape[1] == expected_w, f"V5 width {v5.shape[1]} != {expected_w}"
+
+    def test_v5_is_3_channel(self) -> None:
+        """V5 must be BGR (3-channel) like other variants."""
+        img = np.zeros((40, 100, 3), dtype=np.uint8)
+        variants = OCREngine._preprocess_variants(img)
+        assert variants[4].ndim == 3 and variants[4].shape[2] == 3
+
+
+class TestFindTextSpaceNormalization:
+    def _make_engine(self) -> OCREngine:
+        return OCREngine(backend="paddleocr")
+
+    def test_log_in_matches_login(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Query 'LOG IN' must match OCR result 'LOGIN' (space normalization)."""
+        engine = self._make_engine()
+        fake = TextRegion(
+            text="LOGIN", bbox=(10, 10, 80, 30), center=(50, 25), confidence=0.9, source="easyocr"
+        )
+        monkeypatch.setattr(engine, "scan_all", lambda img, roi=None: [fake])
+        img = np.zeros((100, 300, 3), dtype=np.uint8)
+        result = engine.find_text(img, "LOG IN")
+        assert result is not None, "'LOG IN' query must match 'LOGIN' OCR result"
+
+    def test_login_matches_log_in(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Query 'LOGIN' must match OCR result 'LOG IN' (space normalization, reverse)."""
+        engine = self._make_engine()
+        fake = TextRegion(
+            text="LOG IN", bbox=(10, 10, 80, 30), center=(50, 25), confidence=0.9, source="easyocr"
+        )
+        monkeypatch.setattr(engine, "scan_all", lambda img, roi=None: [fake])
+        img = np.zeros((100, 300, 3), dtype=np.uint8)
+        result = engine.find_text(img, "LOGIN")
+        assert result is not None, "'LOGIN' query must match 'LOG IN' OCR result"
+
+    def test_exact_match_still_works(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Normal exact matching still works after adding space normalization."""
+        engine = self._make_engine()
+        fake = TextRegion(
+            text="Submit", bbox=(10, 10, 80, 30), center=(50, 25), confidence=0.9, source="easyocr"
+        )
+        monkeypatch.setattr(engine, "scan_all", lambda img, roi=None: [fake])
+        img = np.zeros((100, 300, 3), dtype=np.uint8)
+        result = engine.find_text(img, "submit")
+        assert result is not None

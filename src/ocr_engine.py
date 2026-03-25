@@ -181,12 +181,17 @@ class OCREngine:
         best_score = 0.0
 
         t_upper = target.upper().strip()
+        t_nospace = t_upper.replace(" ", "")  # "LOG IN" → "LOGIN"
         for r in regions:
             r_upper = r.text.upper().strip()
+            r_nospace = r_upper.replace(" ", "")
             if fuzzy:
-                score = difflib.SequenceMatcher(None, t_upper, r_upper).ratio()
+                score = max(
+                    difflib.SequenceMatcher(None, t_upper, r_upper).ratio(),
+                    difflib.SequenceMatcher(None, t_nospace, r_nospace).ratio(),
+                )
             else:
-                score = 1.0 if t_upper == r_upper else 0.0
+                score = 1.0 if (t_upper == r_upper or t_nospace == r_nospace) else 0.0
 
             if score >= thr and score > best_score:
                 best_score = score
@@ -684,5 +689,11 @@ class OCREngine:
         # V4: Inverted OTSU — for white/light text on dark or colored backgrounds
         inverted = cv2.bitwise_not(otsu)
         variants.append(_to_bgr_padded(inverted))
+
+        # V5: 2× bicubic upscale + OTSU — for large-font / button text (e.g. "LOG IN")
+        h, w = gray.shape[:2]
+        upscaled = cv2.resize(gray, (int(w * 2), int(h * 2)), interpolation=cv2.INTER_CUBIC)
+        _, v5_bin = cv2.threshold(upscaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        variants.append(_to_bgr_padded(v5_bin))
 
         return variants
