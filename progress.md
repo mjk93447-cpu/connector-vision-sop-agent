@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-19 (v3.2.8 — Training tqdm NoneType 수정 + VisionEngine 연동)_
+_최종 갱신: 2026-03-25 (v3.6.0 — 필드 테스트 7개 이슈 수정 완료)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -38,6 +38,7 @@ _최종 갱신: 2026-03-19 (v3.2.8 — Training tqdm NoneType 수정 + VisionEng
 | **LLM 헬스체크 수정 (v3.2.6)** | **_HEALTH_TIMEOUT 1.5→5s + on_llm_send() 헬스체크 비치명적 처리 (네트워크드라이브/RAM 부족 환경)** | **454 pass** | — |
 | **법인 프록시 우회 (v3.2.7)** | **session.trust_env=False + proxies bypass + _HEALTH_TIMEOUT 30s + start_agent.bat NO_PROXY 설정** | **456 pass** | — |
 | **Training tqdm NoneType 수정 (v3.2.8)** | **verbose=False→True (tqdm disable 방지) + main_window.py set_vision_engine() 연결** | **458 pass** | — |
+| **v3.6.0** | **필드 테스트 7개 이슈 수정 (ROI/OCR/LLM/색상/Training)** | **554 pass** | **92%+** |
 
 ## 현재 스택 (v3.2.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)

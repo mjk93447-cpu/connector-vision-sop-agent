@@ -46,7 +46,7 @@ from src.gui.panels.training_panel import TrainingPanel
 from src.gui.panels.vision_panel import VisionPanel
 from src.gui.workers import AnalysisWorker, LLMStreamWorker, LLMWorker, SopWorker
 
-_APP_VERSION = "3.5.1"
+_APP_VERSION = "3.6.0"
 
 
 class MainWindow(QMainWindow):  # type: ignore[misc]

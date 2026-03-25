@@ -8,13 +8,13 @@
 
 | # | Issue | Severity | File | Status |
 |---|-------|----------|------|--------|
-| 1 | ROI drag-and-drop awkward + coordinate mismatch | 🔴 High | sop_editor_panel.py | Fix planned |
-| 2 | "LOG IN" button not detected (large font, uppercase, space) | 🔴 High | ocr_engine.py | Fix planned |
-| 3 | Think tokens invisible (color contrast too low) | 🟡 Medium | llm_panel.py | Fix planned |
-| 4 | Poor color contrast in some Windows display setups | 🟡 Medium | multiple panels | Fix planned |
-| 5 | LLM answer delay — burst output when next prompt entered | 🔴 High | llm_panel.py | Fix planned |
-| 6 | New prompt during generation causes collision/stop | 🔴 High | llm_panel.py | Fix planned |
-| 7 | Training crash: tqdm NoneType + CPU OOM | 🔴 High | training_manager.py | Fix planned |
+| 1 | ROI drag-and-drop awkward + coordinate mismatch | 🔴 High | sop_editor_panel.py | ✅ Fixed (v3.6.0) |
+| 2 | "LOG IN" button not detected (large font, uppercase, space) | 🔴 High | ocr_engine.py | ✅ Fixed (v3.6.0) |
+| 3 | Think tokens invisible (color contrast too low) | 🟡 Medium | llm_panel.py | ✅ Fixed (v3.6.0) |
+| 4 | Poor color contrast in some Windows display setups | 🟡 Medium | multiple panels | ✅ Fixed (v3.6.0) |
+| 5 | LLM answer delay — burst output when next prompt entered | 🔴 High | llm_panel.py | ✅ Fixed (v3.6.0) |
+| 6 | New prompt during generation causes collision/stop | 🔴 High | llm_panel.py | ✅ Fixed (v3.6.0) |
+| 7 | Training crash: tqdm NoneType + CPU OOM | 🔴 High | training_manager.py | ✅ Fixed (v3.6.0) |
 
 ## Root Causes
 
