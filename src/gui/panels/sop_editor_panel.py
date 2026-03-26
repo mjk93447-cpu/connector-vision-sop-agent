@@ -91,6 +91,11 @@ class _RoiOverlayWindow(QWidget):  # type: ignore[misc]
         screen = QApplication.primaryScreen()
         self.setGeometry(screen.geometry())
 
+        # Fix 2: exec()-로 실행 중인 ApplicationModal 다이얼로그가 이 창을
+        # 차단하지 못하도록, 오버레이 자체를 최상위 ApplicationModal로 승격.
+        # → Qt 모달 스택에서 오버레이가 최상위가 되어 마우스/키보드 이벤트 수신 가능.
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+
     # ------------------------------------------------------------------
     # Coordinate state machine — pure Python, testable headless
     # ------------------------------------------------------------------
@@ -359,6 +364,10 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         self.setMinimumWidth(420)
         self._step = step or {}
         self._roi: Optional[Tuple[int, int, int, int]] = None
+        # Fix 1: 오버레이를 인스턴스 속성으로 유지 — 지역 변수면 함수 리턴 즉시 GC 소멸
+        self._overlay: Optional[Any] = None
+        # Fix 3: ROI 선택 중 숨긴 MainWindow 참조 보관 (복원용)
+        self._roi_main_win: Optional[Any] = None
         # Load existing ROI from step if present
         existing_roi = self._step.get("roi")
         if existing_roi and len(existing_roi) == 4:
@@ -547,8 +556,19 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
 
     def _on_roi_confirmed(self, x: int, y: int, w: int, h: int) -> None:
         """Called when overlay emits roi_confirmed signal."""
-        self.window().show()
-        self.window().raise_()
+        # Fix 1: 오버레이 참조 해제 → GC 허용 (이미 close() 완료 상태)
+        self._overlay = None
+
+        # Fix 3b: MainWindow 먼저 복원 → 그 다음 dialog show/raise
+        if self._roi_main_win is not None:
+            self._roi_main_win.show()
+            self._roi_main_win.raise_()
+            self._roi_main_win = None
+
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
         # Block signals while setting to prevent double-sync
         for spin in (self._spin_x, self._spin_y, self._spin_w, self._spin_h):
             spin.blockSignals(True)
@@ -562,17 +582,41 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
 
     def _on_roi_cancelled(self) -> None:
         """Called when overlay emits roi_cancelled signal."""
-        self.window().show()
-        self.window().raise_()
+        # Fix 1: 오버레이 참조 해제 → GC 허용
+        self._overlay = None
+
+        # Fix 3b: MainWindow 복원 → dialog 복원
+        if self._roi_main_win is not None:
+            self._roi_main_win.show()
+            self._roi_main_win.raise_()
+            self._roi_main_win = None
+
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def _on_pick_roi(self) -> None:
         if not _QT_AVAILABLE:
             return
-        self.window().hide()
-        overlay = _RoiOverlayWindow(parent=None)
-        overlay.roi_confirmed.connect(self._on_roi_confirmed)
-        overlay.roi_cancelled.connect(self._on_roi_cancelled)
-        overlay.show()
+
+        # Fix 3a: MainWindow 참조를 찾아 보관 (parent 체인을 따라 최상위 창 탐색).
+        # _StepEditDialog.parent() == SopEditorPanel (비-window 위젯)이므로
+        # isWindow()가 True가 되는 조상을 찾으면 MainWindow.
+        p: Any = self.parent()
+        while p is not None and not p.isWindow():
+            p = p.parent() if callable(getattr(p, "parent", None)) else None
+        self._roi_main_win = p  # MainWindow 또는 None
+
+        # 두 창 모두 숨기기 (QDialog 자신 + MainWindow)
+        self.hide()  # self.window() == self (QDialog는 isWindow()==True)
+        if self._roi_main_win is not None:
+            self._roi_main_win.hide()
+
+        # Fix 1: self._overlay에 저장 — 지역 변수로 두면 함수 리턴 시 GC가 즉시 소멸
+        self._overlay = _RoiOverlayWindow(parent=None)
+        self._overlay.roi_confirmed.connect(self._on_roi_confirmed)
+        self._overlay.roi_cancelled.connect(self._on_roi_cancelled)
+        self._overlay.show()
 
     def _on_accept(self) -> None:
         if not _QT_AVAILABLE:
@@ -793,10 +837,18 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
         dlg = _StepEditDialog(parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            self._steps.append(dlg.get_step())
-            self._dirty = True
-            self._refresh_table()
+        # Use open() instead of exec() so the event loop is NOT blocked.
+        # exec() + self.hide() inside the dialog caused Windows to send
+        # WM_CLOSE to the hidden modal → QDialog.done(Rejected) →
+        # entire app quit (setQuitOnLastWindowClosed default=True).
+        dlg.accepted.connect(lambda: self._on_add_accepted(dlg))
+        dlg.open()
+
+    def _on_add_accepted(self, dlg: "_StepEditDialog") -> None:
+        """Slot called when the Add dialog is accepted."""
+        self._steps.append(dlg.get_step())
+        self._dirty = True
+        self._refresh_table()
 
     def _on_edit(self) -> None:
         if not _QT_AVAILABLE:
@@ -805,7 +857,13 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         if row < 0:
             return
         dlg = _StepEditDialog(step=self._steps[row], parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        # Non-blocking open() — see _on_add for explanation.
+        dlg.accepted.connect(lambda: self._on_edit_accepted(dlg, row))
+        dlg.open()
+
+    def _on_edit_accepted(self, dlg: "_StepEditDialog", row: int) -> None:
+        """Slot called when the Edit dialog is accepted."""
+        if 0 <= row < len(self._steps):
             self._steps[row] = dlg.get_step()
             self._dirty = True
             self._refresh_table()

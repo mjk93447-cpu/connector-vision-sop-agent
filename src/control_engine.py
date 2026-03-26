@@ -348,6 +348,70 @@ class ControlEngine:
                 error=str(exc),
             )
 
+    def press_key(self, key: str) -> ControlResult:
+        """Press a single keyboard key (e.g. ``'enter'``, ``'tab'``, ``'escape'``).
+
+        Parameters
+        ----------
+        key:
+            pyautogui key name (see ``pyautogui.KEY_NAMES``).
+        """
+        start = time.perf_counter()
+        try:
+            self._ensure_pyautogui_available()
+            pyautogui.press(key)
+            duration = time.perf_counter() - start
+            return ControlResult(success=True, coords=None, duration=duration)
+        except Exception as exc:  # pragma: no cover - defensive guard.
+            duration = time.perf_counter() - start
+            return ControlResult(
+                success=False,
+                coords=None,
+                duration=duration,
+                error=str(exc),
+            )
+
+    def type_text(
+        self,
+        text: str,
+        interval: float = 0.05,
+        clear_first: bool = False,
+    ) -> ControlResult:
+        """Type *text* at the current cursor position using ``pyautogui.write()``.
+
+        Suitable for ASCII input (coordinates, numeric passwords, IDs).
+        For non-ASCII text, the caller should use the clipboard approach instead.
+
+        Parameters
+        ----------
+        text:
+            String to type (e.g. ``"1111"``, ``"0"``).
+        interval:
+            Delay between keystrokes in seconds (default 0.05 s).
+        clear_first:
+            If ``True``, ``Ctrl+A`` then ``Delete`` before typing so existing
+            content is replaced rather than appended.
+        """
+        start = time.perf_counter()
+        try:
+            self._ensure_pyautogui_available()
+            if clear_first:
+                pyautogui.hotkey("ctrl", "a")
+                time.sleep(0.1)
+                pyautogui.press("delete")
+                time.sleep(0.1)
+            pyautogui.write(text, interval=interval)
+            duration = time.perf_counter() - start
+            return ControlResult(success=True, coords=None, duration=duration)
+        except Exception as exc:  # pragma: no cover - defensive guard.
+            duration = time.perf_counter() - start
+            return ControlResult(
+                success=False,
+                coords=None,
+                duration=duration,
+                error=str(exc),
+            )
+
     def click_target(
         self,
         target_name: str,

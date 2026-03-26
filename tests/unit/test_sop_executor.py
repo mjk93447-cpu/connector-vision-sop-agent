@@ -206,3 +206,313 @@ class TestSopExecutorRoi:
 
         assert success is False
         assert "not found" in msg or "click" in msg.lower()
+
+    def test_unknown_step_type_returns_false(self, executor: SopExecutor) -> None:
+        """Unknown step type must return (False, message)."""
+        step = {"id": "x", "name": "X", "type": "teleport"}
+        success, msg = executor.run_step(step)
+        assert success is False
+        assert "teleport" in msg
+
+
+# ---------------------------------------------------------------------------
+# New step types: auth_sequence / input_text / mold_setup (v3.8)
+# ---------------------------------------------------------------------------
+
+
+class TestAuthSequence:
+    """auth_sequence type: LOGIN click → PW field click → type_text → OK/Enter."""
+
+    def test_auth_sequence_success(self, executor: SopExecutor) -> None:
+        """All sub-steps succeed → run_step returns (True, ...)."""
+        step = {
+            "id": "login",
+            "name": "Login",
+            "type": "auth_sequence",
+            "login_button": "login_button",
+            "password_field": "password_field",
+            "ok_button": "ok_button",
+        }
+        from src.control_engine import ControlResult
+
+        ok_click = ControlResult(success=True, coords=(10, 20), duration=0.01)
+        ok_type = ControlResult(success=True, coords=None, duration=0.01)
+        ok_press = ControlResult(success=True, coords=None, duration=0.01)
+
+        executor.control.click_target = MagicMock(return_value=ok_click)
+        executor.control.type_text = MagicMock(return_value=ok_type)
+        executor.control.press_key = MagicMock(return_value=ok_press)
+
+        success, msg = executor.run_step(step)
+
+        assert success is True
+        # type_text called once with password
+        executor.control.type_text.assert_called_once()
+        args = executor.control.type_text.call_args
+        assert args[0][0] == "1111"  # default password
+
+    def test_auth_sequence_login_fail(self, executor: SopExecutor) -> None:
+        """If LOGIN button not found → return (False, ...)."""
+        step = {
+            "id": "login",
+            "name": "Login",
+            "type": "auth_sequence",
+            "login_button": "login_button",
+            "password_field": "password_field",
+            "ok_button": "ok_button",
+        }
+        fail_click = _fail_result()
+
+        executor.control.click_target = MagicMock(return_value=fail_click)
+        executor.control.type_text = MagicMock()
+        executor.control.press_key = MagicMock()
+
+        success, msg = executor.run_step(step)
+
+        assert success is False
+        assert "LOGIN" in msg or "login" in msg.lower()
+        executor.control.type_text.assert_not_called()
+
+    def test_auth_sequence_reads_password_from_config(self) -> None:
+        """password read from config['password'], not hardcoded."""
+        from unittest.mock import patch, MagicMock
+        from src.vision_engine import DetectionConfig, VisionEngine
+        from src.control_engine import ControlEngine, ControlResult
+
+        with patch.object(VisionEngine, "_load_model", return_value=None):
+            v = VisionEngine(DetectionConfig(confidence_threshold=0.5))
+        with patch("src.control_engine.ClassRegistry") as mock_cls:
+            mock_cls.load.return_value = MagicMock()
+            ctrl = ControlEngine(vision_agent=v)
+
+        executor = SopExecutor(
+            vision=v,
+            control=ctrl,
+            config={"password": "9999"},
+        )
+
+        ok = ControlResult(success=True, coords=(1, 2), duration=0.01)
+        executor.control.click_target = MagicMock(return_value=ok)
+        executor.control.type_text = MagicMock(
+            return_value=ControlResult(success=True, coords=None, duration=0.01)
+        )
+        executor.control.press_key = MagicMock(
+            return_value=ControlResult(success=True, coords=None, duration=0.01)
+        )
+
+        step = {
+            "id": "login",
+            "name": "Login",
+            "type": "auth_sequence",
+            "login_button": "login_button",
+            "password_field": "password_field",
+            "ok_button": "ok_button",
+        }
+        success, _ = executor.run_step(step)
+        assert success is True
+        typed_text = executor.control.type_text.call_args[0][0]
+        assert typed_text == "9999"
+
+
+class TestInputText:
+    """input_text type: click field → type_text → press Enter."""
+
+    def test_input_text_success(self, executor: SopExecutor) -> None:
+        from src.control_engine import ControlResult
+
+        step = {
+            "id": "axis_x",
+            "name": "Axis-X",
+            "type": "input_text",
+            "target": "axis_x_field",
+            "text": "123",
+            "clear_first": True,
+        }
+        ok_click = ControlResult(success=True, coords=(50, 60), duration=0.01)
+        ok_type = ControlResult(success=True, coords=None, duration=0.01)
+        ok_press = ControlResult(success=True, coords=None, duration=0.01)
+
+        executor.control.click_target = MagicMock(return_value=ok_click)
+        executor.control.type_text = MagicMock(return_value=ok_type)
+        executor.control.press_key = MagicMock(return_value=ok_press)
+
+        success, msg = executor.run_step(step)
+
+        assert success is True
+        executor.control.type_text.assert_called_once()
+        call_args = executor.control.type_text.call_args
+        assert call_args[0][0] == "123"
+        assert call_args[1].get("clear_first") is True
+        # Enter pressed after typing
+        executor.control.press_key.assert_called_with("enter")
+
+    def test_input_text_field_not_found(self, executor: SopExecutor) -> None:
+        step = {
+            "id": "axis_y",
+            "name": "Axis-Y",
+            "type": "input_text",
+            "target": "axis_y_field",
+            "text": "0",
+        }
+        executor.control.click_target = MagicMock(return_value=_fail_result())
+        executor.control.type_text = MagicMock()
+
+        success, msg = executor.run_step(step)
+
+        assert success is False
+        assert "axis_y_field" in msg
+        executor.control.type_text.assert_not_called()
+
+    def test_input_text_default_text_is_zero(self, executor: SopExecutor) -> None:
+        from src.control_engine import ControlResult
+
+        step = {
+            "id": "axis_x",
+            "name": "Axis-X",
+            "type": "input_text",
+            "target": "axis_x_field",
+            # no 'text' key → should default to "0"
+        }
+        ok = ControlResult(success=True, coords=(1, 2), duration=0.01)
+        executor.control.click_target = MagicMock(return_value=ok)
+        executor.control.type_text = MagicMock(return_value=ok)
+        executor.control.press_key = MagicMock(return_value=ok)
+
+        success, _ = executor.run_step(step)
+        assert success is True
+        assert executor.control.type_text.call_args[0][0] == "0"
+
+
+class TestMoldSetup:
+    """mold_setup type: click label → drag ROI."""
+
+    def test_mold_setup_success(self, executor: SopExecutor) -> None:
+        from src.control_engine import ControlResult
+
+        step = {
+            "id": "mold_left",
+            "name": "Mold Left",
+            "type": "mold_setup",
+            "label_target": "mold_left_label",
+            "drag_start": [100, 200],
+            "drag_end": [800, 350],
+            "roi": [0, 0, 960, 1080],
+        }
+        ok_click = ControlResult(success=True, coords=(10, 20), duration=0.01)
+        ok_drag = ControlResult(success=True, coords=(800, 350), duration=0.05)
+
+        executor.control.click_target = MagicMock(return_value=ok_click)
+        executor.control.drag_roi = MagicMock(return_value=ok_drag)
+
+        success, msg = executor.run_step(step)
+
+        assert success is True
+        executor.control.click_target.assert_called_once()
+        executor.control.drag_roi.assert_called_once_with((100, 200), (800, 350))
+
+    def test_mold_setup_label_fail_skips_drag(self, executor: SopExecutor) -> None:
+        step = {
+            "id": "mold_right",
+            "name": "Mold Right",
+            "type": "mold_setup",
+            "label_target": "mold_right_label",
+            "drag_start": [100, 200],
+            "drag_end": [800, 350],
+        }
+        executor.control.click_target = MagicMock(return_value=_fail_result())
+        executor.control.drag_roi = MagicMock()
+
+        success, msg = executor.run_step(step)
+
+        assert success is False
+        assert "mold_right_label" in msg
+        executor.control.drag_roi.assert_not_called()
+
+    def test_mold_setup_drag_fail(self, executor: SopExecutor) -> None:
+        from src.control_engine import ControlResult
+
+        step = {
+            "id": "mold_left",
+            "name": "Mold Left",
+            "type": "mold_setup",
+            "label_target": "mold_left_label",
+            "drag_start": [100, 200],
+            "drag_end": [800, 350],
+        }
+        ok_click = ControlResult(success=True, coords=(10, 20), duration=0.01)
+        fail_drag = ControlResult(
+            success=False, coords=None, duration=0.01, error="drag error"
+        )
+
+        executor.control.click_target = MagicMock(return_value=ok_click)
+        executor.control.drag_roi = MagicMock(return_value=fail_drag)
+
+        success, msg = executor.run_step(step)
+
+        assert success is False
+        assert "drag" in msg.lower()
+
+
+class TestNewStepFallback:
+    """get_steps() fallback includes all new step IDs."""
+
+    def test_fallback_has_40_steps(self, executor: SopExecutor) -> None:
+        # v3.9: fallback expanded to 40 atomic steps
+        from pathlib import Path
+
+        executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
+        steps = executor.get_steps()
+        assert len(steps) == 40
+
+    def test_fallback_has_login_click_steps(self, executor: SopExecutor) -> None:
+        """v3.9: login is now 4 atomic steps instead of 1 auth_sequence."""
+        from pathlib import Path
+
+        executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
+        steps = executor.get_steps()
+        ids = [s["id"] for s in steps]
+        assert "login_click_btn" in ids
+        assert "login_type_password" in ids
+        assert "login_confirm" in ids
+
+    def test_fallback_has_axis_steps(self, executor: SopExecutor) -> None:
+        """v3.9: axis steps are now atomic click + type_text + press_key."""
+        from pathlib import Path
+
+        executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
+        steps = executor.get_steps()
+        ids = [s["id"] for s in steps]
+        assert "axis_x_click_field" in ids
+        assert "axis_x_type_value" in ids
+        assert "axis_y_click_field" in ids
+        assert "axis_y_type_value" in ids
+
+    def test_fallback_has_verify_steps(self, executor: SopExecutor) -> None:
+        """v3.9: verify steps expanded to navigate + wait + confirm."""
+        from pathlib import Path
+
+        executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
+        steps = executor.get_steps()
+        ids = [s["id"] for s in steps]
+        assert "verify_left_confirm" in ids
+        assert "verify_right_confirm" in ids
+
+    def test_fallback_no_image_source(self, executor: SopExecutor) -> None:
+        """image_source was removed from standard SOP in v3.8."""
+        from pathlib import Path
+
+        executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
+        steps = executor.get_steps()
+        ids = [s["id"] for s in steps]
+        assert "image_source" not in ids
+
+    def test_password_default(self, executor: SopExecutor) -> None:
+        assert executor._password == "1111"
+
+    def test_password_from_config(self) -> None:
+        from unittest.mock import MagicMock
+
+        v = MagicMock()
+        c = MagicMock()
+        executor = SopExecutor(vision=v, control=c, config={"password": "5678"})
+        assert executor._password == "5678"

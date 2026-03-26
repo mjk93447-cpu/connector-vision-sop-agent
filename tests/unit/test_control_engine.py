@@ -468,3 +468,93 @@ class TestNonTextAndRoi:
             result = ctrl._resolve_target_coordinates("mold_left_label", image=img)
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# type_text and press_key tests (v3.8)
+# ---------------------------------------------------------------------------
+
+
+class TestTypeText:
+    """ControlEngine.type_text() — pyautogui.write wrapper."""
+
+    def test_type_text_calls_write(self, engine: ControlEngine) -> None:
+        """type_text should call pyautogui.write with the given text."""
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            result = engine.type_text("1111", interval=0.05)
+
+        mock_pag.write.assert_called_once_with("1111", interval=0.05)
+        assert result.success is True
+        assert result.coords is None
+
+    def test_type_text_clear_first(self, engine: ControlEngine) -> None:
+        """clear_first=True triggers Ctrl+A then Delete before writing."""
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            engine.type_text("abc", clear_first=True)
+
+        mock_pag.hotkey.assert_called_once_with("ctrl", "a")
+        assert mock_pag.press.call_args_list[0][0][0] == "delete"
+        mock_pag.write.assert_called_once_with("abc", interval=0.05)
+
+    def test_type_text_no_clear_by_default(self, engine: ControlEngine) -> None:
+        """clear_first=False (default) — hotkey must not be called."""
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            engine.type_text("xyz")
+
+        mock_pag.hotkey.assert_not_called()
+        mock_pag.write.assert_called_once()
+
+    def test_type_text_returns_failure_on_exception(
+        self, engine: ControlEngine
+    ) -> None:
+        """If pyautogui.write raises, result.success must be False."""
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            mock_pag.write.side_effect = RuntimeError("no display")
+            result = engine.type_text("1111")
+
+        assert result.success is False
+        assert "no display" in result.error
+
+    def test_type_text_unavailable_pyautogui(self, vision: VisionEngine) -> None:
+        """When pyautogui is None, type_text must raise RuntimeError."""
+        ctrl = ControlEngine(vision_agent=vision)
+        import src.control_engine as ce_module
+
+        original = ce_module.pyautogui
+        try:
+            ce_module.pyautogui = None  # type: ignore[assignment]
+            ce_module.PYAUTOGUI_IMPORT_ERROR = RuntimeError("missing")
+            result = ctrl.type_text("hi")
+        finally:
+            ce_module.pyautogui = original
+            ce_module.PYAUTOGUI_IMPORT_ERROR = None
+
+        assert result.success is False
+
+
+class TestPressKey:
+    """ControlEngine.press_key() — pyautogui.press wrapper."""
+
+    def test_press_key_calls_press(self, engine: ControlEngine) -> None:
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            result = engine.press_key("enter")
+
+        mock_pag.press.assert_called_once_with("enter")
+        assert result.success is True
+        assert result.coords is None
+
+    def test_press_key_tab(self, engine: ControlEngine) -> None:
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            engine.press_key("tab")
+
+        mock_pag.press.assert_called_once_with("tab")
+
+    def test_press_key_returns_failure_on_exception(
+        self, engine: ControlEngine
+    ) -> None:
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            mock_pag.press.side_effect = RuntimeError("oops")
+            result = engine.press_key("enter")
+
+        assert result.success is False
+        assert "oops" in result.error
