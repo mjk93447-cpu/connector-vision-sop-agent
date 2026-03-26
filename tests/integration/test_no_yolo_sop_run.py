@@ -46,6 +46,10 @@ def _make_mock_control() -> Any:
     ok_drag = MagicMock(success=True, duration=0.2, error=None)
     ctrl.click_target.return_value = ok_click
     ctrl.drag_roi.return_value = ok_drag
+    ok_type = MagicMock(success=True, coords=None, duration=0.01, error=None)
+    ok_key = MagicMock(success=True, coords=None, duration=0.005, error=None)
+    ctrl.type_text.return_value = ok_type
+    ctrl.press_key.return_value = ok_key
     return ctrl
 
 
@@ -177,7 +181,10 @@ class TestSopRunNoYolo:
         executor.run_step(
             {"id": "login", "name": "Login", "type": "click", "target": "login_button"}
         )
-        executor.control.click_target.assert_called_once_with("login_button")
+        # click_target is called with positional target name + keyword args
+        executor.control.click_target.assert_called_once_with(
+            "login_button", roi=None, step_id="login", target_type=None
+        )
 
     def test_control_drag_called_for_drag_steps(self, tmp_path: Path) -> None:
         """Verify ControlEngine.drag_roi() is called for 'drag' type steps."""

@@ -97,8 +97,9 @@ class TestGetSteps:
         assert len(steps) == 12  # built-in has 12 steps
         ids = [s["id"] for s in steps]
         assert "login" in ids
-        assert "in_pin_up" in ids
-        assert "apply_and_open" in ids
+        # v3.8: renamed steps
+        assert "pin_scan" in ids  # was in_pin_up
+        assert "apply" in ids  # was apply_and_open
 
     def test_corrupted_file_returns_builtin_fallback(self, tmp_path: Path) -> None:
         steps_path = tmp_path / "sop_steps.json"
@@ -342,7 +343,16 @@ class TestSopStepsJsonSchema:
             ), f"step {step['id']} not enabled by default"
 
     def test_step_types_valid(self) -> None:
-        valid_types = {"click", "drag", "validate_pins", "click_sequence"}
+        # v3.8: auth_sequence / input_text / mold_setup added
+        valid_types = {
+            "click",
+            "drag",
+            "validate_pins",
+            "click_sequence",
+            "auth_sequence",
+            "input_text",
+            "mold_setup",
+        }
         data = json.loads(self._path.read_text(encoding="utf-8"))
         for step in data["steps"]:
             assert (
