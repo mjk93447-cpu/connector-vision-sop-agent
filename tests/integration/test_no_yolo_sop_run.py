@@ -111,17 +111,18 @@ class TestSopRunNoYolo:
             sop_steps_path=tmp_path / "nonexistent_sop_steps.json",
         )
 
-    def test_get_steps_returns_12_builtin_fallback(self, tmp_path: Path) -> None:
+    def test_get_steps_returns_40_builtin_fallback(self, tmp_path: Path) -> None:
         executor = self._make_executor(tmp_path)
         steps = executor.get_steps()
-        assert len(steps) == 12
+        assert len(steps) == 40
 
     def test_all_step_types_execute_successfully(self, tmp_path: Path) -> None:
         executor = self._make_executor(tmp_path)
         steps = executor.get_steps()
-        for step in steps:
-            ok, msg = executor.run_step(step)
-            assert ok is True, f"Step '{step['id']}' failed: {msg}"
+        with patch("time.sleep"):  # skip real waits in wait_ms steps
+            for step in steps:
+                ok, msg = executor.run_step(step)
+                assert ok is True, f"Step '{step['id']}' failed: {msg}"
 
     def test_click_step_success(self, tmp_path: Path) -> None:
         executor = self._make_executor(tmp_path)
@@ -166,11 +167,12 @@ class TestSopRunNoYolo:
         assert ok is True
 
     def test_full_sop_run_completes_without_crash(self, tmp_path: Path) -> None:
-        """executor.run() completes all 12 steps; none crash."""
+        """executor.run() completes all legacy 12 steps via run(); none crash."""
         executor = self._make_executor(tmp_path)
         # Patch time.sleep to skip real waits
         with patch("time.sleep"):
             trace = executor.run()
+        # run() uses the hardcoded 12-step _step_* methods, not get_steps()
         assert len(trace) == 12
         for entry in trace:
             assert ":OK:" in entry, f"Unexpected FAIL in trace: {entry}"
@@ -199,3 +201,39 @@ class TestSopRunNoYolo:
             }
         )
         executor.control.drag_roi.assert_called_once()
+
+    def test_wait_ms_step_success(self, tmp_path: Path) -> None:
+        """wait_ms step pauses and returns success."""
+        executor = self._make_executor(tmp_path)
+        with patch("time.sleep") as mock_sleep:
+            ok, msg = executor.run_step(
+                {"id": "wait1", "name": "Wait 500", "type": "wait_ms", "ms": 500}
+            )
+        assert ok is True
+        assert "500" in msg
+        mock_sleep.assert_called_once_with(0.5)
+
+    def test_type_text_step_success(self, tmp_path: Path) -> None:
+        """type_text step calls control.type_text()."""
+        executor = self._make_executor(tmp_path)
+        ok, msg = executor.run_step(
+            {
+                "id": "type1",
+                "name": "Type PW",
+                "type": "type_text",
+                "text": "1111",
+                "clear_first": True,
+            }
+        )
+        assert ok is True
+        executor.control.type_text.assert_called_once_with("1111", clear_first=True)
+
+    def test_press_key_step_success(self, tmp_path: Path) -> None:
+        """press_key step calls control.press_key()."""
+        executor = self._make_executor(tmp_path)
+        ok, msg = executor.run_step(
+            {"id": "key1", "name": "Press Return", "type": "press_key", "key": "Return"}
+        )
+        assert ok is True
+        assert "Return" in msg
+        executor.control.press_key.assert_called_once_with("Return")

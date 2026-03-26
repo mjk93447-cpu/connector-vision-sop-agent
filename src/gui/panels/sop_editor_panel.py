@@ -837,10 +837,18 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
         dlg = _StepEditDialog(parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            self._steps.append(dlg.get_step())
-            self._dirty = True
-            self._refresh_table()
+        # Use open() instead of exec() so the event loop is NOT blocked.
+        # exec() + self.hide() inside the dialog caused Windows to send
+        # WM_CLOSE to the hidden modal → QDialog.done(Rejected) →
+        # entire app quit (setQuitOnLastWindowClosed default=True).
+        dlg.accepted.connect(lambda: self._on_add_accepted(dlg))
+        dlg.open()
+
+    def _on_add_accepted(self, dlg: "_StepEditDialog") -> None:
+        """Slot called when the Add dialog is accepted."""
+        self._steps.append(dlg.get_step())
+        self._dirty = True
+        self._refresh_table()
 
     def _on_edit(self) -> None:
         if not _QT_AVAILABLE:
@@ -849,7 +857,13 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         if row < 0:
             return
         dlg = _StepEditDialog(step=self._steps[row], parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        # Non-blocking open() — see _on_add for explanation.
+        dlg.accepted.connect(lambda: self._on_edit_accepted(dlg, row))
+        dlg.open()
+
+    def _on_edit_accepted(self, dlg: "_StepEditDialog", row: int) -> None:
+        """Slot called when the Edit dialog is accepted."""
+        if 0 <= row < len(self._steps):
             self._steps[row] = dlg.get_step()
             self._dirty = True
             self._refresh_table()

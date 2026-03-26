@@ -709,6 +709,9 @@ def run_gui() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Connector Vision SOP Agent")
     app.setApplicationVersion("3.0.0")
+    # Prevent app from quitting when ALL windows are temporarily hidden
+    # (e.g. during ROI fullscreen overlay selection in SOP Editor).
+    app.setQuitOnLastWindowClosed(False)
 
     from src.gui.main_window import MainWindow
 

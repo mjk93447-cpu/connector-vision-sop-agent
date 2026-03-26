@@ -456,39 +456,46 @@ class TestMoldSetup:
 class TestNewStepFallback:
     """get_steps() fallback includes all new step IDs."""
 
-    def test_fallback_has_12_steps(self, executor: SopExecutor) -> None:
-        # Point executor at a non-existent path to trigger fallback
+    def test_fallback_has_40_steps(self, executor: SopExecutor) -> None:
+        # v3.9: fallback expanded to 40 atomic steps
         from pathlib import Path
 
         executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
         steps = executor.get_steps()
-        assert len(steps) == 12
+        assert len(steps) == 40
 
-    def test_fallback_has_auth_sequence_login(self, executor: SopExecutor) -> None:
-        from pathlib import Path
-
-        executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
-        steps = executor.get_steps()
-        login = next(s for s in steps if s["id"] == "login")
-        assert login["type"] == "auth_sequence"
-
-    def test_fallback_has_axis_x_and_y(self, executor: SopExecutor) -> None:
+    def test_fallback_has_login_click_steps(self, executor: SopExecutor) -> None:
+        """v3.9: login is now 4 atomic steps instead of 1 auth_sequence."""
         from pathlib import Path
 
         executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
         steps = executor.get_steps()
         ids = [s["id"] for s in steps]
-        assert "axis_x" in ids
-        assert "axis_y" in ids
+        assert "login_click_btn" in ids
+        assert "login_type_password" in ids
+        assert "login_confirm" in ids
 
-    def test_fallback_has_verify_left_right(self, executor: SopExecutor) -> None:
+    def test_fallback_has_axis_steps(self, executor: SopExecutor) -> None:
+        """v3.9: axis steps are now atomic click + type_text + press_key."""
         from pathlib import Path
 
         executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
         steps = executor.get_steps()
         ids = [s["id"] for s in steps]
-        assert "verify_left" in ids
-        assert "verify_right" in ids
+        assert "axis_x_click_field" in ids
+        assert "axis_x_type_value" in ids
+        assert "axis_y_click_field" in ids
+        assert "axis_y_type_value" in ids
+
+    def test_fallback_has_verify_steps(self, executor: SopExecutor) -> None:
+        """v3.9: verify steps expanded to navigate + wait + confirm."""
+        from pathlib import Path
+
+        executor._sop_steps_path = Path("/nonexistent/sop_steps.json")
+        steps = executor.get_steps()
+        ids = [s["id"] for s in steps]
+        assert "verify_left_confirm" in ids
+        assert "verify_right_confirm" in ids
 
     def test_fallback_no_image_source(self, executor: SopExecutor) -> None:
         """image_source was removed from standard SOP in v3.8."""

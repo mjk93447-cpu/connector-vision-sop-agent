@@ -138,89 +138,279 @@ class SopExecutor:
                 return [s for s in data.get("steps", []) if s.get("enabled", True)]
             except Exception:  # noqa: BLE001
                 pass
-        # Fallback: built-in 12-step list (mirrors sop_steps.json v1.3)
+        # Fallback: built-in 40-step atomic list (mirrors sop_steps.json v2.0)
         return [
+            # --- LOGIN (4 steps) ---
             {
-                "id": "login",
-                "name": "Login",
-                "type": "auth_sequence",
-                "login_button": "login_button",
-                "password_field": "password_field",
-                "ok_button": "ok_button",
+                "id": "login_click_btn",
+                "name": "Login: Click LOGIN",
+                "type": "click",
+                "target": "login_button",
+                "button_text": "LOGIN",
             },
             {
-                "id": "open_recipe",
-                "name": "Recipe Menu",
+                "id": "login_click_pw",
+                "name": "Login: Click PW Field",
+                "type": "click",
+                "target": "password_field",
+                "button_text": "PASSWORD",
+            },
+            {
+                "id": "login_type_password",
+                "name": "Login: Type Password",
+                "type": "type_text",
+                "text": "1111",
+                "clear_first": True,
+            },
+            {
+                "id": "login_confirm",
+                "name": "Login: Confirm",
+                "type": "press_key",
+                "key": "Return",
+            },
+            # --- RECIPE (3 steps) ---
+            {
+                "id": "open_recipe_click",
+                "name": "Recipe: Open Menu",
                 "type": "click",
                 "target": "recipe_button",
                 "button_text": "RECIPE",
             },
             {
-                "id": "mold_left",
-                "name": "Mold Left",
-                "type": "mold_setup",
-                "label_target": "mold_left_label",
-                "drag_start": [100, 200],
-                "drag_end": [800, 350],
-                "roi": [0, 0, 960, 1080],
+                "id": "wait_recipe_load",
+                "name": "Recipe: Wait Load",
+                "type": "wait_ms",
+                "ms": 1000,
             },
             {
-                "id": "mold_right",
-                "name": "Mold Right",
-                "type": "mold_setup",
-                "label_target": "mold_right_label",
-                "drag_start": [100, 200],
-                "drag_end": [800, 350],
-                "roi": [960, 0, 1920, 1080],
+                "id": "recipe_select_confirm",
+                "name": "Recipe: Confirm Selection",
+                "type": "press_key",
+                "key": "Return",
+            },
+            # --- MOLD LEFT (4 steps) ---
+            {
+                "id": "mold_left_click_tab",
+                "name": "Mold Left: Click Tab",
+                "type": "click",
+                "target": "mold_left_label",
+                "button_text": "MOLD LEFT",
             },
             {
-                "id": "axis_x",
-                "name": "Axis-X",
-                "type": "input_text",
+                "id": "wait_mold_left_open",
+                "name": "Mold Left: Wait Open",
+                "type": "wait_ms",
+                "ms": 500,
+            },
+            {
+                "id": "mold_left_drag_roi",
+                "name": "Mold Left: Drag ROI",
+                "type": "drag",
+                "start": [100, 200],
+                "end": [800, 350],
+            },
+            {
+                "id": "mold_left_confirm",
+                "name": "Mold Left: Confirm",
+                "type": "press_key",
+                "key": "Return",
+            },
+            # --- MOLD RIGHT (4 steps) ---
+            {
+                "id": "mold_right_click_tab",
+                "name": "Mold Right: Click Tab",
+                "type": "click",
+                "target": "mold_right_label",
+                "button_text": "MOLD RIGHT",
+            },
+            {
+                "id": "wait_mold_right_open",
+                "name": "Mold Right: Wait Open",
+                "type": "wait_ms",
+                "ms": 500,
+            },
+            {
+                "id": "mold_right_drag_roi",
+                "name": "Mold Right: Drag ROI",
+                "type": "drag",
+                "start": [100, 200],
+                "end": [800, 350],
+            },
+            {
+                "id": "mold_right_confirm",
+                "name": "Mold Right: Confirm",
+                "type": "press_key",
+                "key": "Return",
+            },
+            # --- AXIS-X (3 steps) ---
+            {
+                "id": "axis_x_click_field",
+                "name": "Axis-X: Click Field",
+                "type": "click",
                 "target": "axis_x_field",
+                "button_text": "AXIS-X",
+            },
+            {
+                "id": "axis_x_type_value",
+                "name": "Axis-X: Enter Value",
+                "type": "type_text",
                 "text": "0",
                 "clear_first": True,
             },
             {
-                "id": "axis_y",
-                "name": "Axis-Y",
-                "type": "input_text",
+                "id": "axis_x_confirm",
+                "name": "Axis-X: Confirm",
+                "type": "press_key",
+                "key": "Return",
+            },
+            # --- AXIS-Y (3 steps) ---
+            {
+                "id": "axis_y_click_field",
+                "name": "Axis-Y: Click Field",
+                "type": "click",
                 "target": "axis_y_field",
+                "button_text": "AXIS-Y",
+            },
+            {
+                "id": "axis_y_type_value",
+                "name": "Axis-Y: Enter Value",
+                "type": "type_text",
                 "text": "0",
                 "clear_first": True,
             },
             {
-                "id": "pin_scan",
-                "name": "Pin Array",
+                "id": "axis_y_confirm",
+                "name": "Axis-Y: Confirm",
+                "type": "press_key",
+                "key": "Return",
+            },
+            # --- PIN ARRAY (3 steps) ---
+            {
+                "id": "pin_navigate",
+                "name": "Pin Array: Navigate",
+                "type": "click",
+                "target": "pin_array_tab",
+                "button_text": "PIN ARRAY",
+            },
+            {
+                "id": "wait_pin_settle",
+                "name": "Pin Array: Wait Settle",
+                "type": "wait_ms",
+                "ms": 500,
+            },
+            {
+                "id": "pin_scan_validate",
+                "name": "Pin Array: Scan Validate",
                 "type": "validate_pins",
                 "roi": [400, 300, 1120, 480],
             },
+            # --- PIN COUNT (2 steps) ---
             {
-                "id": "pin_count",
-                "name": "Pin Count",
+                "id": "wait_pin_count",
+                "name": "Pin Count: Wait",
+                "type": "wait_ms",
+                "ms": 300,
+            },
+            {
+                "id": "pin_count_validate",
+                "name": "Pin Count: Validate",
                 "type": "validate_pins",
                 "roi": [400, 600, 1120, 780],
             },
+            # --- VERIFY LEFT (3 steps) ---
             {
-                "id": "verify_left",
-                "name": "Verify Left",
+                "id": "verify_left_navigate",
+                "name": "Verify Left: Navigate",
+                "type": "click",
+                "target": "verify_left_tab",
+                "button_text": "VERIFY L",
+            },
+            {
+                "id": "wait_verify_left",
+                "name": "Verify Left: Wait",
+                "type": "wait_ms",
+                "ms": 300,
+            },
+            {
+                "id": "verify_left_confirm",
+                "name": "Verify Left: Confirm",
                 "type": "click",
                 "target": "verify_left_button",
                 "button_text": "VERIFY L",
             },
+            # --- VERIFY RIGHT (3 steps) ---
             {
-                "id": "verify_right",
-                "name": "Verify Right",
+                "id": "verify_right_navigate",
+                "name": "Verify Right: Navigate",
+                "type": "click",
+                "target": "verify_right_tab",
+                "button_text": "VERIFY R",
+            },
+            {
+                "id": "wait_verify_right",
+                "name": "Verify Right: Wait",
+                "type": "wait_ms",
+                "ms": 300,
+            },
+            {
+                "id": "verify_right_confirm",
+                "name": "Verify Right: Confirm",
                 "type": "click",
                 "target": "verify_right_button",
                 "button_text": "VERIFY R",
             },
-            {"id": "save", "name": "Save", "type": "click", "target": "save_button"},
+            # --- SAVE (3 steps) ---
             {
-                "id": "apply",
-                "name": "Apply",
-                "type": "click_sequence",
-                "targets": ["apply_button", "open_icon"],
+                "id": "pre_save_wait",
+                "name": "Pre-Save: Wait",
+                "type": "wait_ms",
+                "ms": 300,
+            },
+            {
+                "id": "save_click",
+                "name": "Save: Click",
+                "type": "click",
+                "target": "save_button",
+                "button_text": "SAVE",
+            },
+            {
+                "id": "wait_save_complete",
+                "name": "Save: Wait Complete",
+                "type": "wait_ms",
+                "ms": 500,
+            },
+            # --- APPLY & OPEN (5 steps) ---
+            {
+                "id": "apply_click",
+                "name": "Apply: Click",
+                "type": "click",
+                "target": "apply_button",
+                "button_text": "APPLY",
+            },
+            {
+                "id": "wait_apply_dialog",
+                "name": "Apply: Wait Dialog",
+                "type": "wait_ms",
+                "ms": 1000,
+            },
+            {
+                "id": "apply_confirm_ok",
+                "name": "Apply: Confirm OK",
+                "type": "press_key",
+                "key": "Return",
+            },
+            {
+                "id": "open_icon_click",
+                "name": "Open: Click Icon",
+                "type": "click",
+                "target": "open_icon",
+                "button_text": "OPEN",
+            },
+            {
+                "id": "wait_final_open",
+                "name": "Open: Wait Final",
+                "type": "wait_ms",
+                "ms": 500,
             },
         ]
 
@@ -286,6 +476,27 @@ class SopExecutor:
         elif step_type == "mold_setup":
             result5: SopStepResult = self._run_mold_setup(step)
             return result5.success, result5.details
+
+        elif step_type == "wait_ms":
+            ms = int(step.get("ms", 500))
+            time.sleep(ms / 1000.0)
+            return True, f"waited {ms}ms"
+
+        elif step_type == "type_text":
+            text = str(step.get("text", ""))
+            clear_first = bool(step.get("clear_first", False))
+            type_res = self.control.type_text(text, clear_first=clear_first)
+            if type_res.success:
+                dur = float(getattr(type_res, "duration", 0.0))
+                return True, f"typed '{text}' in {dur:.3f}s"
+            return False, f"type_text failed: {type_res.error}"
+
+        elif step_type == "press_key":
+            key = str(step.get("key", "Return"))
+            key_res = self.control.press_key(key)
+            if key_res.success:
+                return True, f"pressed '{key}'"
+            return False, f"press_key failed: {key_res.error}"
 
         else:
             return False, f"Unknown step type: {step_type!r}"

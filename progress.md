@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-26 (v3.8.0 — SOP 현장 요구사항 100% 이행: auth_sequence/input_text/mold_setup + axis_y/verify_left/verify_right)_
+_최종 갱신: 2026-03-26 (v3.9.0 — ROI Picker 크래시 수정 + SOP 원자 40단계 확장)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -38,6 +38,8 @@ _최종 갱신: 2026-03-26 (v3.8.0 — SOP 현장 요구사항 100% 이행: auth
 | **LLM 헬스체크 수정 (v3.2.6)** | **_HEALTH_TIMEOUT 1.5→5s + on_llm_send() 헬스체크 비치명적 처리 (네트워크드라이브/RAM 부족 환경)** | **454 pass** | — |
 | **법인 프록시 우회 (v3.2.7)** | **session.trust_env=False + proxies bypass + _HEALTH_TIMEOUT 30s + start_agent.bat NO_PROXY 설정** | **456 pass** | — |
 | **Training tqdm NoneType 수정 (v3.2.8)** | **verbose=False→True (tqdm disable 방지) + main_window.py set_vision_engine() 연결** | **458 pass** | — |
+| **v3.8.0 SOP 현장 100%** | **auth_sequence/input_text/mold_setup + axis_y/verify_left/verify_right 신규 스텝 타입** | **458 pass** | — |
+| **v3.9.0 ROI+SOP 확장** | **ROI Picker exec→open() 크래시 수정 + sop_steps.json v2.0 40단계 원자화 + wait_ms/type_text/press_key 신규 타입** | **599 pass** | — |
 | **v3.6.0** | **필드 테스트 7개 이슈 수정 (ROI/OCR/LLM/색상/Training)** | **554 pass** | **92%+** |
 | **v3.7.0** | **ROI picker 전체화면 투명 오버레이 (_RoiOverlayWindow) + 직접 숫자 입력** | **557 pass** | **92%+** |
 | **v3.7.1** | **ROI picker 3종 버그 수정 (GC 방지/ApplicationModal/MainWindow hide)** | **557 pass** | **92%+** |
@@ -133,6 +135,21 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
 
 ## ★ 다음 작업
+
+### ROI Picker 크래시 + SOP 원자 40단계 확장 완료 (2026-03-26) — v3.9.0 ✅
+- **Bug Fix: ROI Picker 크래시 근본 원인**
+  - `_on_add()` / `_on_edit()`의 `dlg.exec()` (blocking modal event loop)
+  - `_on_pick_roi()` 내 `self.hide()` + `main_window.hide()` → Windows WM_CLOSE → `done(Rejected)` → exec() 종료 → 앱 종료
+  - **Fix 1**: `src/main.py` — `app.setQuitOnLastWindowClosed(False)` 추가
+  - **Fix 2**: `sop_editor_panel.py` — `exec()` → `open()` + `_on_add_accepted()` / `_on_edit_accepted()` 시그널 패턴
+- **SOP 원자 40단계 확장**
+  - `assets/sop_steps.json` v1.3(12단계) → v2.0(40 원자 단계)
+  - 12개 메인 단계 → 각 세부 액션 분해: click/type_text/press_key/wait_ms/drag/validate_pins
+  - 신규 step 타입: `wait_ms` (N ms 대기), `type_text` (standalone 타이핑), `press_key` (단일 키)
+  - `src/sop_executor.py` `run_step()` 3개 타입 핸들러 추가 + fallback 40단계 업데이트
+- 테스트: `TestWaitMsStep` / `TestTypeTextStep` / `TestPressKeyStep` (15개 신규)
+- 파일: test_sop_executor_new_types.py (신규), test_sop_steps_loader.py/test_no_yolo_sop_run.py/test_sop_executor.py 업데이트
+- **599 pass, 0 fail**
 
 ### Training 재실행 'NoneType write' 수정 완료 (2026-03-19) — v3.2.5 ✅
 - **증상**: Training 탭 → Annotation 저장 → Start Training 누르면 두 번째부터 항상 실패

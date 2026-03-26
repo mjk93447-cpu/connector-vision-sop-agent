@@ -94,12 +94,12 @@ class TestGetSteps:
     def test_missing_file_returns_builtin_fallback(self, tmp_path: Path) -> None:
         ex = _make_executor_no_file(tmp_path)
         steps = ex.get_steps()
-        assert len(steps) == 12  # built-in has 12 steps
+        assert len(steps) == 40  # v2.0 built-in has 40 atomic steps
         ids = [s["id"] for s in steps]
-        assert "login" in ids
-        # v3.8: renamed steps
-        assert "pin_scan" in ids  # was in_pin_up
-        assert "apply" in ids  # was apply_and_open
+        # v3.9: atomic steps replace composite steps
+        assert "login_click_btn" in ids
+        assert "pin_scan_validate" in ids
+        assert "apply_click" in ids
 
     def test_corrupted_file_returns_builtin_fallback(self, tmp_path: Path) -> None:
         steps_path = tmp_path / "sop_steps.json"
@@ -107,7 +107,7 @@ class TestGetSteps:
         vision, control = MagicMock(), MagicMock()
         ex = SopExecutor(vision=vision, control=control, sop_steps_path=steps_path)
         steps = ex.get_steps()
-        assert len(steps) == 12
+        assert len(steps) == 40
 
     def test_empty_steps_list(self, tmp_path: Path) -> None:
         data = {"version": "1.0", "steps": []}
@@ -323,9 +323,9 @@ class TestSopStepsJsonSchema:
         assert "steps" in data
         assert isinstance(data["steps"], list)
 
-    def test_has_12_steps(self) -> None:
+    def test_has_40_steps(self) -> None:
         data = json.loads(self._path.read_text(encoding="utf-8"))
-        assert len(data["steps"]) == 12
+        assert len(data["steps"]) == 40
 
     def test_each_step_has_required_fields(self) -> None:
         data = json.loads(self._path.read_text(encoding="utf-8"))
@@ -344,6 +344,7 @@ class TestSopStepsJsonSchema:
 
     def test_step_types_valid(self) -> None:
         # v3.8: auth_sequence / input_text / mold_setup added
+        # v3.9: wait_ms / type_text / press_key added (atomic sub-steps)
         valid_types = {
             "click",
             "drag",
@@ -352,6 +353,9 @@ class TestSopStepsJsonSchema:
             "auth_sequence",
             "input_text",
             "mold_setup",
+            "wait_ms",
+            "type_text",
+            "press_key",
         }
         data = json.loads(self._path.read_text(encoding="utf-8"))
         for step in data["steps"]:
@@ -377,6 +381,25 @@ class TestSopStepsJsonSchema:
                 ), f"click_sequence step {step['id']} missing 'targets'"
                 assert isinstance(step["targets"], list)
                 assert len(step["targets"]) >= 2
+
+    def test_wait_ms_steps_have_ms_field(self) -> None:
+        data = json.loads(self._path.read_text(encoding="utf-8"))
+        for step in data["steps"]:
+            if step["type"] == "wait_ms":
+                assert "ms" in step, f"wait_ms step {step['id']} missing 'ms'"
+                assert isinstance(
+                    step["ms"], int
+                ), f"wait_ms step {step['id']} ms must be int"
+                assert step["ms"] >= 0, f"wait_ms step {step['id']} ms must be >= 0"
+
+    def test_press_key_steps_have_key_field(self) -> None:
+        data = json.loads(self._path.read_text(encoding="utf-8"))
+        for step in data["steps"]:
+            if step["type"] == "press_key":
+                assert "key" in step, f"press_key step {step['id']} missing 'key'"
+                assert isinstance(
+                    step["key"], str
+                ), f"press_key step {step['id']} key must be str"
 
     def test_unique_step_ids(self) -> None:
         data = json.loads(self._path.read_text(encoding="utf-8"))
