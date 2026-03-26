@@ -1,5 +1,5 @@
 ================================================================
- Connector Vision SOP Agent v3.2.8 - All-in-One Package
+ Connector Vision SOP Agent v3.9.0 - All-in-One Package
  INSTALL GUIDE
 ================================================================
 
@@ -40,7 +40,7 @@ Final folder structure
   +-- README_INSTALL_EN.md         <- Full user guide
   +-- assets\
   |   +-- config.json              <- Settings (edit via Tab 5)
-  |   +-- sop_steps.json           <- SOP 12-step definition (edit via Tab 4)
+  |   +-- sop_steps.json           <- SOP 40-step atomic definition (edit via Tab 4)
   |   +-- models\
   |       +-- yolo26x.pt           <- YOLO26x weights (COCO pretrained baseline)
   +-- ollama_models\
@@ -49,7 +49,7 @@ Final folder structure
 
 GUI 7-Tab Layout
 --------------------------------------------------
-  Tab 1: SOP Runner  - Run 12-step SOP / real-time log
+  Tab 1: SOP Runner  - Run 40-step atomic SOP / real-time log
   Tab 2: Vision      - Screenshot + YOLO bbox overlay / file open
   Tab 3: LLM Chat    - Ask LLM about SOP failures / config suggestions
   Tab 4: SOP Editor  - Add/delete/reorder SOP steps (JSON)
@@ -63,8 +63,9 @@ NOTES
   - yolo26x.pt: COCO pretrained by default; fine-tune via Tab 7 for better accuracy
   - sop_steps.json edits take effect immediately (no restart needed)
   - config.json changes: always use Tab 5 -> review config.proposed.json -> apply manually
-  - Training: second run "NoneType write" error is fixed in v3.2.5 (stale cache auto-cleared)
-  - LLM Chat: health check now non-fatal; works on network-drive/low-RAM systems (v3.2.8)
+  - Training: second run "NoneType write" error is fixed in v3.2.5+ (stale cache auto-cleared)
+  - ROI Picker: Pick ROI (Fullscreen) no longer quits the app — fixed in v3.9.0
+  - SOP: 40-step atomic expansion (wait_ms/type_text/press_key) as of v3.9.0
   - LLM first response may take 60-120 seconds on CPU-only hardware (normal)
 
 REQUIREMENTS

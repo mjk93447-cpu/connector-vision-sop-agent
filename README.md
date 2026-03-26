@@ -1,8 +1,8 @@
 # Connector Vision SOP Agent
 
-> **v3.2.5** | OLED Line PC Automation | Offline-First | Windows 10/11
+> **v3.9.0** | OLED Line PC Automation | Offline-First | Windows 10/11
 
-Automates the 12-step connector inspection SOP using YOLO26x vision detection,
+Automates the 40-step atomic connector inspection SOP using YOLO26x vision detection,
 WinSDK OCR, and an offline LLM assistant — no internet required after
 installation.
 
@@ -27,7 +27,7 @@ installation.
 1. Copy the `connector_agent\` folder to `C:\connector_agent\`
 2. Run `install_first_time.bat` **once** as Administrator
 3. Double-click `start_agent.bat` — the 7-tab GUI opens
-4. **Tab 1 → ▶ Run SOP** to execute the full 12-step sequence
+4. **Tab 1 → ▶ Run SOP** to execute the full 40-step sequence
 
 See **`README_INSTALL_EN.md`** for complete installation and operation guide.
 See **`QUICK_START_EN.md`** for a one-page daily reference card.
@@ -42,7 +42,7 @@ src/
   vision_engine.py      YOLO26x single-class detector (yolo26x.pt)
   ocr_engine.py         WinSDK/WinRT OCR + EasyOCR/PaddleOCR fallback
   control_engine.py     PyAutoGUI click/drag/type automation
-  sop_executor.py       12-step SOP orchestration
+  sop_executor.py       40-step atomic SOP orchestration
   llm_offline.py        Ollama HTTP backend (SmolLM3-3B Q4_K_M)
   config_loader.py      JSON config loader (EXE-safe path resolution)
   exception_handler.py  Pop-up detection, freeze guard, LLM 3-stage chain
@@ -64,7 +64,7 @@ src/
     pretrain_pipeline.py Synthetic data pre-training (CI use)
 assets/
   config.json           v2.0.0 — vision/LLM/control settings (read-only in code)
-  sop_steps.json        12-step SOP definition (editable via Tab 4)
+  sop_steps.json        40-step atomic SOP definition v2.0 (editable via Tab 4)
   models/
     yolo26x.pt          YOLO26x weights (COCO pretrained baseline)
 ```
@@ -185,7 +185,7 @@ Fine-tune YOLO26x on new connector types directly in the GUI:
 
 **Troubleshooting training errors:**
 - "No training images found" — annotate at least one image first
-- Stale cache crash ("NoneType write") — fixed in v3.2.5 (auto-cleared before each run)
+- Stale cache crash ("NoneType write") — fixed in v3.2.5, auto-cleared before each run
 - Network block errors — all telemetry is disabled automatically (offline mode)
 
 ---
@@ -194,7 +194,9 @@ Fine-tune YOLO26x on new connector types directly in the GUI:
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| **3.2.5** | 2026-03-19 | Fix: stale ultralytics label-cache causing "NoneType write" on 2nd training run |
+| **3.9.0** | 2026-03-26 | ROI Picker crash fix (exec→open) + SOP atomic 40-step expansion (v2.0) + wait_ms/type_text/press_key |
+| 3.8.0 | 2026-03-26 | SOP field 100%: auth_sequence/input_text/mold_setup, axis_y/verify_left/verify_right |
+| 3.2.5 | 2026-03-19 | Fix: stale ultralytics label-cache causing "NoneType write" on 2nd training run |
 | 3.2.4 | 2026-03-19 | OCR: multi-word merge, 4-variant preprocessing, IoU NMS dedup |
 | 3.2.3 | 2026-03-19 | Fix: LLM requests never sent (self.parent() → self.window()) |
 | 3.2.2 | 2026-03-18 | Fix: Training dataset.yaml forward-slash, offline env, class subfolders |
@@ -218,4 +220,4 @@ Fine-tune YOLO26x on new connector types directly in the GUI:
 
 ---
 
-*Connector Vision SOP Agent v3.2.5 — Samsung OLED Line Automation*
+*Connector Vision SOP Agent v3.9.0 — Samsung OLED Line Automation*

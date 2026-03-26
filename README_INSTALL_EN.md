@@ -1,6 +1,6 @@
 # Connector Vision SOP Agent — Complete Guide for Line Engineers
 
-> Version 3.2.5 | For Indian Line Engineers | English Only
+> Version 3.9.0 | For Indian Line Engineers | English Only
 
 ---
 
@@ -267,7 +267,7 @@ This is normal for CPU-only operation. The AI runs fully offline.
 | **App crashed** | Any issue | Restart `start_agent.bat`; check Tab 6 logs |
 | **"Model file not found"** | yolo26x.pt missing | Contact IT to restore `assets\models\yolo26x.pt` |
 | **Training failed** | Insufficient images | Add at least 30 labeled images in Tab 7 |
-| **"NoneType write" on 2nd training** | Stale cache file | Fixed automatically in v3.2.5 — just retry training |
+| **"NoneType write" on 2nd training** | Stale cache file | Fixed automatically in v3.2.5+ — just retry training |
 | **Config change not applied** | proposed.json | Open `assets\config.proposed.json`, verify, copy to `config.json` manually |
 
 ### Restarting Properly
@@ -306,6 +306,8 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.9.0** | 2026-03-26 | ROI Picker app-crash fix + SOP 40-step atomic expansion (wait_ms/type_text/press_key) |
+| 3.8.0 | 2026-03-26 | SOP field 100%: login/mold/axis/pin/verify all wired to keyboard+mouse |
 | 3.2.8 | 2026-03-19 | Fix: Training tqdm NoneType crash (verbose=True) + Reload Model wired to VisionEngine |
 | 3.2.7 | 2026-03-19 | Fix: bypass corporate HTTP proxy (trust_env=False, NO_PROXY) + health-check timeout → 30s |
 | 3.2.6 | 2026-03-19 | Fix: LLM health check non-fatal + timeout 1.5s → 5s (network-drive/RAM-limited envs) |
@@ -323,4 +325,4 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 ---
 
 *For technical support, contact your local IT team or line supervisor.*
-*Connector Vision SOP Agent v3.2.8 — Samsung OLED Line Automation*
+*Connector Vision SOP Agent v3.9.0 — Samsung OLED Line Automation*

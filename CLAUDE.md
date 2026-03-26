@@ -8,7 +8,7 @@
 YOLO 모델: yolo26x.pt 단독 사용 — YOLOv8/v9/v10/v11 절대 금지
 ```
 
-## 스택 (v3.1.0)
+## 스택 (v3.9.0)
 - Python 3.11, PyTorch 2.3 CPU, OpenCV 4.10, PyAutoGUI, PyQt6
 - YOLO26x (vision), Ollama HTTP (LLM: phi4-mini-reasoning)
 - OCR: winsdk(WinRT) → easyocr → paddleocr (자동 선택)

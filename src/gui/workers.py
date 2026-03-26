@@ -6,7 +6,7 @@ GUI stays responsive during SOP execution and LLM inference.
 
 Workers
 -------
-SopWorker         — executes the full 12-step SOP in a background thread
+SopWorker         — executes the 40-step atomic SOP in a background thread
 LLMWorker         — sends a message to the LLM and emits the response (non-streaming)
 LLMStreamWorker   — streaming LLM: emits token_ready per chunk + elapsed timer
 AnalysisWorker    — runs LLM log analysis

@@ -1,5 +1,5 @@
 """
-Main entry point for Connector Vision SOP Agent v3.0.
+Main entry point for Connector Vision SOP Agent v3.9.0.
 
 Default mode: PyQt6 GUI application.
 Use --console flag to run in legacy CLI mode.
@@ -232,10 +232,10 @@ def main() -> list[str]:
 def _print_welcome() -> None:
     banner = """
 ======================================================================
- Connector Vision SOP Agent v3.0  (YOLO26x + SmolLM3-3B [Offline])
+ Connector Vision SOP Agent v3.9.0  (YOLO26x + phi4-mini-reasoning [Offline])
 ======================================================================
 
-12-step OLED connector SOP automation with offline LLM assistance.
+40-step OLED connector SOP automation with offline LLM assistance.
 
 Commands:
   [1] Start SOP run (normal speed — uses config.control timings)
@@ -708,7 +708,7 @@ def run_gui() -> None:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Connector Vision SOP Agent")
-    app.setApplicationVersion("3.0.0")
+    app.setApplicationVersion("3.9.0")
     # Prevent app from quitting when ALL windows are temporarily hidden
     # (e.g. during ROI fullscreen overlay selection in SOP Editor).
     app.setQuitOnLastWindowClosed(False)

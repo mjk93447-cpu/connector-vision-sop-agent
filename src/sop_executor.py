@@ -1,9 +1,10 @@
 """
-12-step SOP executor for Connector Vision Agent v3.8.
+40-step atomic SOP executor for Connector Vision Agent v3.9.
 
 Coordinates login, recipe loading, Mold Left/Right ROI training, axis marking,
 pin scan/count verification, verify left/right, and final save/apply actions
-for line setup.
+for line setup.  Each major action is broken into discrete atomic steps
+(click / type_text / press_key / wait_ms / drag / validate_pins).
 
 v2.1 changes:
 - ``pin_count_min`` / ``pin_count_max`` now read from config (not hardcoded).
@@ -22,6 +23,14 @@ v3.8 additions (SOP field requirement 100%):
 - New steps: ``axis_y``, ``verify_left``, ``verify_right``.
 - ``control.type_text()`` / ``control.press_key()`` wired into executor.
 - Password read from ``config['password']`` (default ``"1111"``).
+
+v3.9 additions (atomic 40-step expansion):
+- ``wait_ms`` step type   — sleep N milliseconds, always succeeds.
+- ``type_text`` step type — standalone type_text without preceding click.
+- ``press_key`` step type — standalone press_key (Return, Tab, ctrl+a, etc.).
+- sop_steps.json v2.0 — 12 composite steps → 40 atomic sub-steps.
+- Built-in fallback updated from 12 to 40 steps.
+- ROI Picker crash fixed: exec() → open() in SOP Editor dialog.
 """
 
 from __future__ import annotations
@@ -49,7 +58,7 @@ class SopStepResult:
 
 
 class SopExecutor:
-    """Coordinate the high-level 12-step SOP sequence across vision and control."""
+    """Coordinate the 40-step atomic SOP sequence across vision and control."""
 
     def __init__(
         self,
@@ -96,7 +105,12 @@ class SopExecutor:
     # ------------------------------------------------------------------
 
     def run(self) -> List[str]:
-        """Execute the 12-step SOP and return a concise textual trace."""
+        """Execute the legacy 12-step SOP and return a concise textual trace.
+
+        Note: GUI SopWorker uses get_steps() + run_step() for the 40-step
+        atomic sequence. This run() method is kept for backward compatibility
+        and console mode.
+        """
 
         steps = [
             self._step_login,

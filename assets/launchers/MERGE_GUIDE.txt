@@ -1,5 +1,5 @@
 ================================================================
- Connector Vision SOP Agent v3.0 - Portable Bundle Guide
+ Connector Vision SOP Agent v3.9.0 - Portable Bundle Guide
 ================================================================
 
 DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
@@ -20,7 +20,7 @@ FINAL FOLDER STRUCTURE:
   +-- ollama.exe                   <- LLM runtime
   +-- assets\
   |   +-- config.json              <- settings (editable)
-  |   +-- sop_steps.json           <- 12-step SOP definition (editable)
+  |   +-- sop_steps.json           <- 40-step atomic SOP definition (editable)
   |   +-- models\
   |       +-- yolo26x.pt           <- YOLO weights
   +-- start_agent.bat              <- DOUBLE-CLICK TO RUN (GUI mode)
@@ -32,17 +32,18 @@ FINAL FOLDER STRUCTURE:
 HOW TO RUN:
   Double-click start_agent.bat
   -> Starts Ollama server (LLM backend)
-  -> Opens PyQt6 GUI with 6 tabs:
-       Tab 1: Run SOP    - 12-step SOP execution with live log
+  -> Opens PyQt6 GUI with 7 tabs:
+       Tab 1: Run SOP    - 40-step atomic SOP execution with live log
        Tab 2: Vision     - Screenshot capture + YOLO bbox overlay
        Tab 3: LLM Chat   - Chat with LLM about SOP runs
        Tab 4: SOP Editor - Edit/reorder SOP steps
        Tab 5: Config     - Edit config.json via UI
        Tab 6: Audit      - Config change history
+       Tab 7: Training   - Annotate connector images and fine-tune YOLO26x
 
 CUSTOMIZATION:
   - Edit assets\config.json to tune pin counts, timing, thresholds
-  - Edit assets\sop_steps.json to modify the 12-step SOP sequence
+  - Edit assets\sop_steps.json to modify the 40-step atomic SOP sequence
     (changes take effect immediately without rebuilding EXE)
 
 LLM MODEL INFO:

@@ -1,8 +1,8 @@
-# v3.5.0 Field Test Report
+# v3.9.0 Test Report
 
-**Test date:** 2026-03-25
-**Environment:** Windows 10, CPU-only, phi4-mini-reasoning (Ollama), YOLO26x_pretrained
-**Baseline:** 458 pass, 92% coverage
+**Test date:** 2026-03-26
+**Environment:** Windows 10, CPU-only, phi4-mini-reasoning (Ollama), YOLO26x
+**Baseline:** 599 pass (v3.9.0 — ROI Picker fix + 40-step SOP expansion)
 
 ## Issues Found
 
@@ -66,4 +66,4 @@
 | Prompt queue | Collision / stop | Queue + auto-send |
 | Training tqdm | NoneType crash | No crash |
 | Training OOM | Unhandled crash | Friendly English error + batch=2 default |
-| App version | 3.5.1 | 3.6.0 |
+| App version | 3.5.1 | 3.9.0 |
