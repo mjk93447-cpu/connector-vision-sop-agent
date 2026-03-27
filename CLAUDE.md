@@ -16,9 +16,8 @@ YOLO 모델: yolo26x.pt 단독 사용 — YOLOv8/v9/v10/v11 절대 금지
 
 ## 절대 수정 금지
 ```
-assets/models/   assets/config.json
+assets/models/
 ```
-config 변경 제안 → `assets/config.proposed.json` 만 출력.
 
 ## 핵심 파일
 | 파일 | 역할 |

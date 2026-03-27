@@ -29,8 +29,8 @@
   "llm": {
     "enabled": true,
     "backend": "ollama",
-    "model_path": "pedrolucas/smollm3:3b-q4_k_m",
-    "http_url": "http://localhost:11434/v1/chat/completions",
+    "model_path": "granite3.2-vision:2b",
+    "http_url": "http://localhost:11434/api/chat",
     "ctx_size": 8192,
     "gpu_layers": 0,
     "max_input_tokens": 6144,
