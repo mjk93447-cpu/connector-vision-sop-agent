@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-27 (v3.10.0 — Granite Vision 3.3-2b 전환 + Screenshot 전송 + dry-run + jsonschema + 638 pass)_
+_최종 갱신: 2026-03-27 (v3.10.0 완성 — Granite Vision 3.3-2b /api/chat + 📸 스크린샷 전송 + dry-run + jsonschema + 646 pass + 빌드 트리거 #23630618087)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -40,7 +40,7 @@ _최종 갱신: 2026-03-27 (v3.10.0 — Granite Vision 3.3-2b 전환 + Screensho
 | **Training tqdm NoneType 수정 (v3.2.8)** | **verbose=False→True (tqdm disable 방지) + main_window.py set_vision_engine() 연결** | **458 pass** | — |
 | **v3.8.0 SOP 현장 100%** | **auth_sequence/input_text/mold_setup + axis_y/verify_left/verify_right 신규 스텝 타입** | **458 pass** | — |
 | **v3.9.0 ROI+SOP 확장** | **ROI Picker exec→open() 크래시 수정 + sop_steps.json v2.0 40단계 원자화 + wait_ms/type_text/press_key 신규 타입** | **599 pass** | — |
-| **v3.10.0 Granite Vision 전환** | **Granite Vision 3.3-2b (multimodal) + Screenshot 전송 + dry-run + jsonschema config 검증 + CI integration test + worktree 정리** | **638 pass** | **92%+** |
+| **v3.10.0 Granite Vision 전환** | **Granite Vision 3.3-2b /api/chat (multimodal) + 📸 Screenshot 전송 + dry-run + jsonschema config 검증 + CI integration test** | **646 pass** | **92%+** |
 | **v3.6.0** | **필드 테스트 7개 이슈 수정 (ROI/OCR/LLM/색상/Training)** | **554 pass** | **92%+** |
 | **v3.7.0** | **ROI picker 전체화면 투명 오버레이 (_RoiOverlayWindow) + 직접 숫자 입력** | **557 pass** | **92%+** |
 | **v3.7.1** | **ROI picker 3종 버그 수정 (GC 방지/ApplicationModal/MainWindow hide)** | **557 pass** | **92%+** |
