@@ -1,12 +1,12 @@
 name: Build Connector Vision Agent (All-in-One)
 
-# All-in-One build: EXE + Ollama + YOLO26x + OCR (winsdk/easyocr) + Granite Vision 3.3-2b LLM
+# All-in-One build: EXE + Ollama + YOLO26x + OCR (winsdk/easyocr) + Granite Vision 3.2-2b LLM
 #
 # MANDATORY: YOLO26x (yolo26x.pt) ONLY. YOLOv8/v9/v10/v11 ABSOLUTELY FORBIDDEN.
 #
 # Produces 2 artifacts:
 #   connector-agent-app  ~500 MB  EXE + Ollama + YOLO26x + OCR + config
-#   connector-agent-llm  ~2.0 GB  IBM Granite Vision 3.3-2b model blobs
+#   connector-agent-llm  ~2.0 GB  IBM Granite Vision 3.2-2b model blobs
 #
 # On-site deployment:
 #   1. Extract connector-agent-app.zip → connector_agent\ folder
@@ -111,11 +111,11 @@ jobs:
           Copy-Item "dist_build\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
           Copy-Item "ollama_bin\ollama.exe"                 "$pkg\ollama.exe"
 
-          # Config: enable LLM (IBM Granite Vision 3.3-2b via Ollama /api/chat)
+          # Config: enable LLM (IBM Granite Vision 3.2-2b via Ollama /api/chat)
           $cfg = Get-Content assets\config.json -Raw | ConvertFrom-Json
           $cfg.llm.enabled    = $true
           $cfg.llm.backend    = "ollama"
-          $cfg.llm.model_path = "ibm/granite3.3-vision:2b"
+          $cfg.llm.model_path = "ibm/granite3.2-vision:2b"
           $cfg.llm.http_url   = "http://127.0.0.1:11434/api/chat"
           $cfg | ConvertTo-Json -Depth 10 | Set-Content "$pkg\assets\config.json" -Encoding UTF8
 
@@ -157,11 +157,11 @@ jobs:
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────────────
-  # Job 2: IBM Granite Vision 3.3-2b model blobs (~2.0 GB)
+  # Job 2: IBM Granite Vision 3.2-2b model blobs (~2.0 GB)
   #         Separate job due to disk space constraints
   # ─────────────────────────────────────────────────────────────────────
   build-llm:
-    name: LLM (Granite Vision 3.3-2b model blobs)
+    name: LLM (Granite Vision 3.2-2b model blobs)
     runs-on: windows-latest
     permissions:
       contents: read
@@ -199,12 +199,12 @@ jobs:
           Start-Sleep -Seconds 20
           Write-Host "[OK] Ollama server ready"
 
-      - name: Pull Granite Vision 3.3-2b (~2.0 GB)
+      - name: Pull Granite Vision 3.2-2b (~2.0 GB)
         shell: pwsh
         run: |
           $env:OLLAMA_HOST = "127.0.0.1:11434"
-          Write-Host "Downloading IBM Granite Vision 3.3-2b (Ollama registry, ~2.0 GB)..."
-          & ollama_bin\ollama.exe pull ibm/granite3.3-vision:2b
+          Write-Host "Downloading IBM Granite Vision 3.2-2b (Ollama registry, ~2.0 GB)..."
+          & ollama_bin\ollama.exe pull ibm/granite3.2-vision:2b
           if ($LASTEXITCODE -ne 0) { throw "Model download failed (exit $LASTEXITCODE)" }
           Write-Host "[OK] Download complete"
           & ollama_bin\ollama.exe list

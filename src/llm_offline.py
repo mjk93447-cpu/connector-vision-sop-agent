@@ -34,10 +34,10 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Type
 BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/api/chat"
-_OLLAMA_DEFAULT_MODEL = "ibm/granite3.3-vision:2b"
+_OLLAMA_DEFAULT_MODEL = "granite3.2-vision:2b"
 
 # Brief mode: shorter token limit for fast responses
-# Granite Vision 3.3-2b는 <think> 토큰을 생성하지 않으므로 512로 충분
+# Granite Vision 3.2-2b는 <think> 토큰을 생성하지 않으므로 512로 충분
 _BRIEF_MAX_TOKENS = 512
 
 
