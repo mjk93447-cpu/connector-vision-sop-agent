@@ -254,8 +254,8 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
     # Hard cutoff for streaming LLM requests (seconds).
     # concurrent.futures.future.result(timeout=...) guarantees the UI thread
     # is unblocked after this duration even if iter_lines() is still blocking.
-    # 300s: Granite Vision 3.3-2b CPU cold-start 버퍼 포함
-    _STREAM_TIMEOUT_SECS: int = 300
+    # 600s: generous buffer for Granite Vision 3.2-2b CPU with attached images
+    _STREAM_TIMEOUT_SECS: int = 600
 
     def run(self) -> None:
         """Thread entry point — streams tokens and emits signals.
@@ -307,7 +307,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
         try:
             future.result(timeout=self._STREAM_TIMEOUT_SECS)
         except FuturesTimeoutError:
-            # UI unblocked after 300s — suppress any late signals from the
+            # UI unblocked after 600s — suppress any late signals from the
             # background thread, then try to close the HTTP session.
             self._running = False
             cancel = getattr(self._llm, "cancel", None)

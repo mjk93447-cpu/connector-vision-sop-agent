@@ -51,6 +51,11 @@ def _make_panel() -> Any:
         panel._last_think_t = 0.0
         panel._stream_cursor = None
         panel._first_token = False
+        panel._token_count = 0
+        panel._has_warm_llm = False
+        panel._bubble_start_pos = 0
+        panel._roi_overlay = None
+        panel._pending_image_b64 = None
         # Stub Qt widgets
         panel._lbl_elapsed = MagicMock()
         panel._txt_think = MagicMock()
@@ -348,25 +353,17 @@ class TestStopFlushAndFinalize:
 
 
 class TestPromptQueue:
-    def test_prompt_queued_when_worker_running(self) -> None:
-        """New prompt while generating is stored in _pending_prompt, not sent."""
+    def test_stop_button_triggers_on_stop_requested(self) -> None:
+        """Clicking Send while '⏹ Stop' is shown calls _on_stop_requested (v3.10.2)."""
         panel = _make_panel()
-        panel._pending_prompt = None
-        panel._worker = MagicMock()
-        panel._worker.isRunning.return_value = True
-        panel._input.text.return_value = "new question"
-        system_msgs: list = []
-        panel._append_system = lambda m: system_msgs.append(m)
+        panel._btn_send.text.return_value = "⏹ Stop"
+        stopped: list = []
+        panel._on_stop_requested = lambda: stopped.append(True)
 
         with patch("src.gui.panels.llm_panel._QT_AVAILABLE", True):
             panel._on_send()
 
-        assert (
-            panel._pending_prompt == "new question"
-        ), "prompt should be stored in _pending_prompt"
-        assert any(
-            "Queued" in m for m in system_msgs
-        ), "user should see a Queued confirmation"
+        assert stopped, "_on_stop_requested must be called when button shows ⏹ Stop"
 
     def test_process_pending_prompt_auto_sends(self) -> None:
         """After generation, _process_pending_prompt fires _on_send with queued text."""

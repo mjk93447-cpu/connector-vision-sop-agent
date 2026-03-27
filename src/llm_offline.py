@@ -413,11 +413,11 @@ class OfflineLLM:
         _in_think = False  # True while inside a <think> block
 
         session = self._get_session()
-        # timeout=(10, 180): TCP 연결 10s + 첫 바이트 수신 180s
-        # Granite Vision CPU cold-start 첫 토큰: 10~30s
+        # timeout=(10, 600): TCP 연결 10s + 첫 바이트 수신 600s
+        # Granite Vision CPU cold-start with image: up to 60-120s for first token
         try:
             with session.post(
-                url, json=payload, stream=True, timeout=(10, 180)
+                url, json=payload, stream=True, timeout=(10, 600)
             ) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():

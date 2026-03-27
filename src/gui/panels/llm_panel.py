@@ -19,8 +19,9 @@ from typing import Any, Dict, List, Optional
 
 try:
     from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
-    from PyQt6.QtGui import QColor, QTextCharFormat, QTextCursor
+    from PyQt6.QtGui import QColor, QPainter, QPen, QTextCharFormat, QTextCursor
     from PyQt6.QtWidgets import (
+        QApplication,
         QCheckBox,
         QDialog,
         QDialogButtonBox,
@@ -113,6 +114,105 @@ class _ApplyDialog(QDialog):  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
+# ROI Screenshot Overlay
+# ---------------------------------------------------------------------------
+
+
+class _RoiScreenshotOverlay(QWidget):  # type: ignore[misc]
+    """Fullscreen transparent overlay for ROI screenshot selection.
+
+    Shows a semi-transparent dark veil over the screen.
+    User drags to mark a region; mouse-release emits roi_selected(x, y, w, h).
+    Press Escape to cancel.
+    """
+
+    roi_selected: Any = pyqtSignal(int, int, int, int)  # x, y, w, h (screen coords)
+    cancelled: Any = pyqtSignal()
+
+    def __init__(self) -> None:
+        if _QT_AVAILABLE:
+            super().__init__(None)  # top-level, no parent
+        self._start: Any = None
+        self._end: Any = None
+        self._dragging = False
+
+        if not _QT_AVAILABLE:
+            return
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+        screen = QApplication.primaryScreen()
+        if screen:
+            self.setGeometry(screen.geometry())
+        self.showFullScreen()
+
+    def keyPressEvent(self, event: Any) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            self.cancelled.emit()
+            self.close()
+
+    def mousePressEvent(self, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._start = event.position().toPoint()
+            self._end = self._start
+            self._dragging = True
+            self.update()
+
+    def mouseMoveEvent(self, event: Any) -> None:
+        if self._dragging:
+            self._end = event.position().toPoint()
+            self.update()
+
+    def mouseReleaseEvent(self, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
+            self._dragging = False
+            self._end = event.position().toPoint()
+            self.close()
+            if self._start and self._end:
+                x = min(self._start.x(), self._end.x())
+                y = min(self._start.y(), self._end.y())
+                w = abs(self._end.x() - self._start.x())
+                h = abs(self._end.y() - self._start.y())
+                if w > 10 and h > 10:
+                    self.roi_selected.emit(x, y, w, h)
+                else:
+                    self.cancelled.emit()
+            else:
+                self.cancelled.emit()
+
+    def paintEvent(self, event: Any) -> None:
+        painter = QPainter(self)
+        # Semi-transparent dark overlay
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
+        if self._start and self._end:
+            x = min(self._start.x(), self._end.x())
+            y = min(self._start.y(), self._end.y())
+            w = abs(self._end.x() - self._start.x())
+            h = abs(self._end.y() - self._start.y())
+            # Transparent "hole" for selected region
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            painter.fillRect(x, y, w, h, QColor(0, 0, 0, 0))
+            # Yellow selection border
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
+            painter.setPen(QPen(QColor(255, 220, 0), 2))
+            painter.drawRect(x, y, w, h)
+            # Size label
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            label_y = max(y + 16, 16)  # keep inside screen
+            painter.drawText(x + 4, label_y, f"{w}×{h}px — release to capture")
+        painter.end()
+
+
+# ---------------------------------------------------------------------------
 # LLM Chat Panel
 # ---------------------------------------------------------------------------
 
@@ -166,6 +266,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._stream_cursor: Any = None  # QTextCursor anchor for streaming block
         self._think_cursor: Any = None  # QTextCursor anchor for think text in main chat
         self._first_token: bool = False  # True until first answer token arrives
+        self._token_count: int = 0  # tokens received in current response
+        self._has_warm_llm: bool = False  # True after first successful response
+        self._bubble_start_pos: int = 0  # doc position before AI bubble (for Stop)
+        self._roi_overlay: Any = None  # active ROI overlay (keep reference)
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -186,13 +290,16 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._btn_analyze.setEnabled(not sending)
         self._input.setEnabled(not sending)
         if sending:
-            # Step 2-D: show Stop button during generation
             self._btn_send.setText("⏹ Stop")
             self._btn_send.setEnabled(True)  # keep enabled so user can stop
             self._t0 = time.perf_counter()
-            self._lbl_elapsed.setText(
-                "⏳ Sending... (first request: model cold start ~30-90s)"
-            )
+            self._token_count = 0  # reset token counter
+            if self._has_warm_llm:
+                self._lbl_elapsed.setText("⏳ Sending... (~10-30s expected)")
+            else:
+                self._lbl_elapsed.setText(
+                    "⏳ Sending... (cold start ~30-90s, please wait)"
+                )
             self._start_timer()
             self._start_flush_timer()
         else:
@@ -345,6 +452,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         # Reset think panel for new message
         self._txt_think.clear()
         self._txt_think.hide()
+        # Save document position BEFORE inserting bubble (used by _remove_partial_bubble)
+        _end_cur = self._chat_display.textCursor()
+        _end_cur.movePosition(QTextCursor.MoveOperation.End)
+        self._bubble_start_pos = _end_cur.position()
         # Insert the AI bubble header — cursor lands at End after append
         self._chat_display.append(
             '<p style="text-align:left; margin:4px;">'
@@ -363,10 +474,11 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     @pyqtSlot(str)
     def on_token_ready(self, token: str) -> None:
-        """Buffer a streaming token — rendered every 50ms by flush timer (Step 2-C)."""
+        """Buffer a streaming token — rendered every 16ms by flush timer."""
         if not _QT_AVAILABLE:
             return
         self._token_buf.append(token)
+        self._token_count += 1
 
     @pyqtSlot(str)
     def on_think_token_ready(self, token: str) -> None:
@@ -512,11 +624,13 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if self._t0 > 0:
             now = time.perf_counter()
             elapsed = now - self._t0
-            # 최근 2초 내 think 토큰이 있으면 Reasoning 상태 유지
+            token_info = (
+                f" | {self._token_count} tokens" if self._token_count > 0 else ""
+            )
             if self._last_think_t > 0 and (now - self._last_think_t) < 2.0:
-                self._lbl_elapsed.setText(f"🤔 Reasoning... {elapsed:.1f}s")
+                self._lbl_elapsed.setText(f"🤔 Reasoning... {elapsed:.1f}s{token_info}")
             else:
-                self._lbl_elapsed.setText(f"Thinking... {elapsed:.1f}s")
+                self._lbl_elapsed.setText(f"🤖 {elapsed:.1f}s{token_info}")
 
     # ------------------------------------------------------------------
     # Slots / event handlers
@@ -526,19 +640,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
 
-        # If worker is running, queue the new prompt instead of interrupting
-        if self._worker is not None and hasattr(self._worker, "isRunning"):
-            try:
-                if self._worker.isRunning():
-                    text = self._input.text().strip()
-                    if text:
-                        self._pending_prompt = text
-                        self._input.clear()
-                        preview = text[:40] + ("..." if len(text) > 40 else "")
-                        self._append_system(f'⏳ Queued: "{preview}"')
-                    return
-            except Exception:  # noqa: BLE001
-                pass
+        # "⏹ Stop" mode — cancel active generation
+        if self._btn_send.text() == "⏹ Stop":
+            self._on_stop_requested()
+            return
 
         text = self._input.text().strip()
         if not text:
@@ -578,21 +683,96 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             self._append_system("❌ Internal error: MainWindow not reachable.")
 
     def _on_attach_screenshot(self) -> None:
-        """Capture the primary screen and store as base64 PNG for the next send."""
+        """Show ROI overlay so user can select a region to capture."""
+        if not _QT_AVAILABLE:
+            return
+        # Hide main window so the desktop is fully visible for ROI selection
+        main_win = self.window()
+        if main_win:
+            main_win.hide()
+        # Short delay to ensure window is fully gone before overlay appears
+        QTimer.singleShot(150, self._show_roi_overlay)
+
+    def _show_roi_overlay(self) -> None:
+        """Create and display the ROI selection overlay."""
+        self._roi_overlay = _RoiScreenshotOverlay()
+        self._roi_overlay.roi_selected.connect(self._on_roi_selected)
+        self._roi_overlay.cancelled.connect(self._on_roi_cancelled)
+
+    def _on_roi_cancelled(self) -> None:
+        """Restore main window when user cancels ROI selection."""
+        main_win = self.window()
+        if main_win:
+            main_win.show()
+
+    def _on_roi_selected(self, x: int, y: int, w: int, h: int) -> None:
+        """Capture the selected region, resize + JPEG-compress, store as base64."""
+        main_win = self.window()
+        if main_win:
+            main_win.show()
         try:
             import base64
+            import io
 
             import mss
-            import mss.tools
+            from PIL import Image  # noqa: PLC0415
 
             with mss.mss() as sct:
-                monitor = sct.monitors[0]
-                img = sct.grab(monitor)
-                png_bytes = mss.tools.to_png(img.rgb, img.size)
-            self._pending_image_b64 = base64.b64encode(png_bytes).decode()
+                region = {"left": x, "top": y, "width": w, "height": h}
+                raw = sct.grab(region)
+                pil_img = Image.frombytes("RGB", raw.size, raw.rgb)
+
+            # Resize to max 800px on longest side for fewer LLM tokens
+            max_dim = 800
+            if max(pil_img.size) > max_dim:
+                ratio = max_dim / max(pil_img.size)
+                new_w = max(1, int(pil_img.width * ratio))
+                new_h = max(1, int(pil_img.height * ratio))
+                pil_img = pil_img.resize((new_w, new_h), Image.LANCZOS)
+
+            buf = io.BytesIO()
+            pil_img.save(buf, format="JPEG", quality=80)
+            self._pending_image_b64 = base64.b64encode(buf.getvalue()).decode()
             self._btn_screenshot.setText("📸✓")
+            self._append_system(
+                f"📸 Region captured: {pil_img.width}×{pil_img.height}px "
+                f"(JPEG q80, ~{len(buf.getvalue()) // 1024}KB)"
+            )
         except Exception as exc:  # noqa: BLE001
             self._append_system(f"❌ Screenshot failed: {exc}")
+
+    def _on_stop_requested(self) -> None:
+        """Cancel active LLM generation and restore chat to pre-request state."""
+        self._stop_requested = True
+        # Remove partial AI bubble inserted by _begin_streaming_bubble()
+        self._remove_partial_bubble()
+        # Stop the worker (closes HTTP session immediately)
+        if self._worker is not None:
+            stop_fn = getattr(self._worker, "stop", None)
+            if callable(stop_fn):
+                try:
+                    stop_fn()
+                except Exception:  # noqa: BLE001
+                    pass
+        self._pending_prompt = None
+        self.set_sending(False)
+        self._append_system("⏹ Generation stopped — you can continue chatting.")
+
+    def _remove_partial_bubble(self) -> None:
+        """Truncate chat display back to the position before the current AI bubble."""
+        if not _QT_AVAILABLE:
+            return
+        self._stop_flush_and_finalize()  # drain buffer first
+        doc = self._chat_display.document()
+        cursor = QTextCursor(doc)
+        cursor.setPosition(self._bubble_start_pos)
+        cursor.movePosition(
+            QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor
+        )
+        cursor.removeSelectedText()
+        self._chat_display.moveCursor(QTextCursor.MoveOperation.End)
+        self._stream_cursor = None
+        self._token_buf.clear()
 
     def _on_analyze(self) -> None:
         parent = self.window()
@@ -631,9 +811,11 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         """Called when streaming response is fully assembled."""
         self._last_llm_text = full_text
         self._history.append({"role": "assistant", "content": full_text})
+        self._has_warm_llm = True  # model is warmed up — next ETA shows ~10-30s
         self.set_sending(False)
         elapsed = time.perf_counter() - self._t0 if self._t0 > 0 else 0
-        self._lbl_elapsed.setText(f"Response complete ({elapsed:.1f}s)")
+        token_info = f" | {self._token_count} tokens" if self._token_count > 0 else ""
+        self._lbl_elapsed.setText(f"✅ {elapsed:.1f}s{token_info}")
         # Detect empty response — typically caused by <think> block consuming
         # the entire token budget (max_output_tokens), leaving no answer tokens.
         if not full_text.strip():
@@ -658,11 +840,16 @@ class LlmPanel(QWidget):  # type: ignore[misc]
             self.set_sending(False)
             return
         # timeout / connection cancel 에러 구분
-        is_timeout = "timed out" in error.lower() or "300s" in error or "120s" in error
+        is_timeout = (
+            "timed out" in error.lower()
+            or "600s" in error
+            or "300s" in error
+            or "120s" in error
+        )
         if is_timeout:
             self._append_system(
-                "\u23f1 Request timed out (300s). "
-                "CPU-only mode: SmolLM3-3B may be slow without a GPU (~30-90s). "
+                "⏱ Request timed out (600s limit). "
+                "CPU-only mode: Granite Vision 3.2-2b may be slow without a GPU. "
                 "Solutions: 1) Install GPU (recommended) "
                 "2) Ensure Brief mode is ON "
                 "3) Check Ollama is running (start_agent.bat)"
