@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Connector Vision SOP Agent Config",
+  "description": "v2.x config schema — validated before any apply_config_patch() call",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Config schema version (immutable via LLM)"
+    },
+    "line_id": {
+      "type": "string",
+      "description": "Production line identifier"
+    },
+    "password": {
+      "type": "string",
+      "description": "SOP login password (immutable via LLM)"
+    },
+    "pin_count_min": {
+      "type": ["number", "null"],
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Minimum accepted pin count"
+    },
+    "pin_count_max": {
+      "type": ["number", "null"],
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Maximum accepted pin count"
+    },
+    "pin_rows": {
+      "type": "object",
+      "properties": {
+        "top": {"type": "number", "minimum": 0},
+        "bottom": {"type": "number", "minimum": 0}
+      }
+    },
+    "vision": {
+      "type": "object",
+      "properties": {
+        "model_path": {"type": "string"},
+        "confidence_threshold": {
+          "type": "number",
+          "minimum": 0.10,
+          "maximum": 0.99
+        },
+        "pin_area_min_px": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "scan_region": {
+          "type": ["array", "null"],
+          "items": {"type": "number"},
+          "minItems": 4,
+          "maxItems": 4
+        }
+      }
+    },
+    "control": {
+      "type": "object",
+      "properties": {
+        "retries": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "move_duration": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 5.0
+        },
+        "click_pause": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 5.0
+        },
+        "drag_duration": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 5.0
+        },
+        "retry_delay": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10.0
+        },
+        "step_delay": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10.0
+        }
+      }
+    },
+    "llm": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "backend": {"type": "string"},
+        "model_path": {"type": "string"},
+        "http_url": {"type": "string"},
+        "ctx_size": {"type": "number", "minimum": 512},
+        "gpu_layers": {"type": "number", "minimum": 0},
+        "max_input_tokens": {"type": "number", "minimum": 128},
+        "max_output_tokens": {"type": "number", "minimum": 64},
+        "allow_config_write": {"type": "boolean"}
+      }
+    },
+    "ocr": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "backend": {"type": "string"},
+        "threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "fuzzy_match": {"type": "boolean"},
+        "popup_keywords": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "log_path": {"type": "string"},
+        "require_username": {"type": "boolean"}
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -66,11 +66,13 @@ class SopExecutor:
         control: ControlEngine,
         config: Optional[Dict[str, Any]] = None,
         sop_steps_path: Optional[Path] = None,
+        dry_run: bool = False,
     ) -> None:
         self.vision = vision
         self.control = control
         self._config = config or {}
         self._sop_steps_path = sop_steps_path or Path("assets/sop_steps.json")
+        self._dry_run = dry_run
 
     # ------------------------------------------------------------------
     # Config convenience helpers
@@ -454,12 +456,18 @@ class SopExecutor:
         elif step_type == "drag":
             start = tuple(step.get("start", [100, 200]))
             end = tuple(step.get("end", [800, 350]))
+            if self._dry_run:
+                logger.info("[DRY-RUN] would: drag %s -> %s", start, end)
+                return True, f"[DRY-RUN] would drag {start}->{end}"
             drag_result: ControlResult = self.control.drag_roi(start, end)  # type: ignore[arg-type]
             if drag_result.success:
                 return True, f"dragged {start}->{end} in {drag_result.duration:.3f}s"
             return False, f"drag failed: {drag_result.error}"
 
         elif step_type == "validate_pins":
+            if self._dry_run:
+                logger.info("[DRY-RUN] would: validate_pins (%s)", step_name)
+                return True, "[DRY-RUN] would validate_pins"
             result2: SopStepResult = self._validate_pins(step_name)
             return result2.success, result2.details
 
@@ -493,23 +501,28 @@ class SopExecutor:
 
         elif step_type == "wait_ms":
             ms = int(step.get("ms", 500))
+            if self._dry_run:
+                logger.info("[DRY-RUN] would: wait %dms", ms)
+                return True, f"[DRY-RUN] skipped wait {ms}ms"
             time.sleep(ms / 1000.0)
             return True, f"waited {ms}ms"
 
         elif step_type == "type_text":
             text = str(step.get("text", ""))
             clear_first = bool(step.get("clear_first", False))
-            type_res = self.control.type_text(text, clear_first=clear_first)
+            type_res = self._do_type_text(text, clear_first=clear_first)
             if type_res.success:
                 dur = float(getattr(type_res, "duration", 0.0))
-                return True, f"typed '{text}' in {dur:.3f}s"
+                prefix = "[DRY-RUN] would type" if self._dry_run else "typed"
+                return True, f"{prefix} '{text}' in {dur:.3f}s"
             return False, f"type_text failed: {type_res.error}"
 
         elif step_type == "press_key":
             key = str(step.get("key", "Return"))
-            key_res = self.control.press_key(key)
+            key_res = self._do_press_key(key)
             if key_res.success:
-                return True, f"pressed '{key}'"
+                prefix = "[DRY-RUN] would press" if self._dry_run else "pressed"
+                return True, f"{prefix} '{key}'"
             return False, f"press_key failed: {key_res.error}"
 
         else:
@@ -550,19 +563,21 @@ class SopExecutor:
                 "auth: password field '%s' not found, pressing Tab to advance focus",
                 pw_field,
             )
-            self.control.press_key("tab")
-            time.sleep(0.3)
+            self._do_press_key("tab")
+            if not self._dry_run:
+                time.sleep(0.3)
 
         # 3. Type password
         password = self._password
-        type_result = self.control.type_text(password, clear_first=True)
+        type_result = self._do_type_text(password, clear_first=True)
         if not type_result.success:
             return SopStepResult(
                 name=step_name,
                 success=False,
                 details=f"auth: type_text failed — {type_result.error}",
             )
-        time.sleep(0.3)
+        if not self._dry_run:
+            time.sleep(0.3)
 
         # 4. Confirm: try OK button, fall back to Enter
         ok_btn = step.get("ok_button", "ok_button")
@@ -571,7 +586,7 @@ class SopExecutor:
             logger.info(
                 "auth: OK button '%s' not found — pressing Enter as fallback", ok_btn
             )
-            self.control.press_key("enter")
+            self._do_press_key("enter")
 
         return SopStepResult(
             name=step_name,
@@ -613,7 +628,7 @@ class SopExecutor:
         time.sleep(0.2)
 
         # 2. Type the text
-        type_result = self.control.type_text(text, clear_first=clear_first)
+        type_result = self._do_type_text(text, clear_first=clear_first)
         if not type_result.success:
             return SopStepResult(
                 name=step_name,
@@ -622,7 +637,7 @@ class SopExecutor:
             )
 
         # 3. Confirm with Enter
-        self.control.press_key("enter")
+        self._do_press_key("enter")
 
         dur = float(getattr(type_result, "duration", 0.0))
         return SopStepResult(
@@ -666,7 +681,7 @@ class SopExecutor:
         time.sleep(0.5)
 
         # 2. Drag ROI
-        drag_result: ControlResult = self.control.drag_roi(  # type: ignore[arg-type]
+        drag_result: ControlResult = self._do_drag_roi(  # type: ignore[arg-type]
             drag_start, drag_end
         )
         if not drag_result.success:
@@ -690,6 +705,35 @@ class SopExecutor:
     # Individual SOP step implementations
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Dry-run helpers — skip actual UI interaction, log intent only
+    # ------------------------------------------------------------------
+
+    def _do_type_text(self, text: str, clear_first: bool = False) -> ControlResult:
+        """type_text wrapper that respects dry_run."""
+        if self._dry_run:
+            logger.info(
+                "[DRY-RUN] would: type_text '%s' (clear_first=%s)", text, clear_first
+            )
+            return ControlResult(success=True, coords=None, duration=0.0)
+        return self.control.type_text(text, clear_first=clear_first)
+
+    def _do_press_key(self, key: str) -> ControlResult:
+        """press_key wrapper that respects dry_run."""
+        if self._dry_run:
+            logger.info("[DRY-RUN] would: press_key '%s'", key)
+            return ControlResult(success=True, coords=None, duration=0.0)
+        return self.control.press_key(key)
+
+    def _do_drag_roi(
+        self, start: Tuple[int, int], end: Tuple[int, int]
+    ) -> ControlResult:
+        """drag_roi wrapper that respects dry_run."""
+        if self._dry_run:
+            logger.info("[DRY-RUN] would: drag_roi %s -> %s", start, end)
+            return ControlResult(success=True, coords=None, duration=0.0)
+        return self.control.drag_roi(start, end)  # type: ignore[arg-type]
+
     def _click_with_trace(
         self,
         target_name: str,
@@ -699,6 +743,19 @@ class SopExecutor:
         target_type: Optional[str] = None,
     ) -> SopStepResult:
         """Helper to run a click step and convert to ``SopStepResult``."""
+
+        if self._dry_run:
+            logger.info(
+                "[DRY-RUN] would: click %s (step_id=%s, roi=%s)",
+                target_name,
+                step_id,
+                roi,
+            )
+            return SopStepResult(
+                name=step_name,
+                success=True,
+                details=f"[DRY-RUN] would click {target_name}",
+            )
 
         result: ControlResult = self.control.click_target(
             target_name,

@@ -23,6 +23,45 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    import jsonschema
+
+    _JSONSCHEMA_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    jsonschema = None  # type: ignore[assignment]
+    _JSONSCHEMA_AVAILABLE = False
+
+_SCHEMA_PATH = Path(__file__).parent.parent / "assets" / "config.schema.json"
+_CACHED_SCHEMA: Optional[Dict[str, Any]] = None
+
+
+def _load_schema() -> Optional[Dict[str, Any]]:
+    """Load and cache config.schema.json.  Returns None if file not found."""
+    global _CACHED_SCHEMA
+    if _CACHED_SCHEMA is not None:
+        return _CACHED_SCHEMA
+    if _SCHEMA_PATH.exists():
+        try:
+            _CACHED_SCHEMA = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+            return _CACHED_SCHEMA
+        except Exception:  # noqa: BLE001
+            pass
+    return None
+
+
+def validate_config_schema(config: Dict[str, Any]) -> None:
+    """Validate *config* against config.schema.json using jsonschema.
+
+    Raises ``jsonschema.ValidationError`` if the config is invalid.
+    Does nothing if jsonschema is not installed or schema file is missing.
+    """
+    if not _JSONSCHEMA_AVAILABLE:
+        return
+    schema = _load_schema()
+    if schema is None:
+        return
+    jsonschema.validate(instance=config, schema=schema)
+
 
 # ---------------------------------------------------------------------------
 # Safety guardrails — every numeric key that can be patched must be here.
@@ -122,6 +161,9 @@ def apply_config_patch(
 ) -> Tuple[Dict[str, Any], List[str]]:
     """Apply *patch* to an in-memory copy of *config* (no disk writes).
 
+    Validates the resulting config against config.schema.json before returning.
+    Raises ``jsonschema.ValidationError`` if the patched config is invalid.
+
     Returns ``(new_config, warnings)``.
     """
 
@@ -134,6 +176,7 @@ def apply_config_patch(
         except Exception as exc:  # pragma: no cover
             warnings.append(f"Failed to apply patch for key '{key}': {exc!r}")
 
+    validate_config_schema(new_config)
     return new_config, warnings
 
 

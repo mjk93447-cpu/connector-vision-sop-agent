@@ -516,3 +516,141 @@ class TestNewStepFallback:
         c = MagicMock()
         executor = SopExecutor(vision=v, control=c, config={"password": "5678"})
         assert executor._password == "5678"
+
+
+# ---------------------------------------------------------------------------
+# Dry-run mode tests (CP-4)
+# ---------------------------------------------------------------------------
+
+
+class TestDryRun:
+    """dry_run=True must skip all UI interactions and return success."""
+
+    @pytest.fixture
+    def dry_executor(self, vision: VisionEngine, control: ControlEngine) -> SopExecutor:
+        return SopExecutor(vision=vision, control=control, dry_run=True)
+
+    def test_dry_run_flag_stored(self, dry_executor: SopExecutor) -> None:
+        assert dry_executor._dry_run is True
+
+    def test_dry_run_default_false(self, executor: SopExecutor) -> None:
+        assert executor._dry_run is False
+
+    def test_dry_run_click_no_control_call(self, dry_executor: SopExecutor) -> None:
+        """dry_run click step must NOT call control.click_target."""
+        dry_executor.control.click_target = MagicMock()
+        step = {"id": "s", "name": "S", "type": "click", "target": "login_button"}
+        success, msg = dry_executor.run_step(step)
+        assert success is True
+        assert "[DRY-RUN]" in msg
+        dry_executor.control.click_target.assert_not_called()
+
+    def test_dry_run_drag_no_control_call(self, dry_executor: SopExecutor) -> None:
+        """dry_run drag step must NOT call control.drag_roi."""
+        dry_executor.control.drag_roi = MagicMock()
+        step = {
+            "id": "d",
+            "name": "D",
+            "type": "drag",
+            "start": [100, 200],
+            "end": [800, 350],
+        }
+        success, msg = dry_executor.run_step(step)
+        assert success is True
+        assert "[DRY-RUN]" in msg
+        dry_executor.control.drag_roi.assert_not_called()
+
+    def test_dry_run_type_text_no_control_call(self, dry_executor: SopExecutor) -> None:
+        """dry_run type_text step must NOT call control.type_text."""
+        dry_executor.control.type_text = MagicMock()
+        step = {"id": "t", "name": "T", "type": "type_text", "text": "hello"}
+        success, msg = dry_executor.run_step(step)
+        assert success is True
+        assert "[DRY-RUN]" in msg
+        dry_executor.control.type_text.assert_not_called()
+
+    def test_dry_run_press_key_no_control_call(self, dry_executor: SopExecutor) -> None:
+        """dry_run press_key step must NOT call control.press_key."""
+        dry_executor.control.press_key = MagicMock()
+        step = {"id": "k", "name": "K", "type": "press_key", "key": "Return"}
+        success, msg = dry_executor.run_step(step)
+        assert success is True
+        assert "[DRY-RUN]" in msg
+        dry_executor.control.press_key.assert_not_called()
+
+    def test_dry_run_wait_ms_skipped(self, dry_executor: SopExecutor) -> None:
+        """dry_run wait_ms must not actually sleep (returns immediately)."""
+        import time as _time
+
+        step = {"id": "w", "name": "W", "type": "wait_ms", "ms": 5000}
+        t0 = _time.monotonic()
+        success, msg = dry_executor.run_step(step)
+        elapsed = _time.monotonic() - t0
+        assert success is True
+        assert "[DRY-RUN]" in msg
+        assert elapsed < 1.0  # must not have slept 5 seconds
+
+    def test_dry_run_validate_pins_skipped(self, dry_executor: SopExecutor) -> None:
+        """dry_run validate_pins must not call vision.capture_screen."""
+        dry_executor.vision.capture_screen = MagicMock()
+        step = {"id": "v", "name": "V", "type": "validate_pins"}
+        success, msg = dry_executor.run_step(step)
+        assert success is True
+        assert "[DRY-RUN]" in msg
+        dry_executor.vision.capture_screen.assert_not_called()
+
+    def test_dry_run_auth_sequence_no_real_calls(
+        self, dry_executor: SopExecutor
+    ) -> None:
+        """dry_run auth_sequence must not call any control methods."""
+        dry_executor.control.click_target = MagicMock()
+        dry_executor.control.type_text = MagicMock()
+        dry_executor.control.press_key = MagicMock()
+        step = {
+            "id": "login",
+            "name": "Login",
+            "type": "auth_sequence",
+            "login_button": "login_button",
+            "password_field": "password_field",
+            "ok_button": "ok_button",
+        }
+        success, msg = dry_executor.run_step(step)
+        assert success is True
+        dry_executor.control.click_target.assert_not_called()
+        dry_executor.control.type_text.assert_not_called()
+        dry_executor.control.press_key.assert_not_called()
+
+    def test_dry_run_input_text_no_real_calls(self, dry_executor: SopExecutor) -> None:
+        """dry_run input_text must not call control methods."""
+        dry_executor.control.click_target = MagicMock()
+        dry_executor.control.type_text = MagicMock()
+        dry_executor.control.press_key = MagicMock()
+        step = {
+            "id": "ax",
+            "name": "Axis-X",
+            "type": "input_text",
+            "target": "axis_x_field",
+            "text": "123",
+        }
+        success, _ = dry_executor.run_step(step)
+        assert success is True
+        dry_executor.control.click_target.assert_not_called()
+        dry_executor.control.type_text.assert_not_called()
+        dry_executor.control.press_key.assert_not_called()
+
+    def test_dry_run_mold_setup_no_real_calls(self, dry_executor: SopExecutor) -> None:
+        """dry_run mold_setup must not call control methods."""
+        dry_executor.control.click_target = MagicMock()
+        dry_executor.control.drag_roi = MagicMock()
+        step = {
+            "id": "ml",
+            "name": "Mold Left",
+            "type": "mold_setup",
+            "label_target": "mold_left_label",
+            "drag_start": [100, 200],
+            "drag_end": [800, 350],
+        }
+        success, _ = dry_executor.run_step(step)
+        assert success is True
+        dry_executor.control.click_target.assert_not_called()
+        dry_executor.control.drag_roi.assert_not_called()

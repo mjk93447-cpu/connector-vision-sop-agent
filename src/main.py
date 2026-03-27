@@ -156,6 +156,7 @@ def _build_services(
     config: Optional[Dict[str, Any]] = None,
     speed: SpeedPreset = "normal",
     sop_steps_path: Optional[Path] = None,
+    dry_run: bool = False,
 ) -> tuple[VisionEngine, ControlEngine, SopExecutor]:
     """Construct core services.  All timing comes from config when provided."""
 
@@ -214,7 +215,9 @@ def _build_services(
             sop_steps=steps,
         )
 
-    executor = SopExecutor(vision=vision, control=control, config=config)
+    executor = SopExecutor(
+        vision=vision, control=control, config=config, dry_run=dry_run
+    )
     return vision, control, executor
 
 
@@ -388,9 +391,11 @@ def _prompt_config_apply(
 # ---------------------------------------------------------------------------
 
 
-def run_console() -> None:
+def run_console(dry_run: bool = False) -> None:
     """Hybrid console UI for the line PC."""
 
+    if dry_run:
+        print("[DRY-RUN] Dry-run mode enabled — UI interactions will be logged only.")
     _print_welcome()
     last_log_manager: LogManager | None = None
     cfg = load_config()
@@ -427,7 +432,9 @@ def run_console() -> None:
             last_log_manager = log_manager
 
             try:
-                _, _, executor = _build_services(config=cfg, speed=speed)
+                _, _, executor = _build_services(
+                    config=cfg, speed=speed, dry_run=dry_run
+                )
                 trace = executor.run()
                 for line in trace:
                     print("  ", line)
@@ -734,9 +741,10 @@ def run_gui() -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    _dry_run_flag = "--dry-run" in args
     if "--console" in args or "-c" in args:
         try:
-            run_console()
+            run_console(dry_run=_dry_run_flag)
         except KeyboardInterrupt:
             print("\nExiting Connector Vision SOP Agent.")
     else:

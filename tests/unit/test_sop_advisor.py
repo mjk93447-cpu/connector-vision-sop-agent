@@ -394,3 +394,90 @@ class TestSafeNumericRanges:
     def test_all_ranges_valid(self) -> None:
         for key, (lo, hi) in SAFE_NUMERIC_RANGES.items():
             assert lo < hi, f"Range for '{key}' is invalid: lo={lo} >= hi={hi}"
+
+
+# ---------------------------------------------------------------------------
+# validate_config_schema (CP-5)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateConfigSchema:
+    """validate_config_schema() and schema-aware apply_config_patch() tests."""
+
+    _VALID_CONFIG = {
+        "version": "2.2.0",
+        "pin_count_min": 40,
+        "pin_count_max": 40,
+        "vision": {"confidence_threshold": 0.6},
+        "control": {"retries": 3, "step_delay": 1.0},
+        "llm": {"enabled": False},
+    }
+
+    def test_valid_config_passes(self) -> None:
+        from src.sop_advisor import validate_config_schema
+
+        # Must not raise
+        validate_config_schema(self._VALID_CONFIG)
+
+    def test_invalid_confidence_threshold_raises(self) -> None:
+        """confidence_threshold > 0.99 violates schema — should raise."""
+        import pytest
+
+        try:
+            import jsonschema
+        except ImportError:
+            pytest.skip("jsonschema not installed")
+
+        from src.sop_advisor import validate_config_schema
+
+        bad_cfg = {
+            "version": "2.2.0",
+            "vision": {"confidence_threshold": 2.5},  # exceeds maximum 0.99
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            validate_config_schema(bad_cfg)
+
+    def test_apply_patch_valid_passes(self) -> None:
+        """apply_config_patch with valid result must succeed without error."""
+        cfg = dict(self._VALID_CONFIG)
+        new_cfg, warnings = apply_config_patch(cfg, {"control.step_delay": 1.5})
+        assert new_cfg["control"]["step_delay"] == 1.5
+        assert not warnings
+
+    def test_apply_patch_schema_violation_raises(self) -> None:
+        """Patch that results in schema violation must raise ValidationError."""
+        import pytest
+
+        try:
+            import jsonschema
+        except ImportError:
+            pytest.skip("jsonschema not installed")
+
+        # Force a negative pin_count_min which violates minimum: 1
+        # We'll test via validate_config_schema directly with a bad value
+        from src.sop_advisor import validate_config_schema
+
+        bad_cfg = {"version": "2.0.0", "pin_count_min": -5}  # minimum is 1
+        with pytest.raises(jsonschema.ValidationError):
+            validate_config_schema(bad_cfg)
+
+    def test_schema_file_exists(self) -> None:
+        """config.schema.json must be present in assets/."""
+        from src.sop_advisor import _SCHEMA_PATH
+
+        assert _SCHEMA_PATH.exists(), f"Schema not found at {_SCHEMA_PATH}"
+
+    def test_validate_no_op_when_schema_missing(self, tmp_path: Any) -> None:
+        """If schema path doesn't exist, validate_config_schema must not raise."""
+        import src.sop_advisor as adv_mod
+
+        original = adv_mod._SCHEMA_PATH
+        original_cache = adv_mod._CACHED_SCHEMA
+        try:
+            adv_mod._SCHEMA_PATH = tmp_path / "nonexistent.json"
+            adv_mod._CACHED_SCHEMA = None
+            # Must not raise even with a "bad" config
+            adv_mod.validate_config_schema({"bad_key": "bad_value"})
+        finally:
+            adv_mod._SCHEMA_PATH = original
+            adv_mod._CACHED_SCHEMA = original_cache

@@ -1,10 +1,6 @@
 [run]
 source = src
 omit =
-    # 레거시 모듈 — CP-3에서 리팩터링 예정, 현재 단위 테스트 제외
-    src/main.py
-    src/control_engine.py
-    src/sop_executor.py
     src/test_sop.py
 
 [report]
