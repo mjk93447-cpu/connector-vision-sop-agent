@@ -38,7 +38,7 @@ if exist "%OLLAMA_EXE%" (
     start "" /B "%OLLAMA_EXE%" serve
     :: Wait briefly for Ollama to initialise
     timeout /t 3 /nobreak >nul
-    echo [INFO] Ollama server started (SmolLM3-3B Q4_K_M ready).
+    echo [INFO] Ollama server started (Granite Vision 3.3-2b ready).
 ) else (
     echo [WARN] ollama.exe not found — LLM features will be disabled.
     echo        Run install_first_time.bat to set up Ollama.

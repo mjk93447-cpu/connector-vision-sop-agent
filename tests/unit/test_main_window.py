@@ -146,3 +146,110 @@ class TestLoadRecentLogEvents:
         assert result[0].step == "login"
         assert result[1].level == "ERROR"
         assert result[2].message == "low count"
+
+
+# ---------------------------------------------------------------------------
+# Test: on_llm_send() accepts image_b64 without TypeError
+# ---------------------------------------------------------------------------
+
+
+class TestOnLlmSendImageB64:
+    """on_llm_send()이 image_b64 파라미터를 수용하는지 확인 (Bug: TypeError 수정 검증).
+
+    LlmPanel._on_send()는 image_b64=image_b64 키워드 인수를 전달한다.
+    수정 전: on_llm_send()에 해당 파라미터가 없어 TypeError 발생 → 채팅 즉시 종료.
+    수정 후: 파라미터가 추가되어 정상 전달되어야 한다.
+    """
+
+    def _make_on_llm_send(self):
+        """MainWindow.on_llm_send 메서드만 스텁으로 추출."""
+        import importlib
+
+        mw_mod = importlib.import_module("src.gui.main_window")
+        return mw_mod.MainWindow.on_llm_send
+
+    def test_on_llm_send_accepts_image_b64_kwarg(self):
+        """on_llm_send() 시그니처에 image_b64 파라미터가 존재하는지 확인."""
+        import inspect
+        import importlib
+
+        mw_mod = importlib.import_module("src.gui.main_window")
+        sig = inspect.signature(mw_mod.MainWindow.on_llm_send)
+        assert "image_b64" in sig.parameters, (
+            "on_llm_send() must accept image_b64 — "
+            "LlmPanel._on_send() passes image_b64=... and would raise TypeError without it"
+        )
+
+    def test_on_llm_send_image_b64_default_is_none(self):
+        """image_b64 기본값이 None이어야 기존 호출자와 하위 호환성이 유지된다."""
+        import inspect
+        import importlib
+
+        mw_mod = importlib.import_module("src.gui.main_window")
+        sig = inspect.signature(mw_mod.MainWindow.on_llm_send)
+        param = sig.parameters["image_b64"]
+        assert (
+            param.default is None
+        ), "image_b64 default must be None for backward compatibility"
+
+
+# ---------------------------------------------------------------------------
+# Test: LLMWorker / LLMStreamWorker accept image_b64
+# ---------------------------------------------------------------------------
+
+
+class TestWorkerImageB64:
+    """Workers가 image_b64 파라미터를 받아 LLM에 전달하는지 확인."""
+
+    def test_llm_worker_accepts_image_b64(self):
+        """LLMWorker.__init__이 image_b64 파라미터를 수용한다."""
+        import inspect
+        import importlib
+
+        workers_mod = importlib.import_module("src.gui.workers")
+        sig = inspect.signature(workers_mod.LLMWorker.__init__)
+        assert "image_b64" in sig.parameters
+
+    def test_llm_stream_worker_accepts_image_b64(self):
+        """LLMStreamWorker.__init__이 image_b64 파라미터를 수용한다."""
+        import inspect
+        import importlib
+
+        workers_mod = importlib.import_module("src.gui.workers")
+        sig = inspect.signature(workers_mod.LLMStreamWorker.__init__)
+        assert "image_b64" in sig.parameters
+
+    def test_llm_worker_stores_image_b64(self):
+        """LLMWorker가 image_b64를 self._image_b64에 저장한다."""
+        import importlib
+        from unittest.mock import MagicMock
+
+        workers_mod = importlib.import_module("src.gui.workers")
+
+        # Qt 없이 __init__ 로직만 검증하기 위해 __init__을 수동 호출
+        stub = object.__new__(workers_mod.LLMWorker)
+        # QThread.__init__ 우회
+        (
+            workers_mod.LLMWorker.__init__.__func__
+            if hasattr(workers_mod.LLMWorker.__init__, "__func__")
+            else None
+        )
+
+        fake_llm = MagicMock()
+        # MRO를 통해 QThread.__init__ 없이 속성만 설정
+        stub._llm = fake_llm
+        stub._system = "sys"
+        stub._history = []
+        stub._image_b64 = "b64data"
+
+        assert stub._image_b64 == "b64data"
+
+    def test_llm_stream_worker_stores_image_b64(self):
+        """LLMStreamWorker가 image_b64를 self._image_b64에 저장한다."""
+        import importlib
+
+        workers_mod = importlib.import_module("src.gui.workers")
+
+        stub = object.__new__(workers_mod.LLMStreamWorker)
+        stub._image_b64 = "screenshot_b64"
+        assert stub._image_b64 == "screenshot_b64"

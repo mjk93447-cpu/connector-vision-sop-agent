@@ -177,17 +177,23 @@ class LLMWorker(QThread):  # type: ignore[misc]
         llm: Any,
         system_prompt: str,
         history: List[Dict[str, str]],
+        image_b64: Optional[str] = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self._llm = llm
         self._system = system_prompt
         self._history = history
+        self._image_b64 = image_b64
 
     def run(self) -> None:
         """Thread entry point."""
         try:
-            reply = self._llm.chat(system=self._system, history=self._history)
+            reply = self._llm.chat(
+                system=self._system,
+                history=self._history,
+                image_b64=self._image_b64,
+            )
             self.response_ready.emit(reply)
         except Exception as exc:  # noqa: BLE001
             self.error_occurred.emit(str(exc))
@@ -222,6 +228,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
         system_prompt: str,
         history: List[Dict[str, str]],
         brief: bool = False,
+        image_b64: Optional[str] = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
@@ -229,6 +236,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
         self._system = system_prompt
         self._history = history
         self._brief = brief
+        self._image_b64 = image_b64
         self._t0: float = 0.0
         self._running = True
 
@@ -246,7 +254,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
     # Hard cutoff for streaming LLM requests (seconds).
     # concurrent.futures.future.result(timeout=...) guarantees the UI thread
     # is unblocked after this duration even if iter_lines() is still blocking.
-    # 300s: SmolLM3-3B CPU cold-start ~30-90s 첫 토큰 + 생성 완료 버퍼
+    # 300s: Granite Vision 3.3-2b CPU cold-start 버퍼 포함
     _STREAM_TIMEOUT_SECS: int = 300
 
     def run(self) -> None:
@@ -286,6 +294,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
                 on_done=_on_done,
                 brief=self._brief,
                 on_think_token=_on_think_token,
+                image_b64=self._image_b64,
             )
 
         # executor.shutdown(wait=False): background thread is not joined —

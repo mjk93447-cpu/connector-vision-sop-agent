@@ -115,6 +115,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         system: Optional[str] = None,
         brief: bool = False,
         streaming: bool = True,
+        image_b64: Optional[str] = None,
     ) -> None:
         """Start LLMStreamWorker (or LLMWorker) for a chat turn.
 
@@ -167,7 +168,11 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
 
         if streaming:
             worker = LLMStreamWorker(
-                self._llm, system_prompt=enriched_system, history=history, brief=brief
+                self._llm,
+                system_prompt=enriched_system,
+                history=history,
+                brief=brief,
+                image_b64=image_b64,
             )
             worker.token_ready.connect(self._llm_panel.on_token_ready)
             worker.think_token_ready.connect(self._llm_panel.on_think_token_ready)
@@ -179,7 +184,10 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             worker.start()
         else:
             self._llm_worker = LLMWorker(
-                self._llm, system_prompt=enriched_system, history=history
+                self._llm,
+                system_prompt=enriched_system,
+                history=history,
+                image_b64=image_b64,
             )
             self._llm_worker.response_ready.connect(self._llm_panel.on_llm_response)
             self._llm_worker.error_occurred.connect(self._llm_panel.on_llm_error)
