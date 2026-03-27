@@ -1,0 +1,32 @@
+name: Build Proposal PPTX
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'create_proposal.js'
+      - 'package.json'
+
+jobs:
+  build-pptx:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate PPTX
+        run: node create_proposal.js
+
+      - name: Upload PPTX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI_SOP_Agent_Proposal
+          path: AI_SOP_Agent_Proposal.pptx
+          retention-days: 30
