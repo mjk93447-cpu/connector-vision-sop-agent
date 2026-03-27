@@ -24,6 +24,10 @@ from pathlib import Path
 
 import pytest
 
+# Training E2E tests run actual YOLO inference (CPU): 90-180s per test.
+# Override the global --timeout=60 used in CI to prevent false failures.
+pytestmark = pytest.mark.timeout(300)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
