@@ -41,7 +41,16 @@ except ImportError:
     QWidget = object  # type: ignore[assignment,misc]
     QDialog = object  # type: ignore[assignment,misc]
 
-_STEP_TYPES = ["click", "drag", "validate_pins", "click_sequence"]
+_STEP_TYPES = [
+    "click",
+    "drag",
+    "validate_pins",
+    "click_sequence",
+    "type_text",
+    "press_key",
+    "wait_ms",
+    "auth_sequence",
+]
 _TARGET_TYPES = ["auto", "TEXT", "NON_TEXT"]
 
 
@@ -393,10 +402,46 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         cur_type = self._step.get("type", "click")
         idx = _STEP_TYPES.index(cur_type) if cur_type in _STEP_TYPES else 0
         self._type_combo.setCurrentIndex(idx)
+        self._type_combo.currentTextChanged.connect(self._on_type_changed)
         form.addRow("Type:", self._type_combo)
 
         self._desc_edit = QLineEdit(self._step.get("description", ""))
         form.addRow("Description:", self._desc_edit)
+
+        # ── type_text fields (type == "type_text") ────────────────────────────
+        self._type_text_widget = QWidget()
+        _tt_form = QFormLayout(self._type_text_widget)
+        _tt_form.setContentsMargins(0, 0, 0, 0)
+        _tt_form.setSpacing(4)
+        self._text_edit = QLineEdit(self._step.get("text", ""))
+        self._text_edit.setPlaceholderText("Text to type (e.g. password, 0, ...)")
+        _tt_form.addRow("Text:", self._text_edit)
+        self._clear_first_chk = QCheckBox("Clear field before typing")
+        self._clear_first_chk.setChecked(self._step.get("clear_first", True))
+        _tt_form.addRow("", self._clear_first_chk)
+        form.addRow(self._type_text_widget)
+
+        # ── press_key fields (type == "press_key") ───────────────────────────
+        self._press_key_widget = QWidget()
+        _pk_form = QFormLayout(self._press_key_widget)
+        _pk_form.setContentsMargins(0, 0, 0, 0)
+        _pk_form.setSpacing(4)
+        self._key_edit = QLineEdit(self._step.get("key", ""))
+        self._key_edit.setPlaceholderText("Return, Tab, ctrl+a, ctrl+z ...")
+        _pk_form.addRow("Key:", self._key_edit)
+        form.addRow(self._press_key_widget)
+
+        # ── wait_ms fields (type == "wait_ms") ───────────────────────────────
+        self._wait_ms_widget = QWidget()
+        _wm_form = QFormLayout(self._wait_ms_widget)
+        _wm_form.setContentsMargins(0, 0, 0, 0)
+        _wm_form.setSpacing(4)
+        self._ms_spin = QSpinBox()
+        self._ms_spin.setRange(0, 99999)
+        self._ms_spin.setValue(self._step.get("ms", 500))
+        self._ms_spin.setSuffix(" ms")
+        _wm_form.addRow("Duration:", self._ms_spin)
+        form.addRow(self._wait_ms_widget)
 
         self._target_edit = QLineEdit(self._step.get("target", ""))
         self._target_edit.setPlaceholderText("Target name for click type")
@@ -495,6 +540,16 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         # Initialize field states
         self._update_field_states(self._target_type_combo.currentText())
         self._update_registry_hint(self._target_edit.text().strip())
+        self._on_type_changed(self._type_combo.currentText())
+
+    def _on_type_changed(self, type_str: str) -> None:
+        """Show/hide type-specific input fields based on the selected step type."""
+        if not _QT_AVAILABLE:
+            return
+        self._type_text_widget.setVisible(type_str == "type_text")
+        self._press_key_widget.setVisible(type_str == "press_key")
+        self._wait_ms_widget.setVisible(type_str == "wait_ms")
+        self.adjustSize()
 
     def _on_target_changed(self, text: str) -> None:
         cur_tt = self._target_type_combo.currentText()
@@ -667,6 +722,33 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
                 step["button_text"] = bt
             elif "button_text" in step:
                 del step["button_text"]
+            # type-specific fields
+            step_type = step.get("type", "")
+            if step_type == "type_text":
+                step["text"] = self._text_edit.text()  # allow empty
+                step["clear_first"] = self._clear_first_chk.isChecked()
+                step.pop("key", None)
+                step.pop("ms", None)
+            elif step_type == "press_key":
+                k = self._key_edit.text().strip()
+                if k:
+                    step["key"] = k
+                elif "key" in step:
+                    del step["key"]
+                step.pop("text", None)
+                step.pop("clear_first", None)
+                step.pop("ms", None)
+            elif step_type == "wait_ms":
+                step["ms"] = self._ms_spin.value()
+                step.pop("text", None)
+                step.pop("clear_first", None)
+                step.pop("key", None)
+            else:
+                # click-based types: remove type-specific fields if present
+                step.pop("text", None)
+                step.pop("clear_first", None)
+                step.pop("key", None)
+                step.pop("ms", None)
         return step
 
 
