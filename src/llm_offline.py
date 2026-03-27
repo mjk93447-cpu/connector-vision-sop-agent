@@ -2,8 +2,8 @@
 Offline LLM integration for Connector Vision SOP Agent.
 
 Supported backends:
-- ``ollama`` : Ollama local server (recommended). OpenAI-compatible HTTP API.
-               Install: https://ollama.com  /  ollama pull pedrolucas/smollm3:3b-q4_k_m
+- ``ollama`` : Ollama local server (recommended). Native /api/chat endpoint.
+               Install: https://ollama.com  /  ollama pull ibm/granite3.3-vision:2b
 - ``http``   : LM Studio / Ollama or any OpenAI-compatible HTTP server.
 
 Heavy dependencies are NOT loaded at import time.
@@ -11,10 +11,15 @@ If backend is missing/misconfigured, a clear RuntimeError is raised
 and the EXE continues running without LLM features.
 
 New in v3.0:
-- stream_chat()     : streaming token-by-token response (Ollama SSE)
+- stream_chat()     : streaming token-by-token response (Ollama /api/chat NDJSON)
 - recovery_action() : SOP exception recovery via JSON response
 - propose_sop_improvement() : analyze success patterns → sop_steps.proposed.json
 - brief_mode        : shorter max_output_tokens for faster responses
+
+New in v3.10:
+- IBM Granite Vision 3.3-2b (multimodal, DocVQA 89%)
+- image_b64 parameter for screenshot attachment
+- Ollama /api/chat native endpoint (NDJSON streaming)
 """
 
 from __future__ import annotations
@@ -28,14 +33,12 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Type
 
 BackendType = Literal["http", "ollama"]
 
-_OLLAMA_DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
-_OLLAMA_DEFAULT_MODEL = "pedrolucas/smollm3:3b-q4_k_m"
+_OLLAMA_DEFAULT_URL = "http://localhost:11434/api/chat"
+_OLLAMA_DEFAULT_MODEL = "ibm/granite3.3-vision:2b"
 
-# Brief mode: shorter token limit for fast responses (used when user requests quick answer)
-# SmolLM3-3B는 <think>...</think> 토큰을 항상 생성하므로 1024 필요
-# (thinking ~300-500 tokens + brief answer ~200-400 tokens)
-# 512였을 때 복잡한 질문에서 <think> 블록이 예산 전체를 소비 → 빈 응답 발생
-_BRIEF_MAX_TOKENS = 1024
+# Brief mode: shorter token limit for fast responses
+# Granite Vision 3.3-2b는 <think> 토큰을 생성하지 않으므로 512로 충분
+_BRIEF_MAX_TOKENS = 512
 
 
 @dataclass
@@ -191,9 +194,11 @@ class OfflineLLM:
 
         # Derive base URL from configured completions URL
         url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
-        # Strip "/v1/chat/completions" suffix to reach the root endpoint
+        # Strip "/api/..." or "/v1/..." suffix to reach the root endpoint
         if "/v1/" in url:
             base = url.split("/v1/")[0]
+        elif "/api/" in url:
+            base = url.split("/api/")[0]
         else:
             base = _OLLAMA_BASE_URL
 
@@ -224,7 +229,7 @@ class OfflineLLM:
         else:
             return (
                 f"ℹ️ CPU-only mode ({num_thread} threads) — "
-                "SmolLM3-3B Q4_K_M: ~15-45s per response on CPU"
+                "Granite Vision 3.3-2b: ~10-30s per response on CPU"
             )
 
     # ------------------------------------------------------------------ #
@@ -236,24 +241,19 @@ class OfflineLLM:
         system: str,
         history: List[Dict[str, str]],
         brief: bool = False,
+        image_b64: Optional[str] = None,
     ) -> str:
         """Single-turn chat completion routed to the configured backend.
 
         Parameters
         ----------
-        system  : System prompt string.
-        history : Conversation history (role/content dicts).
-        brief   : If True, use shorter max_output_tokens for faster response.
+        system    : System prompt string.
+        history   : Conversation history (role/content dicts).
+        brief     : If True, use shorter max_output_tokens for faster response.
+        image_b64 : Optional base64-encoded PNG screenshot to attach (multimodal).
         """
-        # brief 모드: thinking 스킵 유도 힌트를 system prompt 앞에 추가
-        if brief:
-            system = (
-                "BRIEF MODE: Respond directly and concisely. "
-                "Do NOT include <think> tags or internal reasoning. "
-                "Give only the final answer.\n\n"
-            ) + system
         if self.cfg.backend == "ollama":
-            return self._chat_ollama(system, history, brief=brief)
+            return self._chat_ollama(system, history, brief=brief, image_b64=image_b64)
         if self.cfg.backend == "http":
             return self._chat_http(system, history, brief=brief)
         raise RuntimeError(f"Unsupported LLM backend: {self.cfg.backend!r}")
@@ -266,6 +266,7 @@ class OfflineLLM:
         on_done: Optional[Callable[[str, float], None]] = None,
         brief: bool = False,
         on_think_token: Optional[Callable[[str], None]] = None,
+        image_b64: Optional[str] = None,
     ) -> str:
         """Streaming chat — calls on_token(chunk) for each visible token.
 
@@ -277,19 +278,10 @@ class OfflineLLM:
         on_done        : Optional callback(full_text, elapsed_sec) on completion.
         brief          : Use shorter token limit for faster response.
         on_think_token : Optional callback for <think>…</think> reasoning tokens.
-                         While inside a <think> block, tokens are routed here
-                         instead of on_token so the UI can show reasoning progress
-                         without cluttering the answer area.
+        image_b64      : Optional base64-encoded PNG to attach (multimodal).
 
-        Returns the full assembled response string (answer only, no <think> blocks).
+        Returns the full assembled response string.
         """
-        # brief 모드: thinking 스킵 유도 힌트를 system prompt 앞에 추가
-        if brief:
-            system = (
-                "BRIEF MODE: Respond directly and concisely. "
-                "Do NOT include <think> tags or internal reasoning. "
-                "Give only the final answer.\n\n"
-            ) + system
         if self.cfg.backend in ("ollama", "http"):
             return self._stream_ollama(
                 system,
@@ -298,6 +290,7 @@ class OfflineLLM:
                 on_done,
                 brief=brief,
                 on_think_token=on_think_token,
+                image_b64=image_b64,
             )
         raise RuntimeError(f"Streaming not supported for backend: {self.cfg.backend!r}")
 
@@ -310,15 +303,16 @@ class OfflineLLM:
         system: str,
         history: List[Dict[str, str]],
         brief: bool = False,
+        image_b64: Optional[str] = None,
     ) -> str:
-        """Ollama 로컬 서버에 OpenAI 호환 API로 요청한다.
+        """Ollama /api/chat (native format) — non-streaming request.
 
         Ollama URL과 모델 태그에 합리적인 기본값을 적용하므로
         config.json의 llm 블록에서 http_url / model_path를 생략해도 동작한다.
 
         설치 및 모델 준비:
             winget install Ollama.Ollama
-            ollama pull llama4:scout
+            ollama pull ibm/granite3.3-vision:2b
             ollama serve
         """
 
@@ -333,18 +327,27 @@ class OfflineLLM:
         url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
         model = self.cfg.model_path or _OLLAMA_DEFAULT_MODEL
 
-        messages: List[Dict[str, str]] = []
+        messages: List[Dict[str, Any]] = []
         if not history or history[0].get("role") != "system":
             messages.append({"role": "system", "content": system})
-        messages.extend(history)
+        messages.extend(history)  # type: ignore[arg-type]
+
+        # Attach screenshot to last user message if provided
+        if image_b64:
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    msg["images"] = [image_b64]
+                    break
 
         max_tokens = _BRIEF_MAX_TOKENS if brief else self.cfg.max_output_tokens
+        options = self._get_optimized_options(brief=brief)
+        options["num_predict"] = max_tokens  # Ollama native uses num_predict
+
         payload = {
             "model": model,
             "messages": messages,
-            "max_tokens": max_tokens,
             "stream": False,
-            "options": self._get_optimized_options(brief=brief),
+            "options": options,
         }
         # connect 10s, read 120s (non-streaming: total response timeout)
         resp = requests.post(url, json=payload, timeout=(10, 120))
@@ -352,7 +355,7 @@ class OfflineLLM:
         data = resp.json()
 
         try:
-            return data["choices"][0]["message"]["content"]
+            return data["message"]["content"]
         except Exception as exc:  # pragma: no cover
             raise RuntimeError(f"Unexpected Ollama response format: {data!r}") from exc
 
@@ -368,29 +371,41 @@ class OfflineLLM:
         on_done: Optional[Callable[[str, float], None]],
         brief: bool = False,
         on_think_token: Optional[Callable[[str], None]] = None,
+        image_b64: Optional[str] = None,
     ) -> str:
-        """Streaming SSE request to Ollama. Calls on_token(chunk) per visible token.
+        """Streaming request to Ollama /api/chat (NDJSON). Calls on_token per token.
 
-        <think>…</think> reasoning tokens from phi4-mini-reasoning are detected
-        and routed to on_think_token (if provided) instead of on_token, so the UI
-        can show "thinking…" feedback without polluting the answer area.
-        Only the answer text (outside <think> blocks) is included in the return value.
+        Uses Ollama native /api/chat format which emits NDJSON lines:
+            {"message": {"content": "token"}, "done": false}
+            {"done": true}
+
+        Supports image attachment for multimodal models (Granite Vision 3.3-2b).
+        <think>…</think> routing is preserved for backward compatibility.
         """
         url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
         model = self.cfg.model_path or _OLLAMA_DEFAULT_MODEL
         max_tokens = _BRIEF_MAX_TOKENS if brief else self.cfg.max_output_tokens
 
-        messages: List[Dict[str, str]] = []
+        messages: List[Dict[str, Any]] = []
         if not history or history[0].get("role") != "system":
             messages.append({"role": "system", "content": system})
-        messages.extend(history)
+        messages.extend(history)  # type: ignore[arg-type]
+
+        # Attach screenshot to last user message if provided
+        if image_b64:
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    msg["images"] = [image_b64]
+                    break
+
+        options = self._get_optimized_options(brief=brief)
+        options["num_predict"] = max_tokens  # Ollama native uses num_predict
 
         payload = {
             "model": model,
             "messages": messages,
-            "max_tokens": max_tokens,
             "stream": True,
-            "options": self._get_optimized_options(brief=brief),
+            "options": options,
         }
         t0 = time.perf_counter()
         answer_text = ""  # text outside <think> blocks
@@ -399,8 +414,7 @@ class OfflineLLM:
 
         session = self._get_session()
         # timeout=(10, 180): TCP 연결 10s + 첫 바이트 수신 180s
-        # SmolLM3-3B CPU cold-start 첫 토큰: 30~90s → 30s read timeout은 반드시 500 유발
-        # workers.py concurrent.futures(120s)는 전체 스트림 완료 타임아웃이므로 별도 역할
+        # Granite Vision CPU cold-start 첫 토큰: 10~30s
         try:
             with session.post(
                 url, json=payload, stream=True, timeout=(10, 180)
@@ -410,36 +424,27 @@ class OfflineLLM:
                     if not line:
                         continue
                     raw = line.decode("utf-8", errors="replace")
-                    if raw.startswith("data: "):
-                        raw = raw[6:]
-                    if raw.strip() == "[DONE]":
-                        break
                     try:
                         chunk = json.loads(raw)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        token = delta.get("content", "")
-                        # Ollama 0.7+ reasoning 모델: thinking 토큰이
-                        # 별도 reasoning_content 필드로 올 수 있음 (phi4-mini-reasoning 등)
-                        reasoning_token = delta.get("reasoning_content", "")
-                        if reasoning_token and on_think_token:
-                            on_think_token(reasoning_token)
+                        # Ollama /api/chat NDJSON format
+                        if chunk.get("done"):
+                            break
+                        token = chunk.get("message", {}).get("content", "")
                         if not token:
                             continue
-                    except (json.JSONDecodeError, IndexError, KeyError):
+                    except (json.JSONDecodeError, KeyError):
                         continue
 
-                    # ---- <think> token routing ----
+                    # ---- <think> token routing (backward compat) ----
                     _pending += token
                     while _pending:
                         if _in_think:
                             end_idx = _pending.find("</think>")
                             if end_idx == -1:
-                                # All pending is reasoning — route to think callback
                                 if on_think_token:
                                     on_think_token(_pending)
                                 _pending = ""
                             else:
-                                # Emit reasoning up to </think>
                                 reasoning_chunk = _pending[:end_idx]
                                 if reasoning_chunk and on_think_token:
                                     on_think_token(reasoning_chunk)
@@ -448,12 +453,10 @@ class OfflineLLM:
                         else:
                             start_idx = _pending.find("<think>")
                             if start_idx == -1:
-                                # All pending is answer text
                                 answer_text += _pending
                                 on_token(_pending)
                                 _pending = ""
                             else:
-                                # Emit answer text before <think>
                                 before = _pending[:start_idx]
                                 if before:
                                     answer_text += before

@@ -286,10 +286,10 @@ class TestThinkInMainChat:
 
 class TestBriefMaxTokensConfig:
     def test_brief_max_tokens_comment_matches_value(self) -> None:
-        """_BRIEF_MAX_TOKENS >= 1024 (SmolLM3 think block budget)."""
+        """_BRIEF_MAX_TOKENS >= 512 (Granite Vision 3.3-2b, no think block overhead)."""
         from src.llm_offline import _BRIEF_MAX_TOKENS
 
-        assert _BRIEF_MAX_TOKENS >= 1024
+        assert _BRIEF_MAX_TOKENS >= 512
 
 
 # ---------------------------------------------------------------------------

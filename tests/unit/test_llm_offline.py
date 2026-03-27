@@ -148,7 +148,12 @@ class TestOllamaBackend:
     def _mock_response(self, content: str) -> MagicMock:
         resp = MagicMock()
         resp.raise_for_status.return_value = None
-        resp.json.return_value = {"choices": [{"message": {"content": content}}]}
+        # Ollama /api/chat native response format
+        resp.json.return_value = {
+            "model": "ibm/granite3.3-vision:2b",
+            "message": {"role": "assistant", "content": content},
+            "done": True,
+        }
         return resp
 
     def test_chat_returns_response_content(self) -> None:
@@ -382,14 +387,18 @@ class TestAnalyzeLogs:
 
 
 def _make_sse_lines(tokens: list[str]) -> list[bytes]:
-    """Helper: convert token strings to SSE-style bytes lines."""
+    """Helper: Ollama /api/chat NDJSON streaming format (was SSE, now NDJSON)."""
     import json as _json
 
     lines = []
     for t in tokens:
-        chunk = {"choices": [{"delta": {"content": t}}]}
-        lines.append(f"data: {_json.dumps(chunk)}".encode())
-    lines.append(b"data: [DONE]")
+        chunk = {"message": {"role": "assistant", "content": t}, "done": False}
+        lines.append(_json.dumps(chunk).encode())
+    lines.append(
+        _json.dumps(
+            {"message": {"role": "assistant", "content": ""}, "done": True}
+        ).encode()
+    )
     return lines
 
 
@@ -747,29 +756,32 @@ class TestStreamingDeadlineTimer:
 
 class TestBriefMaxTokens:
     def test_brief_max_tokens_is_at_least_1024(self) -> None:
-        """SmolLM3-3B think 블록(300-500 tokens) + 답변 예산 확보."""
+        """Granite Vision 3.3-2b는 <think> 없으므로 512로 충분."""
         from src.llm_offline import _BRIEF_MAX_TOKENS
 
-        assert _BRIEF_MAX_TOKENS >= 1024, (
+        assert _BRIEF_MAX_TOKENS >= 512, (
             f"_BRIEF_MAX_TOKENS={_BRIEF_MAX_TOKENS} is too small — "
-            "SmolLM3-3B <think> blocks consume 300-500 tokens, leaving no budget "
-            "for the actual answer when max_tokens=512."
+            "Granite Vision 3.3-2b needs at least 512 tokens for a useful brief response."
         )
 
     def test_brief_mode_uses_brief_max_tokens(self) -> None:
-        """brief=True 시 payload['max_tokens'] == _BRIEF_MAX_TOKENS."""
+        """brief=True 시 payload['options']['num_predict'] == _BRIEF_MAX_TOKENS."""
         from src.llm_offline import _BRIEF_MAX_TOKENS
 
         llm = OfflineLLM.from_config({})
         mock_resp = MagicMock()
         mock_resp.raise_for_status.return_value = None
-        mock_resp.json.return_value = {"choices": [{"message": {"content": "hi"}}]}
+        mock_resp.json.return_value = {
+            "model": "ibm/granite3.3-vision:2b",
+            "message": {"role": "assistant", "content": "hi"},
+            "done": True,
+        }
 
         with patch("requests.post", return_value=mock_resp) as mock_post:
             llm.chat("sys", [{"role": "user", "content": "hi"}], brief=True)
 
         payload = mock_post.call_args[1]["json"]
-        assert payload["max_tokens"] == _BRIEF_MAX_TOKENS
+        assert payload["options"]["num_predict"] == _BRIEF_MAX_TOKENS
 
 
 # ---------------------------------------------------------------------------
@@ -783,9 +795,13 @@ class TestStreamingEdgeCases:
 
         lines = []
         for t in tokens:
-            chunk = {"choices": [{"delta": {"content": t}}]}
-            lines.append(f"data: {_json.dumps(chunk)}".encode())
-        lines.append(b"data: [DONE]")
+            chunk = {"message": {"role": "assistant", "content": t}, "done": False}
+            lines.append(_json.dumps(chunk).encode())
+        lines.append(
+            _json.dumps(
+                {"message": {"role": "assistant", "content": ""}, "done": True}
+            ).encode()
+        )
         resp = MagicMock()
         resp.__enter__ = lambda s: s
         resp.__exit__ = MagicMock(return_value=False)
@@ -839,3 +855,135 @@ class TestStreamingEdgeCases:
 
         assert "".join(answer_tokens) == "Hello world"
         assert done_args == ["Hello world"]
+
+
+# ---------------------------------------------------------------------------
+# Granite Vision 3.3-2b — /api/chat NDJSON + image support
+# ---------------------------------------------------------------------------
+
+
+def _make_ndjson_lines(tokens: list[str]) -> list[bytes]:
+    """Helper: Ollama /api/chat native NDJSON streaming format."""
+    import json as _json
+
+    lines = []
+    for t in tokens:
+        chunk = {"message": {"role": "assistant", "content": t}, "done": False}
+        lines.append(_json.dumps(chunk).encode())
+    lines.append(
+        _json.dumps(
+            {"message": {"role": "assistant", "content": ""}, "done": True}
+        ).encode()
+    )
+    return lines
+
+
+class TestGraniteVisionAPI:
+    """Granite Vision 3.3-2b: /api/chat NDJSON 포맷 + 이미지 첨부 검증."""
+
+    def _mock_response(self, content: str) -> MagicMock:
+        """Ollama /api/chat non-streaming response format."""
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {
+            "model": "ibm/granite3.3-vision:2b",
+            "message": {"role": "assistant", "content": content},
+            "done": True,
+        }
+        return resp
+
+    def _make_streaming_resp(self, tokens: list[str]) -> MagicMock:
+        resp = MagicMock()
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        resp.raise_for_status.return_value = None
+        resp.iter_lines.return_value = _make_ndjson_lines(tokens)
+        return resp
+
+    def _mock_session(self, tokens: list[str]) -> MagicMock:
+        sess = MagicMock()
+        sess.post.return_value = self._make_streaming_resp(tokens)
+        return sess
+
+    def test_default_url_is_api_chat(self) -> None:
+        """기본 URL이 Ollama /api/chat 이어야 한다."""
+        from src.llm_offline import _OLLAMA_DEFAULT_URL
+
+        assert "/api/chat" in _OLLAMA_DEFAULT_URL
+
+    def test_default_model_is_granite_vision(self) -> None:
+        """기본 모델이 IBM Granite Vision 이어야 한다."""
+        from src.llm_offline import _OLLAMA_DEFAULT_MODEL
+
+        assert "granite" in _OLLAMA_DEFAULT_MODEL.lower()
+
+    def test_chat_returns_native_message_content(self) -> None:
+        """_chat_ollama()가 Ollama /api/chat 응답 포맷에서 content를 추출한다."""
+        llm = OfflineLLM.from_config({})
+        with patch("requests.post", return_value=self._mock_response("Granite답변")):
+            result = llm.chat("sys", [{"role": "user", "content": "hi"}])
+        assert result == "Granite답변"
+
+    def test_chat_payload_uses_num_predict_not_max_tokens(self) -> None:
+        """Ollama /api/chat는 options.num_predict을 사용한다."""
+        llm = OfflineLLM.from_config({})
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
+            llm.chat("sys", [{"role": "user", "content": "test"}])
+        payload = mock_post.call_args[1]["json"]
+        # num_predict should be inside options, not top-level max_tokens
+        assert "num_predict" in payload.get("options", {})
+
+    def test_stream_chat_ndjson_parses_tokens(self) -> None:
+        """스트리밍이 NDJSON 포맷 (Ollama /api/chat)으로 파싱된다."""
+        llm = OfflineLLM.from_config({})
+        llm._session = self._mock_session(["Hello", " Granite"])
+        received: list[str] = []
+        result = llm.stream_chat(
+            "sys", [{"role": "user", "content": "hi"}], on_token=received.append
+        )
+        assert "".join(received) == "Hello Granite"
+        assert result == "Hello Granite"
+
+    def test_chat_with_image_attaches_base64(self) -> None:
+        """이미지 b64가 있으면 마지막 user 메시지의 images 필드에 첨부된다."""
+        llm = OfflineLLM.from_config({})
+        b64 = "aGVsbG8="  # base64("hello")
+        with patch(
+            "requests.post", return_value=self._mock_response("ok")
+        ) as mock_post:
+            llm.chat("sys", [{"role": "user", "content": "describe"}], image_b64=b64)
+        messages = mock_post.call_args[1]["json"]["messages"]
+        user_msgs = [m for m in messages if m["role"] == "user"]
+        assert user_msgs, "user message must exist"
+        assert user_msgs[-1].get("images") == [b64]
+
+    def test_stream_with_image_attaches_base64(self) -> None:
+        """stream_chat()에 image_b64 전달 시 페이로드에 images 필드가 포함된다."""
+        llm = OfflineLLM.from_config({})
+        llm._session = self._mock_session(["caption"])
+        b64 = "aW1hZ2U="  # base64("image")
+        received: list[str] = []
+        llm.stream_chat(
+            "sys",
+            [{"role": "user", "content": "describe this"}],
+            on_token=received.append,
+            image_b64=b64,
+        )
+        call_args = llm._session.post.call_args
+        messages = call_args[1]["json"]["messages"]
+        user_msgs = [m for m in messages if m["role"] == "user"]
+        assert user_msgs[-1].get("images") == [b64]
+
+    def test_health_check_handles_api_chat_url(self) -> None:
+        """check_health()가 /api/chat URL에서 base URL을 올바르게 추출한다."""
+        llm = OfflineLLM.from_config({})
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        with patch("requests.get", return_value=mock_resp) as mock_get:
+            llm.check_health()
+        called_url = mock_get.call_args[0][0]
+        # Base URL should not contain /api/chat
+        assert "/api/chat" not in called_url
+        assert "localhost:11434" in called_url

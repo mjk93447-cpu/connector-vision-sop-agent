@@ -159,6 +159,9 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._flush_timer: Optional[Any] = None
         self._stop_requested: bool = False
         self._pending_prompt: Optional[str] = None  # queued prompt during generation
+        self._pending_image_b64: Optional[str] = (
+            None  # screenshot attached to next send
+        )
         self._last_think_t: float = 0.0  # 마지막 think 토큰 수신 시각
         self._stream_cursor: Any = None  # QTextCursor anchor for streaming block
         self._think_cursor: Any = None  # QTextCursor anchor for think text in main chat
@@ -274,6 +277,11 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         )
         self._input.returnPressed.connect(self._on_send)
         input_row.addWidget(self._input)
+
+        self._btn_screenshot = QPushButton("📸")
+        self._btn_screenshot.setToolTip("Capture screen and attach to next message")
+        self._btn_screenshot.clicked.connect(self._on_attach_screenshot)
+        input_row.addWidget(self._btn_screenshot)
 
         self._btn_send = QPushButton("📤 Send")
         self._btn_send.clicked.connect(self._on_send)
@@ -545,6 +553,10 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._append_bubble("user", text)
         self._history.append({"role": "user", "content": text})
 
+        image_b64, self._pending_image_b64 = self._pending_image_b64, None
+        if image_b64:
+            self._btn_screenshot.setText("📸")
+
         self.set_sending(True)
         self._begin_streaming_bubble()
 
@@ -558,11 +570,29 @@ class LlmPanel(QWidget):  # type: ignore[misc]
                 system=self._SYSTEM_PROMPT,
                 brief=self._brief_mode,
                 streaming=True,
+                image_b64=image_b64,
             )
         else:
             # Defensive fallback: window not reachable yet (e.g. unit test env)
             self.set_sending(False)
             self._append_system("❌ Internal error: MainWindow not reachable.")
+
+    def _on_attach_screenshot(self) -> None:
+        """Capture the primary screen and store as base64 PNG for the next send."""
+        try:
+            import base64
+
+            import mss
+            import mss.tools
+
+            with mss.mss() as sct:
+                monitor = sct.monitors[0]
+                img = sct.grab(monitor)
+                png_bytes = mss.tools.to_png(img.rgb, img.size)
+            self._pending_image_b64 = base64.b64encode(png_bytes).decode()
+            self._btn_screenshot.setText("📸✓")
+        except Exception as exc:  # noqa: BLE001
+            self._append_system(f"❌ Screenshot failed: {exc}")
 
     def _on_analyze(self) -> None:
         parent = self.window()

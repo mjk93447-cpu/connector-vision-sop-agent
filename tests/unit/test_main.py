@@ -18,7 +18,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-
 # ---------------------------------------------------------------------------
 # _resolve_confidence_threshold
 # ---------------------------------------------------------------------------
