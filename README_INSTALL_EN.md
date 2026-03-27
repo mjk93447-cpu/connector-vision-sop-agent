@@ -1,6 +1,6 @@
 # Connector Vision SOP Agent — Complete Guide for Line Engineers
 
-> Version 3.9.0 | For Indian Line Engineers | English Only
+> Version 3.10.0 | For Indian Line Engineers | English Only
 
 ---
 
@@ -306,7 +306,9 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 
 | Version | Date | Changes |
 |---------|------|---------|
-| **3.9.0** | 2026-03-26 | ROI Picker app-crash fix + SOP 40-step atomic expansion (wait_ms/type_text/press_key) |
+| **3.10.0** | 2026-03-27 | Granite Vision 3.3-2b (multimodal) + Screenshot send + dry-run mode + 638 pass |
+| 3.9.1 | 2026-03-26 | GitHub Actions Node.js 24 fix |
+| 3.9.0 | 2026-03-26 | ROI Picker app-crash fix + SOP 40-step atomic expansion (wait_ms/type_text/press_key) |
 | 3.8.0 | 2026-03-26 | SOP field 100%: login/mold/axis/pin/verify all wired to keyboard+mouse |
 | 3.2.8 | 2026-03-19 | Fix: Training tqdm NoneType crash (verbose=True) + Reload Model wired to VisionEngine |
 | 3.2.7 | 2026-03-19 | Fix: bypass corporate HTTP proxy (trust_env=False, NO_PROXY) + health-check timeout → 30s |
@@ -325,4 +327,4 @@ If the problem persists after 3 restarts, reinstall by re-running `install_first
 ---
 
 *For technical support, contact your local IT team or line supervisor.*
-*Connector Vision SOP Agent v3.9.0 — Samsung OLED Line Automation*
+*Connector Vision SOP Agent v3.10.0 — Samsung OLED Line Automation*

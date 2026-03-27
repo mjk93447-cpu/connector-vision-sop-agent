@@ -1,6 +1,6 @@
 # Connector Vision SOP Agent
 
-> **v3.9.0** | OLED Line PC Automation | Offline-First | Windows 10/11
+> **v3.10.0** | OLED Line PC Automation | Offline-First | Windows 10/11
 
 Automates the 40-step atomic connector inspection SOP using YOLO26x vision detection,
 WinSDK OCR, and an offline LLM assistant — no internet required after
@@ -14,11 +14,11 @@ installation.
 |---------|---------|
 | **Vision** | YOLO26x (NMS-free, highest mAP in the YOLO26 family) |
 | **OCR** | WinSDK/WinRT (primary) → EasyOCR → PaddleOCR auto-fallback |
-| **LLM** | SmolLM3-3B Q4_K_M via Ollama — fully offline |
+| **LLM** | IBM Granite Vision 3.3-2b via Ollama — multimodal, fully offline |
 | **GUI** | PyQt6 — 7 tabs (SOP Runner, Vision, LLM Chat, SOP Editor, Config, Audit, Training) |
 | **Training** | In-app YOLO fine-tuning with bbox annotation (Tab 7) |
 | **OS** | Windows 10 Pro 1803+ / Windows 11 (64-bit only) |
-| **Tests** | 453 pass, 92%+ coverage |
+| **Tests** | 638 pass, 92%+ coverage |
 
 ---
 
@@ -194,7 +194,9 @@ Fine-tune YOLO26x on new connector types directly in the GUI:
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| **3.9.0** | 2026-03-26 | ROI Picker crash fix (exec→open) + SOP atomic 40-step expansion (v2.0) + wait_ms/type_text/press_key |
+| **3.10.0** | 2026-03-27 | Granite Vision 3.3-2b 전환 (multimodal, DocVQA 89%) + Screenshot 전송 + dry-run 모드 + jsonschema 검증 + 638 pass |
+| 3.9.1 | 2026-03-26 | GitHub Actions Node.js 24 opt-in |
+| 3.9.0 | 2026-03-26 | ROI Picker crash fix (exec→open) + SOP atomic 40-step expansion (v2.0) + wait_ms/type_text/press_key |
 | 3.8.0 | 2026-03-26 | SOP field 100%: auth_sequence/input_text/mold_setup, axis_y/verify_left/verify_right |
 | 3.2.5 | 2026-03-19 | Fix: stale ultralytics label-cache causing "NoneType write" on 2nd training run |
 | 3.2.4 | 2026-03-19 | OCR: multi-word merge, 4-variant preprocessing, IoU NMS dedup |
@@ -220,4 +222,4 @@ Fine-tune YOLO26x on new connector types directly in the GUI:
 
 ---
 
-*Connector Vision SOP Agent v3.9.0 — Samsung OLED Line Automation*
+*Connector Vision SOP Agent v3.10.0 — Samsung OLED Line Automation*
