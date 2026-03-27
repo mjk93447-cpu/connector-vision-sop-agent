@@ -220,36 +220,23 @@ class TestWorkerImageB64:
         assert "image_b64" in sig.parameters
 
     def test_llm_worker_stores_image_b64(self):
-        """LLMWorker가 image_b64를 self._image_b64에 저장한다."""
+        """LLMWorker.__init__ 소스에 self._image_b64 할당이 포함된다.
+
+        PyQt6 QThread는 object.__new__() 직접 호출을 금지하므로 (Python 3.11 CI 환경),
+        소스 코드 검사로 속성 저장 여부를 검증한다.
+        """
         import importlib
-        from unittest.mock import MagicMock
+        import inspect
 
         workers_mod = importlib.import_module("src.gui.workers")
-
-        # Qt 없이 __init__ 로직만 검증하기 위해 __init__을 수동 호출
-        stub = object.__new__(workers_mod.LLMWorker)
-        # QThread.__init__ 우회
-        (
-            workers_mod.LLMWorker.__init__.__func__
-            if hasattr(workers_mod.LLMWorker.__init__, "__func__")
-            else None
-        )
-
-        fake_llm = MagicMock()
-        # MRO를 통해 QThread.__init__ 없이 속성만 설정
-        stub._llm = fake_llm
-        stub._system = "sys"
-        stub._history = []
-        stub._image_b64 = "b64data"
-
-        assert stub._image_b64 == "b64data"
+        source = inspect.getsource(workers_mod.LLMWorker.__init__)
+        assert "self._image_b64" in source
 
     def test_llm_stream_worker_stores_image_b64(self):
-        """LLMStreamWorker가 image_b64를 self._image_b64에 저장한다."""
+        """LLMStreamWorker.__init__ 소스에 self._image_b64 할당이 포함된다."""
         import importlib
+        import inspect
 
         workers_mod = importlib.import_module("src.gui.workers")
-
-        stub = object.__new__(workers_mod.LLMStreamWorker)
-        stub._image_b64 = "screenshot_b64"
-        assert stub._image_b64 == "screenshot_b64"
+        source = inspect.getsource(workers_mod.LLMStreamWorker.__init__)
+        assert "self._image_b64" in source
