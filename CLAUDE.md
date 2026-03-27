@@ -52,6 +52,15 @@ gh workflow run "Build Connector Vision Agent (All-in-One)" --ref main
 - config 구조 → `.claude/rules/config-schema.md`
 - 빌드 → `.claude/rules/build.md`
 - Vision/학습/테스트 → `.claude/rules/vision.md`, `training.md`, `testing.md`
+- MCP 관리 → `.claude/rules/mcp-management.md`
+
+## MCP 활용 규칙 (토큰 절약)
+- 500줄+ 파일 분석 → `bash tools/gemini-helpers.sh file-summary <파일>` (Gemini 2.5 Pro)
+- 다중 파일 읽기 → `mcp__Desktop_Commander__read_multiple_files` (Read 대체)
+- 테스트 비동기 실행 → `mcp__Desktop_Commander__start_process` → `read_process_output`
+- GUI 테스트 → `mcp__Windows_MCP__*` (가이드: `tools/gui-test-mcp.md`)
+- 커밋 전 검사 → `/pre-commit-check` (scheduled task)
+- Claude_Preview / Claude_in_Chrome → **사용 금지** (deny 등록됨)
 
 ## ★ 현재 집중 작업: Bug 2 — LLM 응답 무한 대기
 - 증상: LLM Chat send 후 800초+ thinking... 무응답
