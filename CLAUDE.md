@@ -8,9 +8,9 @@
 YOLO 모델: yolo26x.pt 단독 사용 — YOLOv8/v9/v10/v11 절대 금지
 ```
 
-## 스택 (v3.9.0)
+## 스택 (v3.10.1)
 - Python 3.11, PyTorch 2.3 CPU, OpenCV 4.10, PyAutoGUI, PyQt6
-- YOLO26x (vision), Ollama HTTP (LLM: phi4-mini-reasoning)
+- YOLO26x (vision), Ollama HTTP (LLM: IBM Granite Vision 3.2-2b)
 - OCR: winsdk(WinRT) → easyocr → paddleocr (자동 선택)
 - pytest, black + ruff, PyInstaller EXE
 
@@ -30,7 +30,7 @@ assets/models/
 | `src/sop_executor.py` | SOP 실행 |
 | `src/gui/` | PyQt6 7탭 GUI |
 | `assets/config.json` | v2.0.0 |
-| `tests/unit/` | 413 pass |
+| `tests/unit/` | 670 pass |
 
 ## 커맨드
 ```bash
@@ -52,7 +52,7 @@ gh workflow run "Build Connector Vision Agent (All-in-One)" --ref main
 - 빌드 → `.claude/rules/build.md`
 - Vision/학습/테스트 → `.claude/rules/vision.md`, `training.md`, `testing.md`
 
-## ★ 현재 집중 작업: Bug 2 — LLM 응답 무한 대기
-- 증상: LLM Chat send 후 800초+ thinking... 무응답
-- 파일: `src/llm_offline.py`, `src/gui/workers.py`, `src/gui/panels/llm_panel.py`
-- 목표: timeout 처리 + Ollama 미실행/CPU-only 환경 자동 감지
+## ★ 현재 상태: v3.10.1 — Granite LLM Chat 버그 수정 완료
+- Bug Fix: image_b64 파라미터 누락 → TypeError → 채팅 즉시 종료 (수정 완료)
+- config.json: granite3.2-vision:2b + /api/chat 엔드포인트 적용
+- 670 pass, 92%+ coverage

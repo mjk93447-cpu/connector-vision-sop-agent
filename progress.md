@@ -1,6 +1,6 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-27 (v3.10.0 완성 — Granite Vision 3.3-2b /api/chat + 📸 스크린샷 전송 + dry-run + jsonschema + 646 pass + 빌드 트리거 #23630618087)_
+_최종 갱신: 2026-03-27 (v3.10.1 완성 — Granite LLM Chat TypeError 버그 수정 + image_b64 체인 완성 + config.json 직접 수정 + 670 pass)_
 
 ## 현재 브랜치
 `main` (CP-0~CP-4 + GUI Phase 1~2 완료)
@@ -41,12 +41,13 @@ _최종 갱신: 2026-03-27 (v3.10.0 완성 — Granite Vision 3.3-2b /api/chat +
 | **v3.8.0 SOP 현장 100%** | **auth_sequence/input_text/mold_setup + axis_y/verify_left/verify_right 신규 스텝 타입** | **458 pass** | — |
 | **v3.9.0 ROI+SOP 확장** | **ROI Picker exec→open() 크래시 수정 + sop_steps.json v2.0 40단계 원자화 + wait_ms/type_text/press_key 신규 타입** | **599 pass** | — |
 | **v3.10.0 Granite Vision 전환** | **Granite Vision 3.3-2b /api/chat (multimodal) + 📸 Screenshot 전송 + dry-run + jsonschema config 검증 + CI integration test** | **646 pass** | **92%+** |
+| **v3.10.1 Granite Chat 버그 수정** | **image_b64 TypeError 수정 (on_llm_send+Workers) + config.json 직접 수정 활성화 + Granite 체인 통합 테스트 18개 신규** | **670 pass** | **92%+** |
 | **v3.6.0** | **필드 테스트 7개 이슈 수정 (ROI/OCR/LLM/색상/Training)** | **554 pass** | **92%+** |
 | **v3.7.0** | **ROI picker 전체화면 투명 오버레이 (_RoiOverlayWindow) + 직접 숫자 입력** | **557 pass** | **92%+** |
 | **v3.7.1** | **ROI picker 3종 버그 수정 (GC 방지/ApplicationModal/MainWindow hide)** | **557 pass** | **92%+** |
 | **v3.8.0** | **SOP 현장 100%: auth_sequence(LOGIN+PW+OK) / input_text(AXIS-X/Y) / mold_setup / verify_left/right + type_text/press_key** | **594 pass** | **92%+** |
 
-## 현재 스택 (v3.10.0)
+## 현재 스택 (v3.10.1)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
 - LLM: IBM Granite Vision 3.3-2b via Ollama (`http://localhost:11434`) — 멀티모달 + `/api/chat` + Screenshot 첨부 전송
 - **OCR: WinRT/winsdk (primary) → EasyOCR fallback → PaddleOCR** / `src/ocr_engine.py` (TextRegion, fuzzy match)
