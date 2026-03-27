@@ -8,7 +8,7 @@
 YOLO 모델: yolo26x.pt 단독 사용 — YOLOv8/v9/v10/v11 절대 금지
 ```
 
-## 스택 (v3.10.2)
+## 스택 (v4.0.0)
 - Python 3.11, PyTorch 2.3 CPU, OpenCV 4.10, PyAutoGUI, PyQt6
 - YOLO26x (vision), Ollama HTTP (LLM: IBM Granite Vision 3.2-2b)
 - OCR: winsdk(WinRT) → easyocr → paddleocr (자동 선택)
@@ -29,8 +29,8 @@ assets/models/
 | `src/control_engine.py` | PyAutoGUI 제어 |
 | `src/sop_executor.py` | SOP 실행 |
 | `src/gui/` | PyQt6 7탭 GUI |
-| `assets/config.json` | v2.3.0 |
-| `tests/unit/` | 701 pass |
+| `assets/config.json` | v4.0.0 |
+| `tests/unit/` | 733 pass |
 
 ## 커맨드
 ```bash
@@ -52,9 +52,10 @@ gh workflow run "Build Connector Vision Agent (All-in-One)" --ref main
 - 빌드 → `.claude/rules/build.md`
 - Vision/학습/테스트 → `.claude/rules/vision.md`, `training.md`, `testing.md`
 
-## ★ 현재 상태: v3.10.2 — LLM Chat 안정성 + UX 대폭 개선 완료
-- ROI 스크린샷: 📸 버튼 → 전체화면 대신 드래그로 영역 선택 → 800px/JPEG q80 압축
+## ★ 현재 상태: v4.0.0 — SOP Editor 타입별 편집 + LLM Chat 대폭 개선
+- SOP Editor (Tab 4): type_text/press_key/wait_ms/auth_sequence 타입별 전용 입력 필드
+- LLM Chat ROI: 📸 버튼 → 드래그로 영역 선택 → 800px/JPEG q80 압축
 - ChatGPT-like UI: 즉시 ETA 표시, token count 실시간, cold/warm 상태 구분
 - Stop 버튼 실제 동작: ⏹ Stop → HTTP 즉시 취소 + 부분 버블 제거 + 상태 복구
-- Timeout 600s: workers + llm_offline 모두 600s로 증가
-- 701 pass, 92%+ coverage
+- CI 빌드 수정: integration test timeout 분리 (unit 60s / integ 300s)
+- 733 pass, 92%+ coverage

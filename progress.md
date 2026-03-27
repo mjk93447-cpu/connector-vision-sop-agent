@@ -1,9 +1,9 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-27 (v3.10.2 완성 — LLM Chat ROI 스크린샷+JPEG압축, ChatGPT-like UI, Stop 버튼 실제 동작, 600s timeout + 701 pass)_
+_최종 갱신: 2026-03-27 (v4.0.0 정식 배포 — SOP Editor 타입별 편집 UI + CI 빌드 수정 + 733 pass)_
 
 ## 현재 브랜치
-`main` (CP-0~CP-4 + GUI Phase 1~2 완료)
+`main` (v4.0.0 정식 배포 완료)
 
 ## 완료 체크포인트
 | CP | 내용 | 테스트 | 커버리지 |
@@ -43,14 +43,11 @@ _최종 갱신: 2026-03-27 (v3.10.2 완성 — LLM Chat ROI 스크린샷+JPEG압
 | **v3.10.0 Granite Vision 전환** | **Granite Vision 3.3-2b /api/chat (multimodal) + 📸 Screenshot 전송 + dry-run + jsonschema config 검증 + CI integration test** | **646 pass** | **92%+** |
 | **v3.10.1 Granite Chat 버그 수정** | **image_b64 TypeError 수정 (on_llm_send+Workers) + config.json 직접 수정 활성화 + Granite 체인 통합 테스트 18개 신규** | **670 pass** | **92%+** |
 | **v3.10.2 LLM Chat UX 개선** | **ROI 스크린샷 오버레이+800px JPEG압축 / ChatGPT-like token+ETA / Stop 버튼 실제 취소+버블 복구 / 600s timeout** | **701 pass** | **92%+** |
-| **v3.6.0** | **필드 테스트 7개 이슈 수정 (ROI/OCR/LLM/색상/Training)** | **554 pass** | **92%+** |
-| **v3.7.0** | **ROI picker 전체화면 투명 오버레이 (_RoiOverlayWindow) + 직접 숫자 입력** | **557 pass** | **92%+** |
-| **v3.7.1** | **ROI picker 3종 버그 수정 (GC 방지/ApplicationModal/MainWindow hide)** | **557 pass** | **92%+** |
-| **v3.8.0** | **SOP 현장 100%: auth_sequence(LOGIN+PW+OK) / input_text(AXIS-X/Y) / mold_setup / verify_left/right + type_text/press_key** | **594 pass** | **92%+** |
+| **v4.0.0 SOP Editor 편집 + CI 수정** | **type_text/press_key/wait_ms 타입별 전용 입력 필드 + CI unit/integ timeout 분리 + ci_check.sh 로컬 시뮬레이션** | **733 pass** | **92%+** |
 
-## 현재 스택 (v3.10.2)
+## 현재 스택 (v4.0.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
-- LLM: IBM Granite Vision 3.3-2b via Ollama (`http://localhost:11434`) — 멀티모달 + `/api/chat` + Screenshot 첨부 전송
+- LLM: IBM Granite Vision 3.2-2b via Ollama (`http://localhost:11434`) — 멀티모달 + `/api/chat` + Screenshot 첨부 전송
 - **OCR: WinRT/winsdk (primary) → EasyOCR fallback → PaddleOCR** / `src/ocr_engine.py` (TextRegion, fuzzy match)
 - GUI: PyQt6 7탭 (완전 영어 UI — 인도 엔지니어 대응)
 - 예외처리: ExceptionHandler (팝업 감지→freeze→LLM 3단계 체인)
@@ -137,7 +134,25 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 2. `assets/models/yolo26x_pretrained.pt` 존재 (CI GUI 프리트레인) → 이 모델로 파인튜닝 시작
 3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
 
-## ★ 다음 작업
+## ★ 다음 작업 후보 (v4.0.0 이후)
+
+### 현장 배포 후 발생 가능한 개선 사항
+- [ ] **SOP Editor 검색/필터**: 40단계 중 특정 ID/이름 검색 기능 (단계 수 증가 대비)
+- [ ] **SOP Editor 일괄 편집**: 여러 단계 한 번에 enable/disable 토글
+- [ ] **PW 마스킹**: type_text 편집 시 Text 필드를 password 모드로 표시 (보안 강화)
+- [ ] **Training 진행률 실시간 표시**: mAP50 epoch별 그래프 (Training 탭)
+- [ ] **LLM Chat 히스토리 저장**: 세션 간 대화 내용 유지 (JSONL 로컬 저장)
+- [ ] **OCR 정확도 로그**: 인식 실패한 텍스트 패턴 수집 → 전처리 개선 피드백
+- [ ] **yolo26x_pretrained.pt 다운로드**: CI GUI Pretrain 결과 아티팩트 → assets/models/ 배치
+- [ ] **Config 항목 설명 툴팁**: Tab 5 각 설정 항목에 hover 설명 추가
+
+### v4.0.0 완료 내용 (2026-03-27) ✅
+- SOP Editor 타입별 전용 입력 필드 (type_text/press_key/wait_ms/auth_sequence)
+- CI 빌드 unit/integ timeout 분리 (60s/300s) + scripts/ci_check.sh 로컬 시뮬레이션
+- 문서 전면 v4.0.0 업데이트 (README, INSTALL_GUIDE, MERGE_GUIDE, start_agent.bat, TEST_REPORT)
+- 733 pass, 92%+ coverage
+
+---
 
 ### ROI Picker 크래시 + SOP 원자 40단계 확장 완료 (2026-03-26) — v3.9.0 ✅
 - **Bug Fix: ROI Picker 크래시 근본 원인**

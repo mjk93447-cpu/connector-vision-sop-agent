@@ -1,16 +1,16 @@
 ================================================================
- Connector Vision SOP Agent v3.9.0 - Portable Bundle Guide
+ Connector Vision SOP Agent v4.0.0 - Portable Bundle Guide
 ================================================================
 
 DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
-  1. portable-part1-app.zip          ~450 MB   EXE + Ollama + launchers
-  2. portable-part2-phi4-mini.zip    ~2.5 GB   LLM model blobs
+  1. connector-agent-app.zip         ~500 MB   EXE + Ollama + launchers
+  2. connector-agent-llm.zip         ~2.0 GB   IBM Granite Vision 3.2-2b blobs
 
 ASSEMBLY STEPS:
   1. Create folder: C:\tools\connector_agent\
-  2. Extract portable-part1-app.zip
+  2. Extract connector-agent-app.zip
      -> all files go into C:\tools\connector_agent\
-  3. Extract portable-part2-phi4-mini.zip
+  3. Extract connector-agent-llm.zip
      -> all files go into C:\tools\connector_agent\ollama_models\
         (blobs\ and manifests\ must be directly inside ollama_models\)
 
@@ -26,8 +26,8 @@ FINAL FOLDER STRUCTURE:
   +-- start_agent.bat              <- DOUBLE-CLICK TO RUN (GUI mode)
   +-- stop_ollama.bat
   +-- ollama_models\
-      +-- blobs\sha256-...         <- from Part 2 zip
-      +-- manifests\...            <- from Part 2 zip
+      +-- blobs\sha256-...         <- from connector-agent-llm zip
+      +-- manifests\...            <- from connector-agent-llm zip
 
 HOW TO RUN:
   Double-click start_agent.bat
@@ -35,8 +35,8 @@ HOW TO RUN:
   -> Opens PyQt6 GUI with 7 tabs:
        Tab 1: Run SOP    - 40-step atomic SOP execution with live log
        Tab 2: Vision     - Screenshot capture + YOLO bbox overlay
-       Tab 3: LLM Chat   - Chat with LLM about SOP runs
-       Tab 4: SOP Editor - Edit/reorder SOP steps
+       Tab 3: LLM Chat   - ROI screenshot + ChatGPT-like streaming + Stop button
+       Tab 4: SOP Editor - Edit/reorder SOP steps (type_text/press_key/wait_ms)
        Tab 5: Config     - Edit config.json via UI
        Tab 6: Audit      - Config change history
        Tab 7: Training   - Annotate connector images and fine-tune YOLO26x
@@ -45,12 +45,13 @@ CUSTOMIZATION:
   - Edit assets\config.json to tune pin counts, timing, thresholds
   - Edit assets\sop_steps.json to modify the 40-step atomic SOP sequence
     (changes take effect immediately without rebuilding EXE)
+  - Tab 4 SOP Editor: change PW, key bindings, wait duration directly in GUI
 
 LLM MODEL INFO:
-  Name  : phi4-mini-reasoning
-  Vendor: Microsoft Corporation (USA) - non-Chinese model
-  Size  : ~2.5 GB (Q4 quantized, fully offline)
-  Notes : reasoning-optimized, SOP log analysis, config suggestions
+  Name  : IBM Granite Vision 3.2-2b (ibm/granite3.2-vision:2b)
+  Vendor: IBM Corporation (USA) - non-Chinese model
+  Size  : ~2.0 GB (fully offline, multimodal)
+  Notes : Vision + text, SOP log analysis, ROI screenshot analysis
 
 TROUBLESHOOTING:
   - If GUI does not open: check Windows Event Log or run from cmd prompt

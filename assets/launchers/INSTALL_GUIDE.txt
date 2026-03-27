@@ -1,9 +1,9 @@
 ================================================================
- Connector Vision SOP Agent v3.9.0 - All-in-One Package
+ Connector Vision SOP Agent v4.0.0 - All-in-One Package
  INSTALL GUIDE
 ================================================================
 
-STEP 1.  Copy phi4-mini model blobs (~2.7 GB)
+STEP 1.  Copy IBM Granite Vision model blobs (~2.0 GB)
 --------------------------------------------------
 Download the connector-agent-llm artifact from the latest build:
   GitHub Actions:
@@ -24,7 +24,7 @@ STEP 3.  Launch
   Double-click start_agent.bat
 
   => Ollama server starts automatically (port 11434)
-  => phi4-mini-reasoning model loads
+  => IBM Granite Vision 3.2-2b model loads
   => PyQt6 GUI opens (7 tabs)
 
 Final folder structure
@@ -51,8 +51,8 @@ GUI 7-Tab Layout
 --------------------------------------------------
   Tab 1: SOP Runner  - Run 40-step atomic SOP / real-time log
   Tab 2: Vision      - Screenshot + YOLO bbox overlay / file open
-  Tab 3: LLM Chat    - Ask LLM about SOP failures / config suggestions
-  Tab 4: SOP Editor  - Add/delete/reorder SOP steps (JSON)
+  Tab 3: LLM Chat    - Ask LLM (ROI screenshot, Stop button, token counter)
+  Tab 4: SOP Editor  - Add/delete/reorder/edit SOP steps (type_text/press_key/wait_ms)
   Tab 5: Config      - Edit config.json via UI (saves to config.proposed.json)
   Tab 6: Audit       - Config change history viewer
   Tab 7: Training    - Annotate connector images and fine-tune YOLO26x
@@ -63,9 +63,10 @@ NOTES
   - yolo26x.pt: COCO pretrained by default; fine-tune via Tab 7 for better accuracy
   - sop_steps.json edits take effect immediately (no restart needed)
   - config.json changes: always use Tab 5 -> review config.proposed.json -> apply manually
-  - Training: second run "NoneType write" error is fixed in v3.2.5+ (stale cache auto-cleared)
-  - ROI Picker: Pick ROI (Fullscreen) no longer quits the app — fixed in v3.9.0
-  - SOP: 40-step atomic expansion (wait_ms/type_text/press_key) as of v3.9.0
+  - Training: second run "NoneType write" error is fixed (stale cache auto-cleared)
+  - ROI Picker: Pick ROI (Fullscreen) no longer quits the app
+  - SOP Editor (Tab 4): type_text PW field / press_key key name / wait_ms duration
+    all editable directly in the GUI — no JSON editing required
   - LLM first response may take 60-120 seconds on CPU-only hardware (normal)
 
 REQUIREMENTS
