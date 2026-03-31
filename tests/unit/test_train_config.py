@@ -94,3 +94,26 @@ class TestOLEDConnectorGenerator:
         for img, labels in batch:
             assert img is not None
             assert isinstance(labels, list)
+
+
+class TestOledTrainParamsV4Geometric:
+    """v4.1.1: OLED_TRAIN_PARAMS 기하학 증강 키 검증."""
+
+    def test_degrees_present_and_nonzero(self) -> None:
+        from src.training.train_config import OLED_TRAIN_PARAMS
+
+        assert "degrees" in OLED_TRAIN_PARAMS, "degrees 키 누락"
+        assert OLED_TRAIN_PARAMS["degrees"] > 0, "degrees 는 양수여야 한다"
+
+    def test_erasing_present(self) -> None:
+        from src.training.train_config import OLED_TRAIN_PARAMS
+
+        assert "erasing" in OLED_TRAIN_PARAMS, "erasing 키 누락"
+
+    def test_pretrain_gentler_degrees(self) -> None:
+        """OLED_PRETRAIN_PARAMS 의 degrees ≤ OLED_TRAIN_PARAMS 의 degrees."""
+        from src.training.train_config import OLED_PRETRAIN_PARAMS, OLED_TRAIN_PARAMS
+
+        assert (
+            OLED_PRETRAIN_PARAMS["degrees"] <= OLED_TRAIN_PARAMS["degrees"]
+        ), "pretrain degrees 가 train degrees 보다 크면 안 된다"

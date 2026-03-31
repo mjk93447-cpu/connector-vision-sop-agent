@@ -453,3 +453,40 @@ class TestDetectUiTargets:
         result = engine.detect_ui_targets(None)
         result.append("extra")
         assert "extra" not in engine.detect_ui_targets(None)
+
+
+class TestDetectionConfigV4Fields:
+    """v4.1.1: DetectionConfig 신규 필드 기본값 검증."""
+
+    def test_use_clahe_default_true(self) -> None:
+        from src.vision_engine import DetectionConfig
+
+        cfg = DetectionConfig()
+        assert cfg.use_clahe is True
+
+    def test_iou_threshold_default(self) -> None:
+        from src.vision_engine import DetectionConfig
+
+        cfg = DetectionConfig()
+        assert cfg.iou_threshold == 0.45
+
+    def test_use_tta_default_false(self) -> None:
+        from src.vision_engine import DetectionConfig
+
+        cfg = DetectionConfig()
+        assert cfg.use_tta is False
+
+    def test_clahe_preprocessing_returns_bgr(self) -> None:
+        """_preprocess_for_inference() 출력이 (H, W, 3) uint8 이어야 한다."""
+        import numpy as np
+        from unittest.mock import patch
+
+        from src.vision_engine import DetectionConfig, VisionEngine
+
+        cfg = DetectionConfig(use_clahe=True)
+        with patch.object(VisionEngine, "_load_model", return_value=None):
+            engine = VisionEngine(config=cfg)
+        gray_bgr = np.zeros((100, 100, 3), dtype=np.uint8)
+        result = engine._preprocess_for_inference(gray_bgr)
+        assert result.shape == (100, 100, 3)
+        assert result.dtype == np.uint8

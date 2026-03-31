@@ -1,5 +1,5 @@
 """
-Main entry point for Connector Vision SOP Agent v3.10.0.
+Main entry point for Connector Vision SOP Agent.
 
 Default mode: PyQt6 GUI application.
 Use --console flag to run in legacy CLI mode.
@@ -90,6 +90,7 @@ from src.sop_advisor import (
     SAFE_NUMERIC_RANGES,
 )
 from src.sop_executor import SopExecutor
+from src.version import APP_VERSION
 from src.vision_engine import DetectionConfig, VisionEngine
 
 _CONFIG_PATH = "assets/config.json"
@@ -163,9 +164,15 @@ def _build_services(
     if config is None:
         config = load_config()
 
+    _vcfg = config.get("vision", {}) if config else {}
     vision = VisionEngine(
         DetectionConfig(
             confidence_threshold=_resolve_confidence_threshold(config),
+            use_clahe=bool(_vcfg.get("use_clahe", True)),
+            clahe_clip_limit=float(_vcfg.get("clahe_clip_limit", 2.0)),
+            clahe_tile_size=int(_vcfg.get("clahe_tile_size", 8)),
+            iou_threshold=float(_vcfg.get("iou_threshold", 0.45)),
+            use_tta=bool(_vcfg.get("use_tta", False)),
         )
     )
 
@@ -233,9 +240,9 @@ def main() -> list[str]:
 
 
 def _print_welcome() -> None:
-    banner = """
+    banner = f"""
 ======================================================================
- Connector Vision SOP Agent v3.10.0  (YOLO26x + Granite Vision 3.3-2b [Offline])
+ Connector Vision SOP Agent v{APP_VERSION}  (YOLO26x + Granite Vision 3.2-2b [Offline])
 ======================================================================
 
 40-step OLED connector SOP automation with offline LLM assistance.
@@ -715,7 +722,7 @@ def run_gui() -> None:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Connector Vision SOP Agent")
-    app.setApplicationVersion("3.10.0")
+    app.setApplicationVersion(APP_VERSION)
     # Prevent app from quitting when ALL windows are temporarily hidden
     # (e.g. during ROI fullscreen overlay selection in SOP Editor).
     app.setQuitOnLastWindowClosed(False)

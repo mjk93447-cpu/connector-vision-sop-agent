@@ -14,7 +14,12 @@
     "model_path": "assets/models/yolo26x.pt",
     "confidence_threshold": 0.60,
     "pin_area_min_px": 8,
-    "scan_region": null
+    "scan_region": null,
+    "use_clahe": true,
+    "clahe_clip_limit": 2.0,
+    "clahe_tile_size": 8,
+    "iou_threshold": 0.45,
+    "use_tta": false
   },
 
   "control": {

@@ -552,6 +552,8 @@ class OLEDConnectorGenerator:
         """단일 흑백 이미지 + YOLO 포맷 레이블 (list of (cls, cx, cy, w, h)) 반환."""
         import random
 
+        import cv2
+
         img = self._make_background(width, height)
         labels = []
 
@@ -561,6 +563,11 @@ class OLEDConnectorGenerator:
             if mold_bbox is not None:
                 labels.append((0, *mold_bbox))
                 labels.extend((1, *p) for p in pin_labels)
+
+        # v4.1.1: depth-of-field simulation — 30% 확률로 미세 블러 (3채널 동일 적용 → R==G==B 유지)
+        if random.random() < 0.3:
+            ksize = 3 if random.random() < 0.5 else 5
+            img = cv2.GaussianBlur(img, (ksize, ksize), 0)
 
         return img, labels
 
@@ -573,6 +580,8 @@ class OLEDConnectorGenerator:
     # ------------------------------------------------------------------
 
     def _make_background(self, w: int, h: int):
+        import random
+
         import numpy as np
 
         base = np.random.randint(20, 60, (h, w), dtype=np.uint8)
@@ -581,7 +590,45 @@ class OLEDConnectorGenerator:
         sigma = max(w, h) * 0.4
         vignette = np.exp(-((X - cx) ** 2 + (Y - cy) ** 2) / (2 * sigma**2))
         bright = (base + (vignette * 40).astype(np.uint8)).clip(0, 255).astype(np.uint8)
-        return np.stack([bright] * 3, axis=-1)  # BGR 3채널
+        # v4.1.1: 카메라 센서 노이즈 — 단일채널 생성 후 스택 → R==G==B 불변식 유지
+        noise = np.random.normal(0, random.uniform(3, 12), (h, w)).astype(np.int16)
+        noisy = np.clip(bright.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+        return np.stack([noisy] * 3, axis=-1)  # BGR 3채널
+
+    def _draw_pin(
+        self,
+        img,
+        px: int,
+        py: int,
+        pw: int,
+        ph: int,
+        shape: str,
+        brightness: int,
+    ) -> None:
+        """단일 핀을 지정 형상으로 그린다.
+
+        Shapes:
+          rect   — 직사각형 (기본, 하위 호환)
+          round  — 원형 (둥근 핀 헤드)
+          narrow — 절반 너비 직사각형 (좁은 핀)
+        """
+        import cv2
+
+        if shape == "rect":
+            cv2.rectangle(img, (px, py), (px + pw, py + ph), (brightness,) * 3, -1)
+        elif shape == "round":
+            r = min(pw, ph) // 2
+            if r > 0:
+                cv2.circle(img, (px + pw // 2, py + ph // 2), r, (brightness,) * 3, -1)
+        elif shape == "narrow":
+            nw = max(1, pw // 2)
+            cv2.rectangle(
+                img,
+                (px + nw // 2, py),
+                (px + nw // 2 + nw, py + ph),
+                (brightness,) * 3,
+                -1,
+            )
 
     def _draw_connector(self, img, W: int, H: int):
         import random
@@ -621,9 +668,8 @@ class OLEDConnectorGenerator:
             if px + pin_size > mx + mw or py + pin_size * 2 > my + mh:
                 break
             pb = random.randint(140, 220)
-            cv2.rectangle(
-                img, (px, py), (px + pin_size, py + pin_size * 2), (pb,) * 3, -1
-            )
+            shape = random.choice(["rect", "round", "narrow"])
+            self._draw_pin(img, px, py, pin_size, pin_size * 2, shape, pb)
             pin_labels.append(
                 (
                     (px + pin_size / 2) / W,

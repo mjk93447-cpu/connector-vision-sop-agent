@@ -65,10 +65,22 @@ class DetectionConfig:
     """Runtime thresholds and paths for YOLO26x detection.
 
     CP-3: ocr_psm 필드 제거 (Tesseract 완전 삭제).
+    v4.1.1: CLAHE preprocessing, IOU threshold, TTA support added.
     """
 
     model_path: str = "assets/models/yolo26x.pt"
     confidence_threshold: float = 0.6
+
+    # v4.1.1: CLAHE 전처리 — 흑백 OLED 이미지 대비 향상
+    use_clahe: bool = True
+    clahe_clip_limit: float = 2.0
+    clahe_tile_size: int = 8
+
+    # NMS IOU threshold — 핀 클러스터 밀집도 고려 (YOLO 기본값 0.7보다 낮게)
+    iou_threshold: float = 0.45
+
+    # TTA (Test-Time Augmentation) — 기본 Off (속도 우선)
+    use_tta: bool = False
 
 
 @dataclass
@@ -184,6 +196,22 @@ class VisionEngine:
             return image.copy()
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
+    def _preprocess_for_inference(self, image: np.ndarray) -> np.ndarray:
+        """CLAHE 대비 향상 — 흑백 OLED 라인 이미지 전용.
+
+        ``use_clahe=False`` 이면 원본 그대로 반환.
+        BGR → 그레이스케일 CLAHE 적용 → BGR 복원 (YOLO 3채널 입력 호환).
+        """
+        if not self.config.use_clahe:
+            return image
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(
+            clipLimit=self.config.clahe_clip_limit,
+            tileGridSize=(self.config.clahe_tile_size, self.config.clahe_tile_size),
+        )
+        enhanced = clahe.apply(gray)
+        return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+
     # ------------------------------------------------------------------ #
     # YOLO 검출
     # ------------------------------------------------------------------ #
@@ -197,7 +225,14 @@ class VisionEngine:
             return []
 
         confidence = conf_threshold or self.config.confidence_threshold
-        results = self.model.predict(source=image, conf=confidence, verbose=False)
+        preprocessed = self._preprocess_for_inference(image)
+        results = self.model.predict(
+            source=preprocessed,
+            conf=confidence,
+            iou=self.config.iou_threshold,
+            augment=self.config.use_tta,
+            verbose=False,
+        )
         detections: list[UiDetection] = []
 
         for result in results:
