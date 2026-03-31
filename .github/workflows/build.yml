@@ -235,8 +235,8 @@ jobs:
         shell: pwsh
         run: |
           & .\scripts\assemble_release_pack.ps1 `
-            -AppRoot "artifacts\app\connector_agent_app" `
-            -PretrainRoot "artifacts\pretrain\connector_pretrain_bundle" `
+            -AppRoot "artifacts\app" `
+            -PretrainRoot "artifacts\pretrain" `
             -OutputRoot "connector_agent_pack"
 
       - name: Upload final pack artifact
