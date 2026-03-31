@@ -150,6 +150,17 @@ jobs:
           python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
           python -m pip install -r requirements-dev.txt
 
+      - name: Ensure YOLO26x base weights exist
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "assets\models\yolo26x.pt")) {
+            Write-Host "[INFO] yolo26x.pt not found - downloading COCO pretrained weights"
+            python -c "from ultralytics import YOLO; import shutil, pathlib; m=YOLO('yolo26x.pt'); src=pathlib.Path(getattr(m,'ckpt_path','yolo26x.pt')); src=pathlib.Path('yolo26x.pt') if not src.exists() else src; pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True); shutil.copy2(str(src), 'assets/models/yolo26x.pt'); print('Copied', src)"
+          }
+          if (-not (Test-Path "assets\models\yolo26x_pretrained.pt")) {
+            throw "Missing assets/models/yolo26x_pretrained.pt"
+          }
+
       - name: Build pretrain EXE (PyInstaller)
         shell: cmd
         run: pyinstaller pretrain_exe.spec --distpath dist_pretrain --clean
