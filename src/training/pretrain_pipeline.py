@@ -169,13 +169,25 @@ class PretrainPipeline:
         gen = OLEDConnectorGenerator()
         batch = gen.generate_batch(n_images=n_images, width=width, height=height)
 
+        import cv2  # noqa: PLC0415
+
         saved = 0
         for idx, (img, anns) in enumerate(batch):
             # anns: list of (cls_id, cx, cy, w, h) already in YOLO normalised coords
-            yolo_anns = [{"class_id": int(a[0]), "bbox": list(a[1:])} for a in anns]
-            if yolo_anns:
-                self._save_pretrain_sample(f"oled_{idx:05d}", img, anns)
-                saved += 1
+            # _save_pretrain_sample expects {"label": str, "bbox": pixel [x1,y1,x2,y2]}.
+            # OLED anns are already normalised → write YOLO label file directly.
+            if not anns:
+                continue
+            stem = f"oled_{idx:05d}"
+            img_path = self._images_dir / f"{stem}.png"
+            lbl_path = self._labels_dir / f"{stem}.txt"
+            cv2.imwrite(str(img_path), img)
+            lines = [
+                f"{int(a[0])} {float(a[1]):.6f} {float(a[2]):.6f} {float(a[3]):.6f} {float(a[4]):.6f}"
+                for a in anns
+            ]
+            lbl_path.write_text("\n".join(lines), encoding="utf-8")
+            saved += 1
 
         print(
             f"[PretrainPipeline] OLED 합성 데이터 {saved}장 생성 완료 → {self.output_dir}"
