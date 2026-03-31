@@ -31,6 +31,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Literal, Optional, Type
 
+from src.config_loader import detect_local_accelerator
+
 BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/api/chat"
@@ -144,13 +146,10 @@ class OfflineLLM:
         """
         cpu_count = os.cpu_count() or 8
 
-        has_gpu = False
-        try:
-            import torch  # type: ignore[import]
-
-            has_gpu = torch.cuda.is_available()
-        except ImportError:
-            pass
+        accelerator = detect_local_accelerator()
+        has_gpu = bool(accelerator.get("gpu_present")) or bool(
+            accelerator.get("cuda_usable")
+        )
 
         options: Dict[str, Any] = {
             "num_ctx": 4096 if brief else self.cfg.ctx_size,
@@ -350,7 +349,12 @@ class OfflineLLM:
             "options": options,
         }
         # connect 10s, read 120s (non-streaming: total response timeout)
-        resp = requests.post(url, json=payload, timeout=(10, 120))
+        resp = requests.post(
+            url,
+            json=payload,
+            timeout=(10, 120),
+            proxies={"http": None, "https": None},
+        )
         resp.raise_for_status()
         data = resp.json()
 
@@ -503,7 +507,12 @@ class OfflineLLM:
             "options": self._get_optimized_options(brief=brief),
         }
 
-        resp = requests.post(self.cfg.http_url, json=payload, timeout=(10, 120))
+        resp = requests.post(
+            self.cfg.http_url,
+            json=payload,
+            timeout=(10, 120),
+            proxies={"http": None, "https": None},
+        )
         resp.raise_for_status()
         data = resp.json()
 
@@ -657,3 +666,92 @@ class OfflineLLM:
             return json.loads(clean)
         except Exception:
             return {"step_changes": [], "summary": raw[:500], "raw": raw}
+
+    def atomize_sop_document(
+        self,
+        document_text: str,
+        class_names: List[str],
+        source_path: str = "",
+        source_type: str = "txt",
+    ) -> Dict[str, Any]:
+        """Convert an SOP document into strict JSON using the local Granite model.
+
+        The returned payload is designed to be schema-friendly for the new
+        document ingestion workflow. If the model output cannot be parsed,
+        the caller should fall back to a rule-based atomizer.
+        """
+
+        system = (
+            "You are an offline SOP document atomizer for a factory automation tool. "
+            "Convert the source document into a fully atomized JSON object. "
+            "Split combined instructions into the smallest safe actions. "
+            "Assign one best matching class_name from the provided registry. "
+            "Return JSON only, with keys version, title, source_path, source_type, "
+            "raw_text, metadata, steps. Do not add commentary."
+        )
+        payload = {
+            "source_path": source_path,
+            "source_type": source_type,
+            "class_names": class_names,
+            "document_text": document_text,
+            "output_schema": {
+                "version": "4.2.0",
+                "title": "string",
+                "source_path": "string",
+                "source_type": "pdf|txt",
+                "raw_text": "string",
+                "metadata": {
+                    "source_file_name": "string",
+                    "atomization_mode": "llm",
+                    "class_registry": class_names,
+                },
+                "steps": [
+                    {
+                        "id": "step_001",
+                        "name": "string",
+                        "type": "click|drag|validate_pins|click_sequence|type_text|press_key|wait_ms|auth_sequence|input_text|mold_setup",
+                        "target": "string|null",
+                        "description": "string",
+                        "enabled": True,
+                        "class_name": "string|null",
+                        "confidence": 0.0,
+                        "source_page": 1,
+                        "source_span": "string",
+                        "preconditions": [],
+                        "postconditions": [],
+                    }
+                ],
+            },
+        }
+        raw = self.chat(
+            system=system,
+            history=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+            brief=True,
+        )
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        clean = raw.strip()
+        if clean.startswith("```"):
+            clean = clean.strip("`")
+            if clean.startswith("json"):
+                clean = clean[4:].strip()
+        try:
+            parsed = json.loads(clean)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        return {
+            "version": "4.2.0",
+            "title": source_path or "Imported SOP",
+            "source_path": source_path,
+            "source_type": source_type,
+            "raw_text": document_text,
+            "metadata": {"atomization_mode": "llm_parse_failed"},
+            "steps": [],
+            "raw": raw,
+        }

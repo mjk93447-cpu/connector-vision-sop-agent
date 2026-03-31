@@ -8,7 +8,6 @@ a = Analysis(
     binaries=[],
     datas=[
         ('assets/config.json', 'assets'),
-        ('assets/sop_steps.json', 'assets'),
         # Package models directory (may only contain placeholders in git).
         ('assets/models', 'assets/models'),
     ],
@@ -18,54 +17,13 @@ a = Analysis(
         'torch',
         'torchvision',
         'torch._C',
-        # CV
+        # CV/OCR
         'cv2',
+        'pytesseract',
         'PIL',
         'PIL.Image',
         # Utils
         'numpy',
-        'difflib',
-        # OCR — WinRT primary (Windows 10 1803+)
-        'winsdk',
-        'winsdk.windows',
-        'winsdk.windows.media',
-        'winsdk.windows.media.ocr',
-        'winsdk.windows.graphics.imaging',
-        'winsdk.windows.storage.streams',
-        # OCR — PaddleOCR fallback (optional, lazy-loaded)
-        'paddleocr',
-        'paddleocr.ppocr',
-        'paddleocr.tools',
-        'paddleocr.tools.infer',
-        'paddleocr.tools.infer.predict_system',
-        # Core agent modules (OCR-First pipeline)
-        'src.ocr_engine',
-        'src.exception_handler',
-        'src.cycle_detector',
-        # Training pipeline
-        'src.training',
-        'src.training.dataset_manager',
-        'src.training.dataset_converter',
-        'src.training.training_manager',
-        'src.training.pretrain_pipeline',
-        # GUI (PyQt6)
-        'PyQt6',
-        'PyQt6.QtCore',
-        'PyQt6.QtGui',
-        'PyQt6.QtWidgets',
-        'PyQt6.sip',
-        # GUI sub-modules
-        'src.gui',
-        'src.gui.main_window',
-        'src.gui.workers',
-        'src.gui.panels',
-        'src.gui.panels.sop_panel',
-        'src.gui.panels.vision_panel',
-        'src.gui.panels.llm_panel',
-        'src.gui.panels.sop_editor_panel',
-        'src.gui.panels.config_panel',
-        'src.gui.panels.audit_panel',
-        'src.gui.panels.training_panel',
     ],
     hookspath=[],
     hooksconfig={},
@@ -93,7 +51,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

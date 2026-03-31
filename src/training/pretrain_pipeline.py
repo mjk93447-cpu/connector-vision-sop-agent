@@ -53,9 +53,12 @@ from src.training.dataset_converter import (
     split_train_val,
 )
 from src.training.dataset_manager import DatasetManager
+from src.config_loader import get_base_dir, suggest_training_profile
 
-_DEFAULT_OUTPUT_DIR = Path("pretrain_data")
-_PRETRAIN_WEIGHTS = Path("assets/models/yolo26x_pretrained.pt")
+_DEFAULT_OUTPUT_DIR = get_base_dir() / "pretrain_data"
+if not _DEFAULT_OUTPUT_DIR.exists():
+    _DEFAULT_OUTPUT_DIR = get_base_dir() / "pretrain_data_test"
+_PRETRAIN_WEIGHTS = get_base_dir() / "assets/models/yolo26x_pretrained.pt"
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +83,26 @@ class PretrainConfig:
     def __post_init__(self) -> None:
         self.output_dir = Path(self.output_dir)
         self.pretrained_weights = Path(self.pretrained_weights)
+
+    @classmethod
+    def from_runtime_defaults(
+        cls,
+        output_dir: str | Path | None = None,
+        image_count: int | None = None,
+        **overrides: Any,
+    ) -> PretrainConfig:
+        """Create a config using local hardware-aware training defaults."""
+
+        profile = suggest_training_profile(image_count=image_count)
+        cfg = cls(
+            output_dir=output_dir or _DEFAULT_OUTPUT_DIR,
+            epochs=overrides.pop("epochs", profile["epochs"]),
+            batch=overrides.pop("batch", profile["batch"]),
+            image_size=overrides.pop("image_size", profile["image_size"]),
+            device=overrides.pop("device", profile["device"]),
+            **overrides,
+        )
+        return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +133,12 @@ class PretrainPipeline:
         self._labels_dir = self.output_dir / "labels"
         self._images_dir.mkdir(parents=True, exist_ok=True)
         self._labels_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def suggest_runtime_defaults(image_count: int | None = None) -> Dict[str, Any]:
+        """Suggest local pretrain hyperparameters for the active machine."""
+
+        return suggest_training_profile(image_count=image_count)
 
     # ------------------------------------------------------------------
     # 1단계: 데이터셋 구축
@@ -712,7 +741,10 @@ class PretrainPipeline:
 
     def _image_count(self) -> int:
         """images/ 디렉터리의 이미지 수 반환."""
-        return len(list(self._images_dir.glob("*.png")))
+        flat_count = len(list(self._images_dir.rglob("*.png")))
+        split_count = len(list((self.output_dir / "train").rglob("*.png")))
+        split_count += len(list((self.output_dir / "val").rglob("*.png")))
+        return max(flat_count, split_count)
 
     # ------------------------------------------------------------------
     # 내부 헬퍼

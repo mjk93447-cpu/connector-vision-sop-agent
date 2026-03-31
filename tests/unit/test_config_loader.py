@@ -13,7 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from src.config_loader import _resolve_config_path, load_config
+from src.config_loader import (
+    _resolve_config_path,
+    detect_local_accelerator,
+    load_config,
+    resolve_app_path,
+    resolve_existing_app_path,
+    suggest_training_profile,
+)
 
 
 class TestLoadConfigValid:
@@ -158,3 +165,60 @@ class TestResolveConfigPath:
 
         result = _resolve_config_path(Path("assets/config.json"))
         assert result == cfg_in_meipass
+
+
+class TestRuntimePathHelpers:
+    def test_resolve_app_path_prefers_exe_dir_when_frozen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        exe_dir = tmp_path / "exe"
+        exe_dir.mkdir()
+        target = exe_dir / "assets" / "config.json"
+        target.parent.mkdir(parents=True)
+        target.write_text("{}", encoding="utf-8")
+
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(
+            sys,
+            "executable",
+            str(exe_dir / "connector_vision_agent.exe"),
+            raising=False,
+        )
+        result = resolve_app_path("assets/config.json")
+        assert result == target
+
+    def test_resolve_existing_app_path_returns_first_existing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("src.config_loader.get_base_dir", lambda: tmp_path)
+        second = tmp_path / "pretrain_data_test"
+        second.mkdir()
+        result = resolve_existing_app_path("pretrain_data", "pretrain_data_test")
+        assert result == second
+
+    def test_suggest_training_profile_returns_cpu_defaults(self) -> None:
+        profile = suggest_training_profile(image_count=120)
+        assert profile["epochs"] >= 4
+        assert profile["batch"] >= 1
+        assert profile["image_size"] in {320, 640}
+        assert profile["device"] in {"cpu", 0}
+
+
+class TestAcceleratorDetection:
+    def test_detect_local_accelerator_uses_nvidia_smi_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class _Result:
+            stdout = "NVIDIA RTX 4000 Ada Generation, 20480\n"
+
+        monkeypatch.setattr(
+            "subprocess.run",
+            lambda *a, **k: _Result(),
+        )
+        monkeypatch.setitem(sys.modules, "torch", None)
+
+        accel = detect_local_accelerator()
+        assert accel["gpu_present"] is True
+        assert accel["memory_gb"] == pytest.approx(20.0)
+        assert "RTX" in str(accel["name"])

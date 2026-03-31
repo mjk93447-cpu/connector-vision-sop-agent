@@ -11,6 +11,7 @@ Path resolution order (supports both source-run and PyInstaller EXE):
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,189 @@ def get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path(__file__).resolve().parent.parent
+
+
+def resolve_app_path(path: str | Path) -> Path:
+    """Resolve a project-relative path against the active runtime layout.
+
+    Search order:
+      1. Absolute path, if already absolute
+      2. EXE directory when frozen
+      3. PyInstaller _MEIPASS when available
+      4. Project root returned by get_base_dir()
+      5. Current working directory
+      6. Repository root (source layout fallback)
+
+    The first existing candidate wins. If none exist, the highest-priority
+    candidate is returned so callers can still create the file there.
+    """
+
+    candidate_path = Path(path)
+    if candidate_path.is_absolute():
+        return candidate_path
+
+    roots: list[Path] = []
+    if getattr(sys, "frozen", False):
+        roots.append(Path(sys.executable).parent)
+        meipass = Path(getattr(sys, "_MEIPASS", ""))
+        if meipass.exists():
+            roots.append(meipass)
+
+    roots.append(get_base_dir())
+    cwd = Path.cwd()
+    if cwd not in roots:
+        roots.append(cwd)
+
+    repo_root = Path(__file__).resolve().parent.parent
+    if repo_root not in roots:
+        roots.append(repo_root)
+
+    candidates: list[Path] = []
+    for root in roots:
+        resolved = root / candidate_path
+        if resolved not in candidates:
+            candidates.append(resolved)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0]
+
+
+def resolve_existing_app_path(*paths: str | Path) -> Path:
+    """Return the first existing path among project-relative candidates."""
+
+    if not paths:
+        raise ValueError("At least one path must be provided")
+    for path in paths:
+        resolved = resolve_app_path(path)
+        if resolved.exists():
+            return resolved
+    return resolve_app_path(paths[0])
+
+
+def detect_local_accelerator() -> dict[str, Any]:
+    """Best-effort local accelerator detection for training defaults.
+
+    Returns a dictionary with:
+      - device: "cpu" or CUDA device index as int
+      - name: GPU name when available
+      - memory_gb: total VRAM in GB when available
+      - gpu_present: True when a local NVIDIA GPU is detected
+      - cuda_usable: True when torch can actually use CUDA
+    """
+
+    device: Any = "cpu"
+    name: str | None = None
+    memory_gb: float | None = None
+    gpu_present = False
+    cuda_usable = False
+
+    def _read_nvidia_smi() -> tuple[str | None, float | None]:
+        try:
+            completed = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+        except Exception:  # noqa: BLE001
+            return None, None
+
+        for line in completed.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) >= 2:
+                gpu_name = parts[0] or None
+                try:
+                    vram_mb = float(parts[1])
+                except ValueError:
+                    vram_mb = None
+                return gpu_name, (vram_mb / 1024.0 if vram_mb is not None else None)
+        return None, None
+
+    try:
+        import torch  # noqa: PLC0415
+
+        if torch.cuda.is_available():
+            device = 0
+            cuda_usable = True
+            gpu_present = True
+            try:
+                name = torch.cuda.get_device_name(0)
+            except Exception:  # noqa: BLE001
+                name = "CUDA GPU"
+            try:
+                props = torch.cuda.get_device_properties(0)
+                memory_gb = props.total_memory / (1024**3)
+            except Exception:  # noqa: BLE001
+                memory_gb = None
+        else:
+            name, memory_gb = _read_nvidia_smi()
+            gpu_present = name is not None or memory_gb is not None
+    except Exception:  # noqa: BLE001
+        name, memory_gb = _read_nvidia_smi()
+        gpu_present = name is not None or memory_gb is not None
+
+    if gpu_present and name is None:
+        name = "NVIDIA GPU"
+
+    return {
+        "device": device,
+        "name": name,
+        "memory_gb": memory_gb,
+        "gpu_present": gpu_present,
+        "cuda_usable": cuda_usable,
+    }
+
+
+def suggest_training_profile(image_count: int | None = None) -> dict[str, Any]:
+    """Suggest training defaults tuned for the local machine.
+
+    GPU-equipped workstations get a larger batch and the full 640px training
+    resolution. CPU-only environments fall back to a lighter schedule.
+    """
+
+    accelerator = detect_local_accelerator()
+    device = accelerator["device"]
+    memory_gb = accelerator["memory_gb"]
+
+    sample_count = image_count or 0
+
+    if device != "cpu":
+        if memory_gb is not None and memory_gb >= 20:
+            batch = 16
+        elif memory_gb is not None and memory_gb >= 12:
+            batch = 8
+        else:
+            batch = 4
+
+        if sample_count <= 30:
+            epochs = 60
+        elif sample_count <= 80:
+            epochs = 40
+        else:
+            epochs = 24
+
+        image_size = 640
+    else:
+        batch = 2
+        epochs = 8 if sample_count <= 30 else 5 if sample_count <= 120 else 4
+        image_size = 320
+
+    return {
+        "device": device,
+        "gpu_name": accelerator["name"],
+        "memory_gb": memory_gb,
+        "epochs": epochs,
+        "batch": batch,
+        "image_size": image_size,
+    }
 
 
 def load_config(config_path: str | Path = "assets/config.json") -> dict[str, Any]:

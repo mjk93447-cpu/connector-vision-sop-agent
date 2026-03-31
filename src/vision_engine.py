@@ -1,37 +1,21 @@
 """
-YOLO26x button detection for Samsung OLED line UI automation.
+YOLOv26n button detection + Tesseract OCR PSM7.
 
 Line UI: left 60% image + right 40% control panel.
 Core targets: Mold ROI drag (100,200 -> 800,350) and Pin 40 cluster checks.
-
-CP-3 변경사항:
-  - Tesseract / pytesseract 완전 제거.
-  - DetectionConfig에서 ocr_psm 필드 제거.
-  - preprocess_for_ocr / read_text / locate_text / similarity 메서드 제거.
-  - YOLO26x 단독 검출 방식으로 완전 전환.
 """
 
 from __future__ import annotations
 
 import os
-import pathlib
 import sys
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 import cv2
 import numpy as np
-
-# ---------------------------------------------------------------------------
-# Redirect ultralytics config directory BEFORE importing YOLO.
-# This avoids "Error decoding json from persistent_cache.json" crashes that
-# occur on fresh line-PC installs where the default AppData path is missing
-# or contains a corrupted file from a previous installation attempt.
-# ---------------------------------------------------------------------------
-_YOLO_CFG_DIR = str(pathlib.Path.home() / ".connector_vision_agent")
-pathlib.Path(_YOLO_CFG_DIR).mkdir(parents=True, exist_ok=True)
-os.environ.setdefault("YOLO_CONFIG_DIR", _YOLO_CFG_DIR)
-
-from ultralytics import YOLO  # noqa: E402
+import pytesseract
+from ultralytics import YOLO
 
 try:
     import pyautogui
@@ -51,10 +35,6 @@ DEFAULT_TARGET_LABELS = [
     "mold_left_label",
     "mold_right_label",
     "pin_cluster",
-    "apply_button",
-    "save_button",
-    "axis_mark",
-    "connector_pin",
 ]
 
 DEFAULT_MOLD_ROI = ((100, 200), (800, 350))
@@ -62,13 +42,10 @@ DEFAULT_MOLD_ROI = ((100, 200), (800, 350))
 
 @dataclass
 class DetectionConfig:
-    """Runtime thresholds and paths for YOLO26x detection.
+    """Runtime thresholds for object detection and OCR-assisted UI lookup."""
 
-    CP-3: ocr_psm 필드 제거 (Tesseract 완전 삭제).
-    """
-
-    model_path: str = "assets/models/yolo26x.pt"
     confidence_threshold: float = 0.6
+    ocr_psm: int = 7
 
 
 @dataclass
@@ -80,83 +57,52 @@ class UiDetection:
     bbox: tuple[int, int, int, int]
 
 
-class VisionEngine:
-    """YOLO26x helper for Samsung OLED line UI automation."""
+class VisionAgent:
+    """YOLO + OCR helper for Samsung OLED line UI automation."""
 
     def __init__(
         self,
-        config: DetectionConfig | None = None,
+        model_path: str = "assets/models/yolo26n.pt",
+        confidence_threshold: float = 0.6,
+        ocr_psm: int = 7,
     ) -> None:
-        self.config = config or DetectionConfig()
-        self.model_path = self._resolve_runtime_path(self.config.model_path)
+        self.model_path = self._resolve_runtime_path(model_path)
+        self.confidence_threshold = confidence_threshold
+        self.ocr_psm = ocr_psm
         self.model = self._load_model(self.model_path)
 
-    # ------------------------------------------------------------------ #
-    # 경로 해석 / 모델 로드
-    # ------------------------------------------------------------------ #
-
     def _resolve_runtime_path(self, relative_path: str) -> str:
-        """Resolve file paths for both source runs and PyInstaller EXE runs.
-
-        Search order when frozen (PyInstaller EXE):
-          1. Next to the EXE — assets/models/yolo26x.pt  (user-editable, deployed by bat)
-          2. Inside _MEIPASS  — bundled copy inside the EXE's extracted temp dir
-        Source-run: project root (parent of src/).
-        """
+        """Resolve file paths for both source runs and PyInstaller EXE runs."""
 
         if os.path.isabs(relative_path):
             return relative_path
 
         if getattr(sys, "frozen", False):
-            # 1st priority: alongside the EXE (Part1 package layout)
-            exe_dir = os.path.dirname(sys.executable)
-            candidate_exe = os.path.abspath(os.path.join(exe_dir, relative_path))
-            if os.path.exists(candidate_exe):
-                return candidate_exe
-            # 2nd priority: inside _MEIPASS (bundled via PyInstaller datas)
-            base_path = getattr(sys, "_MEIPASS", exe_dir)
+            base_path = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
         else:
             base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
         return os.path.abspath(os.path.join(base_path, relative_path))
 
     def _load_model(self, model_path: str) -> YOLO | None:
-        """Load YOLO weights when available without breaking scaffold runs.
+        """
+        Load YOLO weights when available without breaking scaffold runs.
 
         Priority:
-        1. Local .pt file (offline line PC, assets/models/yolo26x.pt).
-        2. yolo26x.pt base model auto-download (ultralytics >= 8.4.0).
-
-        Model choice rationale — YOLO26x (released 2026-01-14):
-          yolo26x (highest mAP in YOLO26 family) is the preferred base:
-          - NMS-free end-to-end inference (DFL 제거)
-          - YOLO26 계열 최고 정확도 → SOP 12단계 UI 검출 안정성 최우선
-          - 속도보다 정확성/안정성 중시 (라인 PC SOP 자동화 특성)
-          - 파인튜닝 후 12개 OLED UI 클래스에 특화
-          ultralytics 버전 요구사항: >= 8.4.0
+        1. Use a local .pt file if it exists (offline line PC, assets/models/yolo26n.pt).
+        2. If the local file is missing, fall back to the Ultralytics hub name
+           (e.g. 'yolo26n.pt') so that CI or online dev machines can auto-download.
         """
 
         if os.path.exists(model_path):
-            try:
-                model = YOLO(model_path)
-                model.overrides["verbose"] = False
-                return model
-            except Exception:
-                return None
+            return YOLO(model_path)
 
-        # Local .pt not found — use yolo26x.pt as COCO-pretrained base model.
-        # YOLO26x: highest mAP in the YOLO26 family, preferred for SOP accuracy.
-        # Requires ultralytics >= 8.4.0 (YOLO26 support added 2026-01-14).
+        # Fall back to model name only (Ultralytics will download if possible).
+        name = os.path.basename(model_path)
         try:
-            model = YOLO("yolo26x.pt")  # auto-downloads from ultralytics hub
-            model.overrides["verbose"] = False
-            return model
+            return YOLO(name)
         except Exception:
             return None
-
-    # ------------------------------------------------------------------ #
-    # 화면 캡처
-    # ------------------------------------------------------------------ #
 
     def capture_screen(
         self, region: tuple[int, int, int, int] | None = None
@@ -168,13 +114,9 @@ class VisionEngine:
                 "pyautogui is unavailable in this environment."
             ) from PYAUTOGUI_IMPORT_ERROR
 
-        screenshot = pyautogui.screenshot(region=region)  # pragma: no cover
-        rgb_image = np.array(screenshot)  # pragma: no cover
-        return cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)  # pragma: no cover
-
-    # ------------------------------------------------------------------ #
-    # 공통 이미지 헬퍼
-    # ------------------------------------------------------------------ #
+        screenshot = pyautogui.screenshot(region=region)
+        rgb_image = np.array(screenshot)
+        return cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
 
     @staticmethod
     def _to_gray(image: np.ndarray) -> np.ndarray:
@@ -184,9 +126,62 @@ class VisionEngine:
             return image.copy()
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # ------------------------------------------------------------------ #
-    # YOLO 검출
-    # ------------------------------------------------------------------ #
+    def preprocess_for_ocr(self, image: np.ndarray) -> np.ndarray:
+        """Sharpen OCR targets for English button labels such as Mold Left."""
+
+        gray = self._to_gray(image)
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+        _, binary = cv2.threshold(
+            blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        return binary
+
+    def read_text(self, image: np.ndarray) -> str:
+        """Read a text string from the supplied ROI using Tesseract PSM 7."""
+
+        processed = self.preprocess_for_ocr(image)
+        config = f"--psm {self.ocr_psm}"
+        return pytesseract.image_to_string(processed, config=config).strip()
+
+    @staticmethod
+    def similarity(left: str, right: str) -> float:
+        """Measure fuzzy similarity between OCR output and target labels."""
+
+        return SequenceMatcher(None, left.lower(), right.lower()).ratio()
+
+    def locate_text(
+        self, image: np.ndarray, target_text: str, min_score: float = 0.65
+    ) -> dict[str, object] | None:
+        """Locate the best OCR text match and return its box and score."""
+
+        processed = self.preprocess_for_ocr(image)
+        ocr_data = pytesseract.image_to_data(
+            processed,
+            config=f"--psm {self.ocr_psm}",
+            output_type=pytesseract.Output.DICT,
+        )
+
+        best_match: dict[str, object] | None = None
+        for index, raw_text in enumerate(ocr_data["text"]):
+            text = raw_text.strip()
+            if not text:
+                continue
+
+            score = self.similarity(text, target_text)
+            if best_match is None or score > float(best_match["score"]):
+                left = int(ocr_data["left"][index])
+                top = int(ocr_data["top"][index])
+                width = int(ocr_data["width"][index])
+                height = int(ocr_data["height"][index])
+                best_match = {
+                    "text": text,
+                    "score": score,
+                    "bbox": (left, top, left + width, top + height),
+                }
+
+        if best_match and float(best_match["score"]) >= min_score:
+            return best_match
+        return None
 
     def detect_objects(
         self, image: np.ndarray, conf_threshold: float | None = None
@@ -196,7 +191,7 @@ class VisionEngine:
         if self.model is None:
             return []
 
-        confidence = conf_threshold or self.config.confidence_threshold
+        confidence = conf_threshold or self.confidence_threshold
         results = self.model.predict(source=image, conf=confidence, verbose=False)
         detections: list[UiDetection] = []
 
@@ -218,36 +213,19 @@ class VisionEngine:
         return detections
 
     def find_detection(
-        self,
-        image: np.ndarray,
-        label: str,
-        min_score: float | None = None,
-        roi: tuple[int, int, int, int] | None = None,
+        self, image: np.ndarray, label: str, min_score: float | None = None
     ) -> UiDetection | None:
-        """Return the highest-confidence detection for the requested label.
+        """Return the highest-confidence detection for the requested label."""
 
-        Args:
-            image: Full BGR image to search in.
-            label: Target class label to find.
-            min_score: Minimum confidence threshold; defaults to config value.
-            roi: Optional (x, y, w, h) region of interest.  When provided,
-                 detection is limited to that crop and bbox coordinates are
-                 offset back to original image space via ``detect_roi()``.
-        """
-
-        score_threshold = min_score or self.config.confidence_threshold
-        if roi is not None:
-            candidates = self.detect_roi(image, roi, conf_threshold=score_threshold)
-        else:
-            candidates = self.detect_objects(image, conf_threshold=score_threshold)
-        matches = [d for d in candidates if d.label == label]
+        score_threshold = min_score or self.confidence_threshold
+        matches = [
+            detection
+            for detection in self.detect_objects(image, conf_threshold=score_threshold)
+            if detection.label == label
+        ]
         if not matches:
             return None
         return max(matches, key=lambda detection: detection.confidence)
-
-    # ------------------------------------------------------------------ #
-    # ROI / 핀 헬퍼
-    # ------------------------------------------------------------------ #
 
     @staticmethod
     def normalize_roi(
@@ -295,54 +273,6 @@ class VisionEngine:
             "centers": centers,
         }
 
-    def detect_roi(
-        self,
-        image: np.ndarray,
-        roi: tuple[int, int, int, int],
-        conf_threshold: float | None = None,
-    ) -> list[UiDetection]:
-        """Run YOLO26x detection on a specific ROI (x, y, w, h).
-
-        Returns detections with bounding boxes offset back to original image coords.
-        Used for connector pin and mold area detection.
-        """
-        x, y, w, h = roi
-        if w <= 0 or h <= 0:
-            return []
-        crop = image[y : y + h, x : x + w]
-        if crop.size == 0:
-            return []
-        dets = self.detect_objects(crop, conf_threshold=conf_threshold)
-        # Offset bbox coordinates back to original image coordinates
-        return [
-            UiDetection(
-                label=d.label,
-                confidence=d.confidence,
-                bbox=(d.bbox[0] + x, d.bbox[1] + y, d.bbox[2] + x, d.bbox[3] + y),
-            )
-            for d in dets
-        ]
-
-    def reload_model(self) -> bool:
-        """Hot-reload YOLO26x weights after Tab7 local fine-tuning.
-
-        Called by TrainingPanel.on_training_done() so the new model
-        takes effect immediately without restarting the application.
-
-        Returns True on success, False on failure.
-        """
-        try:
-            new_model = self._load_model(self.model_path)
-            if new_model is not None:
-                self.model = new_model
-                return True
-        except Exception:
-            pass
-        return False
-
-    #: Convenience alias — vision_panel and workers use the shorter name.
-    detect = detect_objects
-
     def detect_ui_targets(self, image: np.ndarray | None = None) -> list[str]:
         """Return detected labels when possible, otherwise use SOP defaults."""
 
@@ -358,3 +288,19 @@ class VisionEngine:
             if detection.label not in ordered_labels:
                 ordered_labels.append(detection.label)
         return ordered_labels
+
+
+class VisionEngine(VisionAgent):
+    """Compatibility wrapper used by the scaffold main execution path."""
+
+    def __init__(
+        self,
+        config: DetectionConfig | None = None,
+        model_path: str = "assets/models/yolo26n.pt",
+    ) -> None:
+        self.config = config or DetectionConfig()
+        super().__init__(
+            model_path=model_path,
+            confidence_threshold=self.config.confidence_threshold,
+            ocr_psm=self.config.ocr_psm,
+        )

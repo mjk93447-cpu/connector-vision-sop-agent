@@ -1,11 +1,11 @@
 ================================================================
- Connector Vision SOP Agent v4.0.0 - All-in-One Package
+ Connector Vision SOP Agent v4.2.0 - All-in-One Package
  INSTALL GUIDE
 ================================================================
 
 STEP 1.  Copy IBM Granite Vision model blobs (~2.0 GB)
 --------------------------------------------------
-Download the connector-agent-llm artifact from the latest build:
+Download the connector-agent-llm artifact from the separate LLM workflow:
   GitHub Actions:
   https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions
 
@@ -27,25 +27,41 @@ STEP 3.  Launch
   => IBM Granite Vision 3.2-2b model loads
   => PyQt6 GUI opens (7 tabs)
 
+Optional local pretraining:
+  Double-click start_pretrain.bat
+  => Uses the bundled pretrain_data folder
+  => Saves yolo26x_pretrained.pt next to the EXE
+
+If you only received the separate pretrain artifact:
+  - Copy its contents into this same root folder
+  - Use PLACE_PRETRAIN_DATA_HERE.txt and PLACE_LLM_HERE.txt as guides
+
 Final folder structure
 --------------------------------------------------
   connector_agent\
   +-- connector_vision_agent.exe   <- SOP Agent (GUI + YOLO26x)
   +-- ollama.exe                   <- LLM runtime
   +-- start_agent.bat              <- Launch script (double-click)
+  +-- start_pretrain.bat           <- Local pretrain launcher (double-click)
   +-- stop_ollama.bat              <- Stop Ollama server
   +-- install_first_time.bat       <- First-time setup (run once as Admin)
   +-- INSTALL_GUIDE.txt            <- This file
   +-- QUICK_START_EN.md            <- One-page daily reference
   +-- README_INSTALL_EN.md         <- Full user guide
+  +-- MERGE_GUIDE.txt              <- Artifact merge instructions
+  +-- PLACE_APP_HERE.txt           <- Root deployment placeholder
   +-- assets\
   |   +-- config.json              <- Settings (edit via Tab 5)
   |   +-- sop_steps.json           <- SOP 40-step atomic definition (edit via Tab 4)
   |   +-- models\
   |       +-- yolo26x.pt           <- YOLO26x weights (COCO pretrained baseline)
+  +-- pretrain_data\               <- Bundled local training dataset
   +-- ollama_models\
+      +-- PLACE_LLM_HERE.txt       <- Copy the LLM artifact here
       +-- blobs\     <- copy from connector-agent-llm artifact
       +-- manifests\ <- copy from connector-agent-llm artifact
+  +-- pretrain_data\
+      +-- PLACE_PRETRAIN_DATA_HERE.txt <- Copy the pretrain dataset here if separate
 
 GUI 7-Tab Layout
 --------------------------------------------------
@@ -61,6 +77,7 @@ NOTES
 --------------------------------------------------
   - Tabs 1/2/5 work without LLM (Ollama not required for core SOP)
   - yolo26x.pt: COCO pretrained by default; fine-tune via Tab 7 for better accuracy
+  - start_pretrain.bat: one-click local pretraining on the bundled dataset
   - sop_steps.json edits take effect immediately (no restart needed)
   - config.json changes: always use Tab 5 -> review config.proposed.json -> apply manually
   - Training: second run "NoneType write" error is fixed (stale cache auto-cleared)

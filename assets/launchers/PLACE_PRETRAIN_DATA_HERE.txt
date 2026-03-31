@@ -1,0 +1,4 @@
+Drop the bundled local pretraining dataset here.
+
+This folder should contain the YOLO-ready pretrain_data tree used by
+connector_pretrain.exe. If you receive the dataset separately, extract it here.

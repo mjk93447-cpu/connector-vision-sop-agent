@@ -388,6 +388,7 @@ class TrainingWorker(QThread):  # type: ignore[misc]
     """
 
     progress: Any = pyqtSignal(int, int)
+    metrics_ready: Any = pyqtSignal(dict)
     finished_ok: Any = pyqtSignal(str)
     log_ready: Any = pyqtSignal(str)  # path to training.log after completion
     error_occurred: Any = pyqtSignal(str)
@@ -416,12 +417,16 @@ class TrainingWorker(QThread):  # type: ignore[misc]
             def _progress_cb(epoch: int, total: int) -> None:
                 self.progress.emit(epoch, total)
 
+            def _metrics_cb(metrics: dict) -> None:
+                self.metrics_ready.emit(metrics)
+
             weights = tm.train(
                 dataset_yaml=self._dataset_yaml,
                 epochs=self._epochs,
                 batch=self._batch,
                 base_model=self._base_model,
                 progress_cb=_progress_cb,
+                metrics_cb=_metrics_cb,
             )
             self.finished_ok.emit(str(weights))
             if tm.last_training_log is not None:

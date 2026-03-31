@@ -139,8 +139,8 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 ### 현장 배포 후 발생 가능한 개선 사항
 - [ ] **SOP Editor 검색/필터**: 40단계 중 특정 ID/이름 검색 기능 (단계 수 증가 대비)
 - [ ] **SOP Editor 일괄 편집**: 여러 단계 한 번에 enable/disable 토글
+- [ ] **Training 진행률 + mAP 실시간 표시**: epoch별 진행률, mAP50/mAP50-95/fitness/loss 중간 표시
 - [ ] **PW 마스킹**: type_text 편집 시 Text 필드를 password 모드로 표시 (보안 강화)
-- [ ] **Training 진행률 실시간 표시**: mAP50 epoch별 그래프 (Training 탭)
 - [ ] **LLM Chat 히스토리 저장**: 세션 간 대화 내용 유지 (JSONL 로컬 저장)
 - [ ] **OCR 정확도 로그**: 인식 실패한 텍스트 패턴 수집 → 전처리 개선 피드백
 - [ ] **yolo26x_pretrained.pt 다운로드**: CI GUI Pretrain 결과 아티팩트 → assets/models/ 배치

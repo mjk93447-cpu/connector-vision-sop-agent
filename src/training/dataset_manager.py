@@ -44,6 +44,11 @@ _TIMESTAMP_RE = re.compile(r"_\d{8}_\d{6}(?:_\d+)?$")
 # OLED class names in fixed order (index == YOLO class id)
 OLED_CLASSES: List[str] = list(DEFAULT_TARGET_LABELS)
 
+_CLASS_ALIASES = {
+    "mold_left": "mold_left_label",
+    "mold_right": "mold_right_label",
+}
+
 
 class DatasetManager:
     """Manages a YOLO-format annotation dataset for OLED UI fine-tuning."""
@@ -267,6 +272,7 @@ class DatasetManager:
     # ------------------------------------------------------------------
 
     def _label_to_id(self, label: str) -> int:
+        label = _CLASS_ALIASES.get(label, label)
         try:
             return OLED_CLASSES.index(label)
         except ValueError:

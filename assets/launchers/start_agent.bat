@@ -1,11 +1,21 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Connector Vision SOP Agent v4.0.0 [Offline]
+title Connector Vision SOP Agent v4.2.0 [Offline]
 
 set OLLAMA_MODELS=%~dp0ollama_models
 set OLLAMA_HOST=127.0.0.1:11434
 set OLLAMA_ORIGINS=*
+if not defined OLLAMA_CONTEXT_LENGTH set OLLAMA_CONTEXT_LENGTH=8192
+if "%OLLAMA_CONTEXT_LENGTH%"=="0" set OLLAMA_CONTEXT_LENGTH=8192
+
+rem Clear proxy variables so Ollama and the GUI talk to localhost directly.
+set HTTP_PROXY=
+set HTTPS_PROXY=
+set http_proxy=
+set https_proxy=
+set ALL_PROXY=
+set all_proxy=
 
 rem Bypass corporate HTTP proxy for localhost (Ollama) connections.
 rem Without this, Python requests routes http://127.0.0.1:11434 through the
@@ -15,7 +25,7 @@ set NO_PROXY=localhost,127.0.0.1,::1
 set no_proxy=localhost,127.0.0.1,::1
 
 echo ================================================================
-echo  Connector Vision SOP Agent v4.0.0  [Fully Offline]
+echo  Connector Vision SOP Agent v4.2.0  [Fully Offline]
 echo  GUI  : PyQt6 7-tab MainWindow (Vision, LLM Chat, SOP Editor, Training...)
 echo  LLM  : IBM Granite Vision 3.2-2b  (Ollama, multimodal)
 echo  YOLO : yolo26x embedded in EXE

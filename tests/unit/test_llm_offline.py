@@ -162,6 +162,12 @@ class TestOllamaBackend:
             result = llm.chat("system", [{"role": "user", "content": "hi"}])
         assert result == "안녕하세요!"
 
+    def test_chat_passes_proxy_bypass_kwargs(self) -> None:
+        llm = OfflineLLM.from_config({})
+        with patch("requests.post", return_value=self._mock_response("ok")) as mock_post:
+            llm.chat("system", [{"role": "user", "content": "hi"}])
+        assert mock_post.call_args[1]["proxies"] == {"http": None, "https": None}
+
     def test_default_url_used_when_not_set(self) -> None:
         llm = OfflineLLM.from_config({"http_url": None})
         with patch(
@@ -541,7 +547,16 @@ class TestCheckHealth:
             mock_resp.raise_for_status.return_value = None
             mock_get.return_value = mock_resp
             # Simulate GPU available
-            with patch("torch.cuda.is_available", return_value=True):
+            with patch(
+                "src.llm_offline.detect_local_accelerator",
+                return_value={
+                    "device": 0,
+                    "name": "NVIDIA RTX 4000 Ada Generation",
+                    "memory_gb": 20.0,
+                    "gpu_present": True,
+                    "cuda_usable": True,
+                },
+            ):
                 result = llm.check_health()
         assert result is not None
         assert "GPU" in result
@@ -552,7 +567,16 @@ class TestCheckHealth:
             mock_resp = MagicMock()
             mock_resp.raise_for_status.return_value = None
             mock_get.return_value = mock_resp
-            with patch("torch.cuda.is_available", return_value=False):
+            with patch(
+                "src.llm_offline.detect_local_accelerator",
+                return_value={
+                    "device": "cpu",
+                    "name": None,
+                    "memory_gb": None,
+                    "gpu_present": False,
+                    "cuda_usable": False,
+                },
+            ):
                 result = llm.check_health()
         assert result is not None
         assert "CPU" in result or "cpu" in result.lower()
@@ -584,7 +608,16 @@ class TestCheckHealth:
             mock_resp = MagicMock()
             mock_resp.raise_for_status.return_value = None
             mock_get.return_value = mock_resp
-            with patch("torch.cuda.is_available", return_value=True):
+            with patch(
+                "src.llm_offline.detect_local_accelerator",
+                return_value={
+                    "device": 0,
+                    "name": "NVIDIA RTX 4000 Ada Generation",
+                    "memory_gb": 20.0,
+                    "gpu_present": True,
+                    "cuda_usable": True,
+                },
+            ):
                 llm.check_health()
         call_kwargs = mock_get.call_args[1]
         assert call_kwargs.get("timeout") == _HEALTH_TIMEOUT
@@ -619,7 +652,16 @@ class TestCheckHealth:
             mock_resp = MagicMock()
             mock_resp.raise_for_status.return_value = None
             mock_get.return_value = mock_resp
-            with patch("torch.cuda.is_available", return_value=True):
+            with patch(
+                "src.llm_offline.detect_local_accelerator",
+                return_value={
+                    "device": 0,
+                    "name": "NVIDIA RTX 4000 Ada Generation",
+                    "memory_gb": 20.0,
+                    "gpu_present": True,
+                    "cuda_usable": True,
+                },
+            ):
                 llm.check_health()
         call_kwargs = mock_get.call_args[1]
         # Must explicitly pass proxies= dict with None values to override system proxy.
@@ -672,17 +714,50 @@ class TestCheckHealth:
 
 
 class TestOptimizedOptions:
+    def test_detected_gpu_uses_ollama_offload_even_without_torch_cuda(self) -> None:
+        llm = OfflineLLM.from_config({})
+        with patch(
+            "src.llm_offline.detect_local_accelerator",
+            return_value={
+                "device": "cpu",
+                "name": "NVIDIA RTX 4000 Ada Generation",
+                "memory_gb": 20.0,
+                "gpu_present": True,
+                "cuda_usable": False,
+            },
+        ):
+            opts = llm._get_optimized_options()
+        assert opts["num_gpu"] == 99
+
     def test_gpu_mode_sets_num_gpu_99(self) -> None:
         """CUDA 감지 시 num_gpu=99 설정 확인."""
         llm = OfflineLLM.from_config({})
-        with patch("torch.cuda.is_available", return_value=True):
+        with patch(
+            "src.llm_offline.detect_local_accelerator",
+            return_value={
+                "device": 0,
+                "name": "NVIDIA RTX 4000 Ada Generation",
+                "memory_gb": 20.0,
+                "gpu_present": True,
+                "cuda_usable": True,
+            },
+        ):
             opts = llm._get_optimized_options()
         assert opts["num_gpu"] == 99
 
     def test_cpu_mode_sets_num_thread_and_num_gpu_0(self) -> None:
         """CPU-only 환경에서 num_gpu=0, num_thread>=1 설정 확인."""
         llm = OfflineLLM.from_config({})
-        with patch("torch.cuda.is_available", return_value=False):
+        with patch(
+            "src.llm_offline.detect_local_accelerator",
+            return_value={
+                "device": "cpu",
+                "name": None,
+                "memory_gb": None,
+                "gpu_present": False,
+                "cuda_usable": False,
+            },
+        ):
             opts = llm._get_optimized_options()
         assert opts["num_gpu"] == 0
         assert opts["num_thread"] >= 1
@@ -694,7 +769,16 @@ class TestOptimizedOptions:
         options{} 안에 think를 넣으면 Ollama가 llama.cpp 파라미터로 오인해 무시한다.
         """
         llm = OfflineLLM.from_config({})
-        with patch("torch.cuda.is_available", return_value=False):
+        with patch(
+            "src.llm_offline.detect_local_accelerator",
+            return_value={
+                "device": "cpu",
+                "name": None,
+                "memory_gb": None,
+                "gpu_present": False,
+                "cuda_usable": False,
+            },
+        ):
             opts = llm._get_optimized_options(brief=True)
         assert (
             "think" not in opts
@@ -703,14 +787,32 @@ class TestOptimizedOptions:
     def test_brief_mode_num_ctx_4096(self) -> None:
         """brief=True 시 num_ctx=4096 (컨텍스트 단축) 확인."""
         llm = OfflineLLM.from_config({"ctx_size": 8192})
-        with patch("torch.cuda.is_available", return_value=False):
+        with patch(
+            "src.llm_offline.detect_local_accelerator",
+            return_value={
+                "device": "cpu",
+                "name": None,
+                "memory_gb": None,
+                "gpu_present": False,
+                "cuda_usable": False,
+            },
+        ):
             opts = llm._get_optimized_options(brief=True)
         assert opts["num_ctx"] == 4096
 
     def test_non_brief_mode_no_think_key(self) -> None:
         """brief=False 시 options에 think 키 없음 확인."""
         llm = OfflineLLM.from_config({})
-        with patch("torch.cuda.is_available", return_value=False):
+        with patch(
+            "src.llm_offline.detect_local_accelerator",
+            return_value={
+                "device": "cpu",
+                "name": None,
+                "memory_gb": None,
+                "gpu_present": False,
+                "cuda_usable": False,
+            },
+        ):
             opts = llm._get_optimized_options(brief=False)
         assert "think" not in opts
 

@@ -46,7 +46,7 @@ from src.gui.panels.training_panel import TrainingPanel
 from src.gui.panels.vision_panel import VisionPanel
 from src.gui.workers import AnalysisWorker, LLMStreamWorker, LLMWorker, SopWorker
 
-_APP_VERSION = "3.10.0"
+_APP_VERSION = "4.2.0"
 
 
 class MainWindow(QMainWindow):  # type: ignore[misc]
@@ -253,7 +253,11 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         )
         self._vision_panel = VisionPanel()
         self._llm_panel = LlmPanel()
-        self._sop_editor_panel = SopEditorPanel(sop_path=self._sop_steps_path)
+        self._sop_editor_panel = SopEditorPanel(
+            sop_path=self._sop_steps_path,
+            llm=self._llm,
+            ocr=self._ocr,
+        )
         self._config_panel = ConfigPanel(
             config=self._config, config_path=self._config_path
         )

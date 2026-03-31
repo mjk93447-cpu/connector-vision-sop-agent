@@ -118,6 +118,25 @@ class TestDatasetManagerGetStats:
         stats = dm.get_stats()
         assert stats["annotation_count"] == 2
         assert stats["class_counts"][cls_a] >= 1
+        assert stats["class_counts"][cls_b] >= 1
+
+    def test_legacy_mold_aliases_map_to_training_labels(
+        self, tmp_path: Path
+    ) -> None:
+        """Old UI aliases like mold_left should still save valid YOLO labels."""
+        from src.training.dataset_manager import DatasetManager
+
+        dm = DatasetManager(data_root=tmp_path / "alias_map")
+        img = _make_bgr()
+        dm.add_image_with_annotations(
+            "mold_left_001.png",
+            img,
+            _make_annotations("mold_left"),
+        )
+
+        lbl_path = dm.labels_dir / "mold_left_001.txt"
+        content = lbl_path.read_text(encoding="utf-8").strip()
+        assert content.startswith("5 "), content
 
 
 class TestDatasetManagerAddImage:

@@ -1,0 +1,8 @@
+Drop the connector-agent-llm artifact contents here.
+
+Required contents:
+  - blobs\
+  - manifests\
+
+This folder keeps the LLM separate so it only needs to be rebuilt when the
+LLM stack changes.

@@ -1,0 +1,5 @@
+path: C:\connector-vision-sop-agent\pretrain_data_test
+train: C:\connector-vision-sop-agent\pretrain_data_test\train\images
+val: C:\connector-vision-sop-agent\pretrain_data_test\val\images
+nc: 7
+names: ["button", "icon", "label", "connector", "input_field", "checkbox", "dropdown"]

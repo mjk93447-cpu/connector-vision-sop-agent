@@ -1,0 +1,85 @@
+name: Build Connector Vision LLM Artifact
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/llm_offline.py"
+      - "src/ocr_engine.py"
+      - "src/gui/panels/llm_panel.py"
+      - "src/gui/main_window.py"
+      - "src/main.py"
+      - "assets/config.json"
+      - "assets/launchers/**"
+      - "scripts/**"
+      - ".github/workflows/build-llm.yml"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-llm:
+    name: LLM (Granite Vision blobs)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Check disk space
+        shell: pwsh
+        run: |
+          $free = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
+          Write-Host "Free disk: $free GB"
+          if ($free -lt 6) { throw "Insufficient disk space - need 6 GB+" }
+
+      - name: Download Ollama binary
+        shell: pwsh
+        run: |
+          $uri = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
+          Invoke-WebRequest -Uri $uri -OutFile ollama.zip -UseBasicParsing
+          Expand-Archive ollama.zip -DestinationPath ollama_bin -Force
+          if (-not (Test-Path "ollama_bin\ollama.exe")) { throw "ollama.exe not found" }
+
+      - name: Set model storage path
+        shell: pwsh
+        run: |
+          $modelDir = Join-Path $env:GITHUB_WORKSPACE "ollama_models"
+          New-Item -ItemType Directory -Path $modelDir -Force | Out-Null
+          "OLLAMA_MODELS=$modelDir" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "OLLAMA_MODELS=$modelDir"
+
+      - name: Start Ollama server
+        shell: pwsh
+        run: |
+          $env:OLLAMA_HOST = "127.0.0.1:11434"
+          Start-Process "ollama_bin\ollama.exe" -ArgumentList "serve" -WindowStyle Hidden
+          Start-Sleep -Seconds 20
+
+      - name: Pull Granite Vision 3.2-2b
+        shell: pwsh
+        run: |
+          $env:OLLAMA_HOST = "127.0.0.1:11434"
+          & ollama_bin\ollama.exe pull ibm/granite3.2-vision:2b
+          if ($LASTEXITCODE -ne 0) { throw "Model download failed (exit $LASTEXITCODE)" }
+
+      - name: Verify model blobs
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "ollama_models" -Recurse -File
+          $gb = ($files | Measure-Object Length -Sum).Sum / 1GB
+          Write-Host ("Model total size: {0:F2} GB" -f $gb)
+          if ($gb -lt 1.0) { throw "Model size too small - download may have failed" }
+
+      - name: Upload LLM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: connector-agent-llm
+          path: ollama_models/
+          retention-days: 90

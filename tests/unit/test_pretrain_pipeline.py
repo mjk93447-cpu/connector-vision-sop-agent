@@ -49,6 +49,12 @@ class TestPretrainClasses:
         assert PRETRAIN_CLASSES[3] == "connector"
 
 
+class TestPretrainPipelineRuntimePaths:
+    def test_image_count_includes_split_bundle(self) -> None:
+        pipeline = PretrainPipeline(output_dir=Path("pretrain_data_test"))
+        assert pipeline._image_count() >= 1
+
+
 # ---------------------------------------------------------------------------
 # map_android_class
 # ---------------------------------------------------------------------------
@@ -426,6 +432,14 @@ class TestPretrainConfig:
         assert cfg.epochs == 50
         assert cfg.batch == 8
         assert cfg.device == "cuda"
+
+    def test_runtime_defaults_helper(self) -> None:
+        profile = PretrainPipeline.suggest_runtime_defaults(image_count=120)
+        assert "epochs" in profile
+        assert "batch" in profile
+        assert "image_size" in profile
+        assert profile["epochs"] >= 4
+        assert profile["batch"] >= 1
 
 
 # ---------------------------------------------------------------------------

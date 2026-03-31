@@ -70,11 +70,13 @@ except ImportError:
     pyqtSignal = object  # type: ignore[assignment]
 
 from src.class_registry import ClassRegistry
+from src.config_loader import suggest_training_profile
+from src.training.annotation_queue import AnnotationQueue
 from src.training.dataset_manager import OLED_CLASSES, DatasetManager
 
-# Extended class list: add mold + connector_pin to OLED_CLASSES if not present
+# Extended class list: add legacy aliases + connector_pin if not present
 _TRAIN_CLASSES = list(OLED_CLASSES)
-for _cls in ["mold_left", "mold_right", "connector_pin", "pin_cluster"]:
+for _cls in ["mold_left_label", "mold_right_label", "connector_pin", "pin_cluster"]:
     if _cls not in _TRAIN_CLASSES:
         _TRAIN_CLASSES.append(_cls)
 
@@ -423,6 +425,12 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._current_image_name: Optional[str] = None
         self._current_bgr: Optional[Any] = None
         self._training_worker: Optional[Any] = None
+        self._last_training_metrics_epoch: Optional[int] = None
+        self._last_training_metrics_line: str = ""
+        self._image_queue = AnnotationQueue()
+        self._current_image_path: Optional[Path] = None
+        self._last_saved_label: str = _TRAIN_CLASSES[0] if _TRAIN_CLASSES else ""
+        self._auto_advance: bool = True
         # Class selection checkboxes: {class_name: QCheckBox}
         self._class_checkboxes: Dict[str, Any] = {}
         # Class registry (loaded once; mutated via panel UI)
@@ -446,12 +454,17 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
         self._current_image_name = name
+        self._current_image_path = None
         self._current_bgr = bgr_arr
         rgb = bgr_arr[:, :, ::-1].copy()
         h, w, ch = rgb.shape
         qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
         self._canvas.set_image(QPixmap.fromImage(qimg))
         self._lbl_image_name.setText(f"Image: {name}")
+        if hasattr(self, "_combo_label") and self._last_saved_label:
+            idx = self._combo_label.findText(self._last_saved_label)
+            if idx >= 0:
+                self._combo_label.setCurrentIndex(idx)
 
     def on_training_progress(self, epoch: int, total: int) -> None:
         if not _QT_AVAILABLE:
@@ -459,7 +472,45 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._progress.setMaximum(total)
         self._progress.setValue(epoch)
         pct = int(epoch / total * 100) if total > 0 else 0
+        self._lbl_epoch_progress.setText(f"Epoch {epoch}/{total} ({pct}%)")
+        self._progress_detail.setText(f"Progress: {epoch}/{total} epochs")
         self._log(f"  Epoch {epoch}/{total} — {pct}%")
+
+    def on_training_metrics(self, metrics: Dict[str, Any]) -> None:
+        """Update live validation metrics after each epoch."""
+        if not _QT_AVAILABLE:
+            return
+
+        epoch = metrics.get("epoch")
+        total = metrics.get("total_epochs")
+        map50 = metrics.get("map50")
+        map50_95 = metrics.get("map50_95")
+        fitness = metrics.get("fitness")
+        loss = metrics.get("loss")
+
+        def _fmt(value: Any) -> str:
+            try:
+                if value is None:
+                    return "--"
+                return f"{float(value):.4f}"
+            except Exception:  # noqa: BLE001
+                return "--"
+
+        self._lbl_map50.setText(f"mAP50: {_fmt(map50)}")
+        self._lbl_map50_95.setText(f"mAP50-95: {_fmt(map50_95)}")
+        self._lbl_fitness.setText(f"Fitness: {_fmt(fitness)}")
+        self._lbl_loss.setText(f"Loss: {_fmt(loss)}")
+
+        if epoch is not None and total is not None:
+            line = (
+                f"Epoch {int(epoch)}/{int(total)} | "
+                f"mAP50={_fmt(map50)} | mAP50-95={_fmt(map50_95)} | "
+                f"fitness={_fmt(fitness)} | loss={_fmt(loss)}"
+            )
+            if line != self._last_training_metrics_line:
+                self._last_training_metrics_line = line
+                self._lbl_metric_status.setText(line)
+                self._log(f"  {line}")
 
     def on_training_done(self, weights_path: str) -> None:
         if not _QT_AVAILABLE:
@@ -547,15 +598,39 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         # Image controls row
         img_row = QHBoxLayout()
         self._lbl_image_name = QLabel("No image loaded")
+        self._lbl_queue_pos = QLabel("Queue: 0/0")
         btn_load = QPushButton("📁 Open Image")
         btn_load.setToolTip("Load an image file for annotation")
         btn_load.clicked.connect(self._on_load_image)
+        btn_load_many = QPushButton("Batch Files")
+        btn_load_many.setToolTip("Load many image files at once")
+        btn_load_many.clicked.connect(self._on_load_image_files)
+        btn_load_folder = QPushButton("Batch Folder")
+        btn_load_folder.setToolTip("Load all images from a folder recursively")
+        btn_load_folder.clicked.connect(self._on_load_image_folder)
+        btn_prev = QPushButton("Prev")
+        btn_prev.setToolTip("Go to previous image in the queue")
+        btn_prev.clicked.connect(self._on_prev_image)
+        btn_next = QPushButton("Next")
+        btn_next.setToolTip("Go to next image in the queue")
+        btn_next.clicked.connect(self._on_next_image)
+        self._chk_auto_advance = QCheckBox("Auto Next")
+        self._chk_auto_advance.setChecked(True)
+        self._chk_auto_advance.setToolTip(
+            "After saving an annotation, automatically move to the next queued image."
+        )
         btn_capture = QPushButton("📷 Capture Screen")
         btn_capture.setToolTip("Capture current screen for annotation")
         btn_capture.clicked.connect(self._on_capture_screen)
         img_row.addWidget(self._lbl_image_name)
+        img_row.addWidget(self._lbl_queue_pos)
         img_row.addStretch()
         img_row.addWidget(btn_load)
+        img_row.addWidget(btn_load_many)
+        img_row.addWidget(btn_load_folder)
+        img_row.addWidget(btn_prev)
+        img_row.addWidget(btn_next)
+        img_row.addWidget(self._chk_auto_advance)
         img_row.addWidget(btn_capture)
         lv.addLayout(img_row)
 
@@ -696,14 +771,16 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         )
         tv.addWidget(self._combo_base)
 
+        stats = self._dm.get_stats()
+        profile = suggest_training_profile(image_count=stats.get("image_count", 0))
         row_epochs = QHBoxLayout()
         row_epochs.addWidget(QLabel("Epochs:"))
         self._spin_epochs = QSpinBox()
         self._spin_epochs.setRange(1, 200)
-        self._spin_epochs.setValue(10)
+        self._spin_epochs.setValue(int(profile["epochs"]))
         self._spin_epochs.setToolTip(
-            "CI-pretrained base: 5-15 epochs sufficient.\n"
-            "COCO base: 20-50 epochs recommended."
+            "GPU workstation: use the higher preset automatically.\n"
+            "CPU fallback: lower preset keeps the run responsive."
         )
         row_epochs.addWidget(self._spin_epochs)
         tv.addLayout(row_epochs)
@@ -712,7 +789,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         row_batch.addWidget(QLabel("Batch:"))
         self._spin_batch = QSpinBox()
         self._spin_batch.setRange(1, 32)
-        self._spin_batch.setValue(4)
+        self._spin_batch.setValue(int(profile["batch"]))
         row_batch.addWidget(self._spin_batch)
         tv.addLayout(row_batch)
 
@@ -746,6 +823,25 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._progress = QProgressBar()
         self._progress.setValue(0)
         rv.addWidget(self._progress)
+
+        metrics_grp = QGroupBox("Live Metrics")
+        mg = QGridLayout(metrics_grp)
+        self._lbl_epoch_progress = QLabel("Epoch --/--")
+        self._progress_detail = QLabel("Progress: 0/0 epochs")
+        self._lbl_map50 = QLabel("mAP50: --")
+        self._lbl_map50_95 = QLabel("mAP50-95: --")
+        self._lbl_fitness = QLabel("Fitness: --")
+        self._lbl_loss = QLabel("Loss: --")
+        self._lbl_metric_status = QLabel("Waiting for first validation pass...")
+        self._lbl_metric_status.setWordWrap(True)
+        mg.addWidget(self._lbl_epoch_progress, 0, 0)
+        mg.addWidget(self._progress_detail, 0, 1)
+        mg.addWidget(self._lbl_map50, 1, 0)
+        mg.addWidget(self._lbl_map50_95, 1, 1)
+        mg.addWidget(self._lbl_fitness, 2, 0)
+        mg.addWidget(self._lbl_loss, 2, 1)
+        mg.addWidget(self._lbl_metric_status, 3, 0, 1, 2)
+        rv.addWidget(metrics_grp)
 
         rv.addWidget(QLabel("Training Log:"))
         self._txt_log = QTextEdit()
@@ -976,15 +1072,81 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         )
         if not path:
             return
+        self._image_queue.clear()
+        self._refresh_queue_label()
+        self._load_image_path(Path(path))
+
+    def _on_load_image_files(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Load Image Files",
+            "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.webp)",
+        )
+        if not paths:
+            return
+        self._load_queue_from_paths([Path(p) for p in paths])
+
+    def _on_load_image_folder(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        folder = QFileDialog.getExistingDirectory(self, "Load Image Folder", "")
+        if not folder:
+            return
+        root = Path(folder)
+        paths = [
+            p
+            for p in sorted(root.rglob("*"))
+            if p.is_file()
+            and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
+        ]
+        self._load_queue_from_paths(paths)
+
+    def _load_queue_from_paths(self, paths: List[Path]) -> None:
+        if not _QT_AVAILABLE:
+            return
+        count = self._image_queue.load(paths)
+        self._refresh_queue_label()
+        if count == 0:
+            QMessageBox.warning(
+                self, "Load Failed", "No supported image files were found."
+            )
+            return
+        self._load_image_path(self._image_queue.current())
+        self._log(f"Loaded {count} images into the annotation queue")
+
+    def _load_image_path(self, path: Optional[Path]) -> None:
+        if not _QT_AVAILABLE or path is None:
+            return
         try:
             import cv2  # noqa: PLC0415
 
-            bgr = cv2.imread(path)
+            bgr = cv2.imread(str(path))
             if bgr is None:
                 raise ValueError("cv2.imread returned None")
-            self.set_image_for_annotation(bgr, Path(path).name)
+            self.set_image_for_annotation(bgr, path.name)
+            self._current_image_path = path
+            self._refresh_queue_label()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Load Failed", str(exc))
+
+    def _on_prev_image(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        self._load_image_path(self._image_queue.prev())
+
+    def _on_next_image(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        self._load_image_path(self._image_queue.next())
+
+    def _refresh_queue_label(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        cur, total = self._image_queue.position()
+        self._lbl_queue_pos.setText(f"Queue: {cur}/{total}")
 
     def _on_capture_screen(self) -> None:
         if not _QT_AVAILABLE:
@@ -1048,12 +1210,18 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             save_name, self._current_bgr, annotations, subfolder=primary_class
         )
         self._dm.save_dataset_yaml()
+        self._last_saved_label = primary_class
         self._log(
             f"✅ Saved: {img_path.relative_to(self._dm.data_root)}"
             f" ({len(annotations)} annotations)"
         )
         self._refresh_stats()
         self._canvas.clear_annotations()
+
+        if self._auto_advance and self._image_queue.has_items():
+            next_path = self._image_queue.next()
+            if next_path is not None:
+                self._load_image_path(next_path)
 
     def _on_start_training(self) -> None:
         if not _QT_AVAILABLE:
@@ -1094,6 +1262,14 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._log(f"  Base model: {base_model}")
         self._progress.setValue(0)
         self._progress.setMaximum(epochs)
+        self._lbl_epoch_progress.setText("Epoch --/--")
+        self._progress_detail.setText("Progress: 0/0 epochs")
+        self._lbl_map50.setText("mAP50: --")
+        self._lbl_map50_95.setText("mAP50-95: --")
+        self._lbl_fitness.setText("Fitness: --")
+        self._lbl_loss.setText("Loss: --")
+        self._lbl_metric_status.setText("Waiting for first validation pass...")
+        self._last_training_metrics_line = ""
         self._btn_train.setEnabled(False)
         self._btn_reload.setEnabled(False)
 
@@ -1112,6 +1288,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             parent=self,
         )
         self._training_worker.progress.connect(self.on_training_progress)
+        self._training_worker.metrics_ready.connect(self.on_training_metrics)
         self._training_worker.finished_ok.connect(self.on_training_done)
         self._training_worker.log_ready.connect(self.on_training_log_ready)
         self._training_worker.error_occurred.connect(self.on_training_error)

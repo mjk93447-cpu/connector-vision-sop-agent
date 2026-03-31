@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import os
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -257,9 +258,102 @@ class TestTrainingManagerNoImages:
 
         with pytest.raises(ValueError) as exc_info:
             tm.train(dataset_yaml=yaml_path, epochs=1)
-
         msg = str(exc_info.value)
         assert "Training" in msg or "annotate" in msg or "image" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# Epoch metrics callback
+# ---------------------------------------------------------------------------
+
+
+class TestTrainingManagerEpochMetrics:
+    def test_extract_epoch_metrics_parses_map_values(self) -> None:
+        """Ultralytics-style trainer metrics should normalize to UI payload."""
+        from src.training.training_manager import TrainingManager
+
+        trainer = types.SimpleNamespace(
+            epoch=2,
+            epochs=10,
+            fitness=0.314,
+            tloss=[0.5, 0.25, 0.125],
+            metrics={
+                "metrics/mAP50(B)": 0.62,
+                "metrics/mAP50-95(B)": 0.41,
+                "metrics/precision(B)": 0.81,
+            },
+        )
+
+        payload = TrainingManager._extract_epoch_metrics(trainer)
+
+        assert payload is not None
+        assert payload["epoch"] == 2
+        assert payload["total_epochs"] == 10
+        assert payload["map50"] == pytest.approx(0.62)
+        assert payload["map50_95"] == pytest.approx(0.41)
+        assert payload["fitness"] == pytest.approx(0.314)
+        assert payload["loss"] == pytest.approx((0.5 + 0.25 + 0.125) / 3)
+
+    def test_metrics_callback_receives_each_epoch(self, tmp_path: Path) -> None:
+        """train() should forward validation metrics to metrics_cb each epoch."""
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+
+        weights_path = tmp_path / "yolo26x.pt"
+        _write_dummy_pt(weights_path)
+
+        tm = TrainingManager(
+            base_model=str(weights_path),
+            target_weights=tmp_path / "out.pt",
+        )
+
+        captured: list[dict] = []
+        callbacks: dict[str, list] = {}
+
+        def add_callback(event: str, callback) -> None:
+            callbacks.setdefault(event, []).append(callback)
+
+        def fake_train(**kwargs):
+            trainer = types.SimpleNamespace(
+                epoch=0,
+                epochs=3,
+                fitness=0.27,
+                tloss=[0.6, 0.4, 0.2],
+                metrics={
+                    "metrics/mAP50(B)": 0.58,
+                    "metrics/mAP50-95(B)": 0.33,
+                },
+            )
+            for callback in callbacks.get("on_train_epoch_end", []):
+                callback(trainer)
+            for callback in callbacks.get("on_fit_epoch_end", []):
+                callback(trainer)
+            result = MagicMock()
+            result.save_dir = None
+            return result
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_model.add_callback.side_effect = add_callback
+            mock_model.train.side_effect = fake_train
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(
+                    dataset_yaml=yaml_path,
+                    epochs=3,
+                    metrics_cb=captured.append,
+                )
+            except ImportError:
+                pytest.skip("ultralytics not installed")
+            except Exception:
+                pass
+
+        assert captured, "metrics_cb was never called"
+        assert captured[-1]["map50"] == pytest.approx(0.58)
+        assert captured[-1]["map50_95"] == pytest.approx(0.33)
 
 
 # ---------------------------------------------------------------------------

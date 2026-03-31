@@ -1,16 +1,19 @@
 ================================================================
- Connector Vision SOP Agent v4.0.0 - Portable Bundle Guide
+ Connector Vision SOP Agent v4.2.0 - Portable Bundle Guide
 ================================================================
 
 DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
   1. connector-agent-app.zip         ~500 MB   EXE + Ollama + launchers
-  2. connector-agent-llm.zip         ~2.0 GB   IBM Granite Vision 3.2-2b blobs
+  2. connector-agent-pretrain.zip    ~250 MB   Local pretrain EXE + dataset
+  3. connector-agent-llm.zip         ~2.0 GB   IBM Granite Vision 3.2-2b blobs
 
 ASSEMBLY STEPS:
   1. Create folder: C:\tools\connector_agent\
   2. Extract connector-agent-app.zip
      -> all files go into C:\tools\connector_agent\
-  3. Extract connector-agent-llm.zip
+  3. Extract connector-agent-pretrain.zip
+     -> all files go into C:\tools\connector_agent\pretrain_data\ and the EXE
+  4. Extract connector-agent-llm.zip
      -> all files go into C:\tools\connector_agent\ollama_models\
         (blobs\ and manifests\ must be directly inside ollama_models\)
 
@@ -18,16 +21,28 @@ FINAL FOLDER STRUCTURE:
   connector_agent\
   +-- connector_vision_agent.exe   <- SOP agent (YOLO26x + PyQt6 GUI embedded)
   +-- ollama.exe                   <- LLM runtime
+  +-- connector_pretrain.exe       <- Local pretrain runner
   +-- assets\
   |   +-- config.json              <- settings (editable)
   |   +-- sop_steps.json           <- 40-step atomic SOP definition (editable)
   |   +-- models\
   |       +-- yolo26x.pt           <- YOLO weights
   +-- start_agent.bat              <- DOUBLE-CLICK TO RUN (GUI mode)
+  +-- start_pretrain.bat           <- DOUBLE-CLICK TO START LOCAL TRAINING
   +-- stop_ollama.bat
+  +-- pretrain_data\               <- bundled local training dataset
   +-- ollama_models\
       +-- blobs\sha256-...         <- from connector-agent-llm zip
       +-- manifests\...            <- from connector-agent-llm zip
+  +-- PLACE_APP_HERE.txt           <- root deployment note
+  +-- pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt
+  +-- ollama_models\PLACE_LLM_HERE.txt
+
+MERGE ORDER:
+  1. Extract connector-agent-app.zip into the root folder.
+  2. Extract connector-agent-pretrain.zip into the same root folder.
+  3. Extract connector-agent-llm.zip into ollama_models\.
+  4. Verify the placeholder txt files were replaced by real content.
 
 HOW TO RUN:
   Double-click start_agent.bat
@@ -40,6 +55,10 @@ HOW TO RUN:
        Tab 5: Config     - Edit config.json via UI
        Tab 6: Audit      - Config change history
        Tab 7: Training   - Annotate connector images and fine-tune YOLO26x
+
+  Double-click start_pretrain.bat
+  -> Starts local YOLO26x pretraining on the bundled dataset
+  -> Uses the local GPU when available
 
 CUSTOMIZATION:
   - Edit assets\config.json to tune pin counts, timing, thresholds

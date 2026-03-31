@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.sop_document_ingest import SOPDocumentIngestor
+
 try:
     from PyQt6.QtCore import QRect, Qt, pyqtSignal
     from PyQt6.QtGui import QColor, QFont, QPainter, QPen
@@ -26,6 +28,7 @@ try:
         QHeaderView,
         QLabel,
         QLineEdit,
+        QFileDialog,
         QMessageBox,
         QPushButton,
         QSpinBox,
@@ -763,10 +766,17 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
     def __init__(
         self,
         sop_path: Optional[Path] = None,
+        llm: Any = None,
+        ocr: Any = None,
         parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self._sop_path = sop_path or Path("assets/sop_steps.json")
+        self._llm = llm
+        self._ocr = ocr
+        self._ingestor = SOPDocumentIngestor(llm=llm, ocr=ocr)
+        self._generated_sop_path = self._sop_path.with_suffix(".generated.json")
+        self._last_import_artifact: Optional[Any] = None
         self._steps: List[Dict[str, Any]] = []
         self._dirty = False
         self._setup_ui()
@@ -840,6 +850,14 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         # Buttons
         btn_row = QHBoxLayout()
 
+        btn_import = QPushButton("Import SOP Doc")
+        btn_import.setToolTip("Import PDF or TXT SOP and atomize it into steps")
+        btn_import.clicked.connect(self._on_import_document)
+
+        btn_export = QPushButton("Export JSON")
+        btn_export.setToolTip("Export the current SOP view to a JSON file")
+        btn_export.clicked.connect(self._on_export_json)
+
         btn_add = QPushButton("➕ Add")
         btn_add.clicked.connect(self._on_add)
 
@@ -864,7 +882,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         )
         self._btn_save.clicked.connect(self._on_save)
 
-        for btn in [btn_add, btn_edit, btn_del, btn_up, btn_down]:
+        for btn in [btn_import, btn_export, btn_add, btn_edit, btn_del, btn_up, btn_down]:
             btn_row.addWidget(btn)
         btn_row.addStretch()
         btn_row.addWidget(self._btn_validate)
@@ -908,12 +926,81 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         try:
             data = json.loads(self._sop_path.read_text(encoding="utf-8"))
             self._steps = data.get("steps", [])
+            self._last_import_artifact = data
             self._refresh_table()
         except Exception as exc:  # noqa: BLE001
             if _QT_AVAILABLE:
                 QMessageBox.warning(
                     self, "Load Error", f"Failed to load sop_steps.json:\n{exc}"
                 )
+
+    def _on_import_document(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import SOP Document",
+            "",
+            "SOP Documents (*.pdf *.txt *.md)",
+        )
+        if not path:
+            return
+        try:
+            artifact = self._ingestor.ingest(path)
+            self._steps = artifact.steps
+            self._last_import_artifact = artifact
+            self._dirty = True
+            self._refresh_table()
+            self._generated_sop_path = Path(path).with_suffix(".generated.json")
+            QMessageBox.information(
+                self,
+                "Import Complete",
+                f"Imported {len(self._steps)} atomic steps.\n"
+                "Review the table, then Save to update live SOP or Export JSON.",
+            )
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Import Failed", str(exc))
+
+    def _build_export_artifact(self) -> Dict[str, Any]:
+        base = self._last_import_artifact
+        if hasattr(base, "to_json"):
+            artifact = dict(base.to_json())  # type: ignore[call-arg]
+        elif isinstance(base, dict):
+            artifact = dict(base)
+        else:
+            artifact = {}
+        artifact["version"] = artifact.get("version", "4.2.0")
+        artifact["title"] = artifact.get("title", self._sop_path.stem)
+        artifact["source_path"] = artifact.get("source_path", str(self._sop_path))
+        artifact["source_type"] = artifact.get("source_type", "json")
+        artifact["metadata"] = artifact.get("metadata", {})
+        if not isinstance(artifact["metadata"], dict):
+            artifact["metadata"] = {"note": str(artifact["metadata"])}
+        artifact["metadata"].setdefault("exported_from", "SopEditorPanel")
+        artifact["steps"] = list(self._steps)
+        return artifact
+
+    def _on_export_json(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        artifact = self._build_export_artifact()
+        default_path = str(self._generated_sop_path)
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export SOP JSON",
+            default_path,
+            "JSON (*.json)",
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(
+                json.dumps(artifact, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            QMessageBox.information(self, "Export Complete", f"Saved: {path}")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Export Failed", str(exc))
 
     def _on_add(self) -> None:
         if not _QT_AVAILABLE:
@@ -1004,7 +1091,8 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         if not _QT_AVAILABLE:
             return
         try:
-            data = {"version": "1.2", "steps": self._steps}
+            data = self._build_export_artifact()
+            data["version"] = "4.2.0"
             self._sop_path.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
             )

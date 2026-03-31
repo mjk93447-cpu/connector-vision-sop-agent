@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
-from src.config_loader import get_base_dir
+from src.config_loader import detect_local_accelerator, get_base_dir
 
 _DEFAULT_BASE_MODEL = (
     "yolo26x.pt"  # YOLO26x: NMS-free, highest mAP in YOLO26 family (ultralytics>=8.4.0)
@@ -82,6 +82,28 @@ class _TeeWriter:
         raise io.UnsupportedOperation("fileno")
 
 
+def _to_float(value: object) -> Optional[float]:
+    """Best-effort conversion of torch / numpy / scalar values to float."""
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (list, tuple)):
+            values = [_to_float(v) for v in value]
+            numbers = [v for v in values if v is not None]
+            if not numbers:
+                return None
+            return float(sum(numbers) / len(numbers))
+        if hasattr(value, "detach"):
+            value = value.detach()  # type: ignore[assignment]
+        if hasattr(value, "cpu"):
+            value = value.cpu()  # type: ignore[assignment]
+        if hasattr(value, "item"):
+            return float(value.item())  # type: ignore[call-arg]
+        return float(value)  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001
+        return None
+
+
 class TrainingManager:
     """Wraps ultralytics YOLO fine-tuning for local offline use."""
 
@@ -101,6 +123,7 @@ class TrainingManager:
         batch: int = 2,  # CPU-only default: smaller batch to avoid OOM
         base_model: Optional[str] = None,
         progress_cb: Optional[Callable[[int, int], None]] = None,
+        metrics_cb: Optional[Callable[[dict], None]] = None,
     ) -> Path:
         # last_training_log is set inside _run_training(); initialise here so
         # callers can always inspect it even if training raises an exception.
@@ -115,6 +138,7 @@ class TrainingManager:
         batch:        Batch size (use 2-4 for CPU-only line PC).
         base_model:   Override base model path (takes precedence over self.base_model).
         progress_cb:  Optional callback ``(epoch, total_epochs)`` for UI progress.
+        metrics_cb:   Optional callback with per-epoch metrics after validation.
 
         Returns
         -------
@@ -198,6 +222,7 @@ class TrainingManager:
             )
 
         model = YOLO(start_weights)
+        device = self._resolve_device()
 
         # Patch the on_train_epoch_end callback to forward progress.
         if progress_cb is not None:
@@ -208,6 +233,15 @@ class TrainingManager:
                 progress_cb(epoch, total)
 
             model.add_callback("on_train_epoch_end", _epoch_cb)
+
+        if metrics_cb is not None:
+
+            def _metrics_cb(trainer: object) -> None:  # noqa: ANN001
+                metrics = self._extract_epoch_metrics(trainer)
+                if metrics is not None:
+                    metrics_cb(metrics)
+
+            model.add_callback("on_fit_epoch_end", _metrics_cb)
 
         # ------------------------------------------------------------------ #
         # Tee stdout/stderr to a dedicated training.log file.               #
@@ -246,10 +280,27 @@ class TrainingManager:
                     epochs=epochs,
                     imgsz=image_size,
                     batch=batch,
-                    device="cpu",
+                    device=device,
                     workers=0,  # single-process DataLoader (Windows multiprocessing fix)
                     exist_ok=True,  # overwrite previous run directory
                     rect=False,  # disable rectangular training
+                    hsv_h=0.0,
+                    hsv_s=0.0,
+                    hsv_v=0.12,
+                    degrees=0.0,
+                    translate=0.04,
+                    scale=0.08,
+                    shear=0.0,
+                    perspective=0.0,
+                    flipud=0.0,
+                    fliplr=0.0,
+                    mosaic=0.0,
+                    mixup=0.0,
+                    copy_paste=0.0,
+                    erasing=0.0,
+                    close_mosaic=0,
+                    patience=max(10, min(epochs // 2, 20)),
+                    pretrained=True,
                     verbose=True,
                     plots=False,
                 )
@@ -309,6 +360,54 @@ class TrainingManager:
             return count
         except Exception:  # noqa: BLE001
             return -1  # unknown — let ultralytics decide
+
+    @staticmethod
+    def _extract_epoch_metrics(trainer: object) -> Optional[dict]:
+        """Normalize Ultralytics trainer metrics into a UI-friendly payload."""
+        metrics = getattr(trainer, "metrics", None) or {}
+        if not isinstance(metrics, dict):
+            try:
+                metrics = dict(metrics)
+            except Exception:  # noqa: BLE001
+                metrics = {}
+
+        epoch = getattr(trainer, "epoch", None)
+        total_epochs = getattr(trainer, "epochs", None)
+        fitness = _to_float(getattr(trainer, "fitness", None))
+        loss = _to_float(getattr(trainer, "tloss", None))
+
+        def _find_metric(*needles: str) -> Optional[float]:
+            for key, value in metrics.items():
+                key_l = str(key).lower().replace(" ", "")
+                if "map50" in needles and (
+                    "map50-95" in key_l
+                    or "map5095" in key_l
+                    or "map50_95" in key_l
+                ):
+                    continue
+                if all(needle in key_l for needle in needles):
+                    found = _to_float(value)
+                    if found is not None:
+                        return found
+            return None
+
+        map50 = _find_metric("map50")
+        map50_95 = _find_metric("map50-95")
+        if map50_95 is None:
+            map50_95 = _find_metric("map5095")
+
+        if map50 is None and map50_95 is None and fitness is None and loss is None:
+            return None
+
+        return {
+            "epoch": epoch,
+            "total_epochs": total_epochs,
+            "fitness": fitness,
+            "loss": loss,
+            "map50": map50,
+            "map50_95": map50_95,
+            "raw_metrics": metrics,
+        }
 
     @staticmethod
     def _clean_stale_caches(dataset_yaml: Path) -> None:
@@ -432,3 +531,10 @@ class TrainingManager:
             return candidate
 
         return None
+
+    @staticmethod
+    def _resolve_device() -> object:
+        """Use CUDA when available, otherwise fall back to CPU."""
+
+        accelerator = detect_local_accelerator()
+        return accelerator["device"]
