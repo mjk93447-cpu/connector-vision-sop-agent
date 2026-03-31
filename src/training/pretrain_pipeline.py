@@ -47,12 +47,14 @@ from typing import Any, Dict, Optional
 
 from src.training.dataset_converter import (
     PRETRAIN_CLASSES,
+    OLEDConnectorGenerator,
     SyntheticGUIGenerator,
     convert_rico_sample,
     convert_showui_desktop_sample,
     split_train_val,
 )
 from src.training.dataset_manager import DatasetManager
+from src.training.train_config import OLED_PRETRAIN_PARAMS
 
 _DEFAULT_OUTPUT_DIR = Path("pretrain_data")
 _PRETRAIN_WEIGHTS = Path("assets/models/yolo26x_pretrained.pt")
@@ -142,6 +144,43 @@ class PretrainPipeline:
             f"[PretrainPipeline] 합성 데이터 {n_images}장 생성 완료 → {self.output_dir}"
         )
         return n_images
+
+    def build_oled_dataset(
+        self,
+        n_images: int = 300,
+        width: int = 640,
+        height: int = 480,
+    ) -> int:
+        """OLED 라인 특화 흑백 커넥터/핀/몰드 합성 데이터셋 생성.
+
+        OLEDConnectorGenerator 를 사용하여 실제 OLED 라인 카메라 특성
+        (흑백, 고대비 몰드, 등간격 핀 배열, 비네팅)에 맞는 이미지를 생성한다.
+        네트워크/API 키 불필요 — CI 환경에서 항상 사용 가능.
+
+        Classes
+        -------
+        0 = connector (몰드 전체)
+        1 = connector_pin (개별 핀)
+
+        Returns
+        -------
+        저장된 이미지 수.
+        """
+        gen = OLEDConnectorGenerator()
+        batch = gen.generate_batch(n_images=n_images, width=width, height=height)
+
+        saved = 0
+        for idx, (img, anns) in enumerate(batch):
+            # anns: list of (cls_id, cx, cy, w, h) already in YOLO normalised coords
+            yolo_anns = [{"class_id": int(a[0]), "bbox": list(a[1:])} for a in anns]
+            if yolo_anns:
+                self._save_pretrain_sample(f"oled_{idx:05d}", img, anns)
+                saved += 1
+
+        print(
+            f"[PretrainPipeline] OLED 합성 데이터 {saved}장 생성 완료 → {self.output_dir}"
+        )
+        return saved
 
     def build_showui_desktop_dataset(
         self,
@@ -549,8 +588,11 @@ class PretrainPipeline:
             imgsz=self.cfg.image_size,
             batch=batch,
             device=self.cfg.device,
+            workers=0,  # Windows multiprocessing fix
+            exist_ok=True,
+            rect=False,
             verbose=False,
-            plots=False,
+            **OLED_PRETRAIN_PARAMS,  # OLED 라인 특화 pretrain 설정
         )
 
         # 최적 가중치 복사

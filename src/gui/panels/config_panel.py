@@ -80,6 +80,60 @@ _CONFIG_SECTIONS: Dict[str, list] = {
 }
 
 
+_CONFIG_TOOLTIPS: Dict[str, str] = {
+    "vision.confidence_threshold": (
+        "YOLO26x detection confidence threshold (0.10–0.99).\n"
+        "Lower = more detections (may include false positives).\n"
+        "Higher = stricter (may miss dim connectors).\n"
+        "Recommended: 0.55–0.65 for OLED line lighting."
+    ),
+    "control.step_delay": (
+        "Wait time between consecutive SOP steps (seconds).\n"
+        "Increase if the factory PC UI is slow to respond."
+    ),
+    "control.move_duration": (
+        "Time for mouse cursor to travel to target position (seconds).\n"
+        "0.30 = smooth, natural movement. Lower = faster but less reliable."
+    ),
+    "control.click_pause": (
+        "Pause after each mouse click before the next action (seconds).\n"
+        "Increase if the UI does not register clicks reliably."
+    ),
+    "control.drag_duration": (
+        "Time for click-and-drag operations (seconds).\n"
+        "Recommended: 0.30–0.50 for cable insertion steps."
+    ),
+    "control.retry_delay": (
+        "Wait time between retries when a step fails (seconds).\n"
+        "Lower = faster recovery. Higher = more time for UI to settle."
+    ),
+    "control.retries": (
+        "Maximum retry attempts per SOP step before marking failure.\n"
+        "Range: 1–10. Default 3 is appropriate for most factory PCs."
+    ),
+    "pin_count_min": (
+        "Minimum acceptable pin count for pass/fail validation.\n"
+        "Set equal to pin_count_max for exact-count enforcement."
+    ),
+    "pin_count_max": (
+        "Maximum acceptable pin count for pass/fail validation.\n"
+        "For 40-pin OLED connectors: set both min and max to 40."
+    ),
+    "llm.enabled": (
+        "Enable or disable the AI Assistant (Granite Vision 3.2-2b via Ollama).\n"
+        "Disable on line PCs where Ollama is not installed."
+    ),
+    "llm.allow_config_write": (
+        "Allow the AI Assistant to directly write config changes.\n"
+        "Recommended: OFF. Use the /apply workflow for audited changes."
+    ),
+    "llm.model": (
+        "Ollama model tag for the AI Assistant.\n"
+        "Default: granite3.2-vision:2b  (run: ollama pull ibm/granite3.2-vision:2b)"
+    ),
+}
+
+
 class ConfigPanel(QWidget):  # type: ignore[misc]
     """Config Editor tab."""
 
@@ -141,6 +195,9 @@ class ConfigPanel(QWidget):  # type: ignore[misc]
             for key, label, field_type, lo, hi in fields:
                 widget = self._make_widget(key, field_type, lo, hi)
                 self._widgets[key] = widget
+                tip = _CONFIG_TOOLTIPS.get(key)
+                if tip:
+                    widget.setToolTip(tip)
                 form.addRow(label + ":", widget)
 
             main_layout.addWidget(group)

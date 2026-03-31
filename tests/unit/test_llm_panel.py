@@ -397,3 +397,90 @@ class TestPromptQueue:
 
         src = inspect.getsource(LlmPanel._start_flush_timer)
         assert "16" in src, "flush timer must use 16ms interval"
+
+
+# ---------------------------------------------------------------------------
+# LLM 채팅 히스토리 JSONL 세션 간 저장/불러오기
+# ---------------------------------------------------------------------------
+
+
+class TestHistoryPersistence:
+    """_save_history / _load_history / clear_history JSONL 세션 저장 테스트."""
+
+    def _make_headless_panel(self, tmp_path):
+        """_HISTORY_PATH 를 tmp_path 로 교체한 헤드리스 패널 반환."""
+
+        panel = _make_panel()
+        panel._HISTORY_PATH = tmp_path / "llm_history.jsonl"
+        return panel
+
+    def test_save_load_roundtrip(self, tmp_path) -> None:
+
+        panel = self._make_headless_panel(tmp_path)
+        panel._history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+        with patch("src.gui.panels.llm_panel._QT_AVAILABLE", False):
+            panel._save_history()
+            panel._history = []
+            panel._load_history()
+        assert len(panel._history) == 2
+        assert panel._history[0]["content"] == "Hello"
+        assert panel._history[1]["role"] == "assistant"
+
+    def test_load_skips_malformed_lines(self, tmp_path) -> None:
+        panel = self._make_headless_panel(tmp_path)
+        panel._HISTORY_PATH.write_text(
+            '{"role":"user","content":"ok"}\nNOT_JSON\n{"role":"assistant","content":"yes"}\n',
+            encoding="utf-8",
+        )
+        with patch("src.gui.panels.llm_panel._QT_AVAILABLE", False):
+            panel._load_history()
+        contents = [m["content"] for m in panel._history]
+        assert "ok" in contents
+        assert "yes" in contents
+
+    def test_clear_history_deletes_file(self, tmp_path) -> None:
+        panel = self._make_headless_panel(tmp_path)
+        panel._HISTORY_PATH.write_text(
+            '{"role":"user","content":"x"}\n', encoding="utf-8"
+        )
+        panel._history = [{"role": "user", "content": "x"}]
+        with patch("src.gui.panels.llm_panel._QT_AVAILABLE", False):
+            panel.clear_history()
+        assert not panel._HISTORY_PATH.exists()
+        assert panel._history == []
+
+    def test_save_handles_os_error_silently(self) -> None:
+        from pathlib import Path
+
+        panel = _make_panel()
+        panel._HISTORY_PATH = Path("/nonexistent_root/hist.jsonl")
+        panel._history = [{"role": "user", "content": "test"}]
+        # Must not raise
+        with patch("src.gui.panels.llm_panel._QT_AVAILABLE", False):
+            panel._save_history()
+
+    def test_load_nonexistent_file_is_noop(self, tmp_path) -> None:
+        panel = self._make_headless_panel(tmp_path)
+        panel._history = []
+        with patch("src.gui.panels.llm_panel._QT_AVAILABLE", False):
+            panel._load_history()
+        assert panel._history == []
+
+    def test_history_large_file_no_crash(self, tmp_path) -> None:
+        """1000줄 히스토리 파일도 크래시 없이 불러와야 한다."""
+        import json
+
+        panel = self._make_headless_panel(tmp_path)
+        lines = [
+            json.dumps(
+                {"role": "user" if i % 2 == 0 else "assistant", "content": f"msg{i}"}
+            )
+            for i in range(1000)
+        ]
+        panel._HISTORY_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        with patch("src.gui.panels.llm_panel._QT_AVAILABLE", False):
+            panel._load_history()
+        assert len(panel._history) == 1000

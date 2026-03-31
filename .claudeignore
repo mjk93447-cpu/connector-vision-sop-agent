@@ -30,6 +30,8 @@ coverage.xml
 pretrain_data_test/
 docs/mockup/
 data/
+datasets/
+runs/
 
 # ── 워크트리 & IDE ──
 .claude/worktrees/
@@ -46,6 +48,7 @@ data/
 # ── 로그 & 런타임 산출물 ──
 logs/
 *.jsonl
+*.log
 
 # ── 대용량 문서 (필요 시 @참조) ──
 ROADMAP.md

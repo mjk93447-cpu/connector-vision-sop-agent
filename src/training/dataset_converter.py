@@ -524,3 +524,119 @@ def split_train_val(
                 shutil.copy2(src_lbl, dst_lbl)
 
     return dataset_dir / "train", dataset_dir / "val"
+
+
+# ---------------------------------------------------------------------------
+# OLED 라인 특화 합성 이미지 생성기
+# ---------------------------------------------------------------------------
+
+
+class OLEDConnectorGenerator:
+    """OLED 라인 흑백 커넥터/핀/몰드 합성 이미지 생성기.
+
+    실제 라인 카메라 특성 반영:
+    - 흑백(그레이스케일 → BGR 3채널) 이미지
+    - 커넥터 핀: 등간격 배열 (소형 사각형)
+    - 몰드: 직사각형 테두리 (고대비)
+    - 조명 변화: 중앙부 밝고 주변부 어두움 (비네팅)
+
+    Classes
+    -------
+    0 = connector  (몰드 전체 bbox)
+    1 = connector_pin  (개별 핀 bbox)
+    """
+
+    CLASSES = ["connector", "connector_pin"]
+
+    def generate(self, width: int = 640, height: int = 480):
+        """단일 흑백 이미지 + YOLO 포맷 레이블 (list of (cls, cx, cy, w, h)) 반환."""
+        import random
+
+        img = self._make_background(width, height)
+        labels = []
+
+        n_connectors = random.randint(1, 3)
+        for _ in range(n_connectors):
+            mold_bbox, pin_labels = self._draw_connector(img, width, height)
+            if mold_bbox is not None:
+                labels.append((0, *mold_bbox))
+                labels.extend((1, *p) for p in pin_labels)
+
+        return img, labels
+
+    def generate_batch(self, n_images: int = 200, width: int = 640, height: int = 480):
+        """배치 생성. list of (img, labels) 반환."""
+        return [self.generate(width, height) for _ in range(n_images)]
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _make_background(self, w: int, h: int):
+        import numpy as np
+
+        base = np.random.randint(20, 60, (h, w), dtype=np.uint8)
+        cx, cy = w // 2, h // 2
+        Y, X = np.ogrid[:h, :w]
+        sigma = max(w, h) * 0.4
+        vignette = np.exp(-((X - cx) ** 2 + (Y - cy) ** 2) / (2 * sigma**2))
+        bright = (base + (vignette * 40).astype(np.uint8)).clip(0, 255).astype(np.uint8)
+        return np.stack([bright] * 3, axis=-1)  # BGR 3채널
+
+    def _draw_connector(self, img, W: int, H: int):
+        import random
+
+        import cv2
+
+        mw = random.randint(int(W * 0.2), int(W * 0.6))
+        mh = random.randint(int(H * 0.15), int(H * 0.4))
+        if W - mw <= 0 or H - mh <= 0:
+            return None, []
+        mx = random.randint(0, W - mw)
+        my = random.randint(0, H - mh)
+
+        # 몰드 테두리 (밝은 흰색)
+        thickness = random.randint(2, 4)
+        brightness = random.randint(160, 255)
+        cv2.rectangle(img, (mx, my), (mx + mw, my + mh), (brightness,) * 3, thickness)
+
+        # 핀 배열
+        pin_count = random.randint(8, 40)
+        if pin_count == 0:
+            mold_bbox = (
+                (mx + mw / 2) / W,
+                (my + mh / 2) / H,
+                mw / W,
+                mh / H,
+            )
+            return mold_bbox, []
+
+        pin_size = max(3, mw // (pin_count * 2))
+        pin_gap = max(1, mw // pin_count)
+        pin_labels = []
+
+        for i in range(pin_count):
+            px = mx + i * pin_gap + pin_gap // 2
+            py = my + thickness + pin_size
+            if px + pin_size > mx + mw or py + pin_size * 2 > my + mh:
+                break
+            pb = random.randint(140, 220)
+            cv2.rectangle(
+                img, (px, py), (px + pin_size, py + pin_size * 2), (pb,) * 3, -1
+            )
+            pin_labels.append(
+                (
+                    (px + pin_size / 2) / W,
+                    (py + pin_size) / H,
+                    pin_size / W,
+                    pin_size * 2 / H,
+                )
+            )
+
+        mold_bbox = (
+            (mx + mw / 2) / W,
+            (my + mh / 2) / H,
+            mw / W,
+            mh / H,
+        )
+        return mold_bbox, pin_labels

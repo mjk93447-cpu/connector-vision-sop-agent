@@ -7,6 +7,7 @@ Uses mocks for WinRT and PaddleOCR — no external dependencies required.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import List, Optional
 from unittest.mock import MagicMock, patch
 
@@ -823,3 +824,69 @@ class TestFindTextSpaceNormalization:
         img = np.zeros((100, 300, 3), dtype=np.uint8)
         result = engine.find_text(img, "submit")
         assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# OCR 실패 JSONL 로그
+# ---------------------------------------------------------------------------
+
+
+class TestOcrFailureLogging:
+    """find_text() 미스 시 JSONL 로그 기록 테스트."""
+
+    def test_miss_writes_jsonl(self, tmp_path: Path) -> None:
+        import json
+
+        engine = OCREngine(backend="paddleocr")
+        engine._FAILURE_LOG = tmp_path / "logs" / "ocr_failures.jsonl"
+        with patch.object(engine, "scan_all", return_value=[]):
+            result = engine.find_text(_make_bgr(), "CLICK_ME")
+        assert result is None
+        assert engine._FAILURE_LOG.exists()
+        record = json.loads(engine._FAILURE_LOG.read_text(encoding="utf-8"))
+        assert record["data"]["target"] == "CLICK_ME"
+        assert record["data"]["backend"] == "paddleocr"
+        assert "best_score" in record["data"]
+        assert record["level"] == "WARNING"
+
+    def test_hit_does_not_write_jsonl(self, tmp_path: Path) -> None:
+
+        engine = OCREngine(backend="paddleocr")
+        engine._FAILURE_LOG = tmp_path / "no_log.jsonl"
+        regions = [_make_region("SUBMIT", conf=1.0)]
+        with patch.object(engine, "scan_all", return_value=regions):
+            result = engine.find_text(_make_bgr(), "SUBMIT")
+        assert result is not None
+        assert not engine._FAILURE_LOG.exists()
+
+    def test_log_correct_threshold(self, tmp_path: Path) -> None:
+        import json
+
+        engine = OCREngine(backend="paddleocr")
+        engine._FAILURE_LOG = tmp_path / "thr.jsonl"
+        with patch.object(engine, "scan_all", return_value=[]):
+            engine.find_text(_make_bgr(), "X", threshold=0.95)
+        record = json.loads(engine._FAILURE_LOG.read_text(encoding="utf-8"))
+        assert abs(record["data"]["threshold"] - 0.95) < 1e-6
+
+    def test_multiple_misses_append(self, tmp_path: Path) -> None:
+        import json
+
+        engine = OCREngine(backend="paddleocr")
+        engine._FAILURE_LOG = tmp_path / "multi.jsonl"
+        with patch.object(engine, "scan_all", return_value=[]):
+            engine.find_text(_make_bgr(), "A")
+            engine.find_text(_make_bgr(), "B")
+        lines = engine._FAILURE_LOG.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 2
+        targets = [json.loads(line_)["data"]["target"] for line_ in lines]
+        assert targets == ["A", "B"]
+
+    def test_silent_on_os_error(self) -> None:
+        """쓰기 불가 경로에서도 예외가 발생하지 않아야 한다."""
+        from pathlib import Path
+
+        engine = OCREngine(backend="paddleocr")
+        engine._FAILURE_LOG = Path("/nonexistent_root_dir/impossible.jsonl")
+        # Must not raise
+        engine._log_failure("X", 0.0, 0, 0.8)

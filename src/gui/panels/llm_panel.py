@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
@@ -245,6 +246,8 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         "/no_think"
     )
 
+    _HISTORY_PATH: Path = Path("logs/llm_history.jsonl")
+
     def __init__(self, parent: Any = None) -> None:
         super().__init__(parent)
         self._history: List[Dict[str, str]] = []
@@ -271,6 +274,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._bubble_start_pos: int = 0  # doc position before AI bubble (for Stop)
         self._roi_overlay: Any = None  # active ROI overlay (keep reference)
         self._setup_ui()
+        self._load_history()
 
     # ------------------------------------------------------------------
     # Public API
@@ -278,8 +282,48 @@ class LlmPanel(QWidget):  # type: ignore[misc]
 
     def clear_history(self) -> None:
         self._history.clear()
+        try:
+            self._HISTORY_PATH.unlink(missing_ok=True)
+        except OSError:
+            pass
         if _QT_AVAILABLE:
             self._chat_display.clear()
+
+    def _save_history(self) -> None:
+        """self._history 를 JSONL 로 덮어쓰기. OSError 무시."""
+        try:
+            self._HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with self._HISTORY_PATH.open("w", encoding="utf-8") as f:
+                for msg in self._history:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def _load_history(self) -> None:
+        """앱 시작 시 JSONL 에서 히스토리 복원. 손상 파일은 무시."""
+        if not self._HISTORY_PATH.exists():
+            return
+        try:
+            loaded: List[Dict[str, str]] = []
+            for line in self._HISTORY_PATH.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue  # 손상된 줄 건너뜀
+                if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                    loaded.append(msg)
+            self._history = loaded
+            if _QT_AVAILABLE and loaded:
+                self._append_system(
+                    f"[Restored {len(loaded)} messages from previous session]"
+                )
+                for m in loaded[-10:]:  # 마지막 10개만 화면 표시
+                    self._append_bubble(m["role"], m["content"])
+        except OSError:
+            pass
 
     def set_brief_mode(self, enabled: bool) -> None:
         self._brief_mode = enabled
@@ -338,6 +382,13 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._chk_brief.setChecked(True)  # ON by default (256 tokens vs 1024)
         self._chk_brief.toggled.connect(self.set_brief_mode)
         hdr_row.addWidget(self._chk_brief)
+
+        self._btn_clear_history = QPushButton("🗑 Clear History")
+        self._btn_clear_history.setToolTip(
+            "Clear conversation history and delete saved log file"
+        )
+        self._btn_clear_history.clicked.connect(self.clear_history)
+        hdr_row.addWidget(self._btn_clear_history)
 
         layout.addLayout(hdr_row)
 
@@ -657,6 +708,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         self._input.clear()
         self._append_bubble("user", text)
         self._history.append({"role": "user", "content": text})
+        self._save_history()
 
         image_b64, self._pending_image_b64 = self._pending_image_b64, None
         if image_b64:
@@ -811,6 +863,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         """Called when streaming response is fully assembled."""
         self._last_llm_text = full_text
         self._history.append({"role": "assistant", "content": full_text})
+        self._save_history()
         self._has_warm_llm = True  # model is warmed up — next ETA shows ~10-30s
         self.set_sending(False)
         elapsed = time.perf_counter() - self._t0 if self._t0 > 0 else 0

@@ -917,6 +917,12 @@ class TestGraniteVisionAPI:
 
         assert "granite" in _OLLAMA_DEFAULT_MODEL.lower()
 
+    def test_default_model_is_granite32(self) -> None:
+        """기본 모델이 granite3.2-vision:2b 이어야 한다 (3.3 아님)."""
+        from src.llm_offline import _OLLAMA_DEFAULT_MODEL
+
+        assert _OLLAMA_DEFAULT_MODEL == "granite3.2-vision:2b"
+
     def test_chat_returns_native_message_content(self) -> None:
         """_chat_ollama()가 Ollama /api/chat 응답 포맷에서 content를 추출한다."""
         llm = OfflineLLM.from_config({})

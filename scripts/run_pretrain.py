@@ -2,17 +2,20 @@
 YOLO26x 프리트레인 실행 스크립트.
 
 사용법:
-  # ShowUI-Desktop (권장: Windows/Mac/Linux 데스크탑 실제 GUI)
+  # OLED 라인 특화 흑백 커넥터/핀/몰드 합성 데이터 (권장: CI 기본값, API 키 불필요)
+  python scripts/run_pretrain.py --source oled_synthetic --n-images 300 --epochs 30
+
+  # Roboflow PCB-Components (실제 커넥터 이미지 — ROBOFLOW_API_KEY 필요)
+  ROBOFLOW_API_KEY=<your_key> python scripts/run_pretrain.py --source pcb_components --max-samples 500 --epochs 30
+
+  # ShowUI-Desktop (Windows/Mac/Linux 데스크탑 실제 GUI)
   python scripts/run_pretrain.py --source showui_desktop --max-samples 500 --epochs 20
 
-  # 합성 데이터로 빠른 테스트 (의존성 없음)
+  # 범용 합성 데이터 (컬러 GUI 버튼/아이콘 — OLED 공정 부적합, 테스트용)
   python scripts/run_pretrain.py --source synthetic --n-images 200 --epochs 20
 
   # Rico WidgetCaptioning (레거시: Android UI, 구형 Windows에는 부적합)
   python scripts/run_pretrain.py --source rico_widget --max-samples 500 --epochs 30
-
-  # Roboflow PCB-Components (커넥터/산업 부품 — ROBOFLOW_API_KEY 필요)
-  ROBOFLOW_API_KEY=<your_key> python scripts/run_pretrain.py --source pcb_components --max-samples 500 --epochs 20
 """
 
 from __future__ import annotations
@@ -35,9 +38,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="YOLO26x 프리트레인 파이프라인")
     parser.add_argument(
         "--source",
-        choices=["showui_desktop", "synthetic", "rico_widget", "pcb_components"],
-        default="showui_desktop",
-        help="데이터 소스 (기본: showui_desktop — Windows/Desktop GUI 권장)",
+        choices=[
+            "oled_synthetic",
+            "showui_desktop",
+            "synthetic",
+            "rico_widget",
+            "pcb_components",
+        ],
+        default="oled_synthetic",
+        help="데이터 소스 (기본: oled_synthetic — OLED 라인 흑백 커넥터/핀/몰드)",
     )
     parser.add_argument(
         "--n-images",
@@ -81,7 +90,9 @@ def main() -> None:
     pipeline = PretrainPipeline(output_dir=args.output_dir, config=cfg)
 
     # 데이터셋 구축
-    if args.source == "showui_desktop":
+    if args.source == "oled_synthetic":
+        pipeline.build_oled_dataset(n_images=args.n_images)
+    elif args.source == "showui_desktop":
         pipeline.build_showui_desktop_dataset(max_samples=args.max_samples)
     elif args.source == "synthetic":
         pipeline.build_synthetic_dataset(n_images=args.n_images)

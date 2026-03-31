@@ -401,6 +401,94 @@ class BBoxCanvas(QWidget):  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
+# EpochChartWidget — mAP50 실시간 꺾은선 차트 (QPainter, 외부 의존성 없음)
+# ---------------------------------------------------------------------------
+
+
+class EpochChartWidget(QWidget):  # type: ignore[misc]
+    """에포크별 mAP50 꺾은선 차트.
+
+    QPainter 기반으로 구현되어 matplotlib / pyqtgraph 추가 설치 불필요.
+    """
+
+    def __init__(self, parent: Any = None) -> None:
+        super().__init__(parent)
+        self._points: list = []  # list of (epoch: int, map50: float)
+        if _QT_AVAILABLE:
+            self.setMinimumHeight(120)
+            self.setMinimumWidth(180)
+
+    def add_point(self, epoch: int, map50: float) -> None:
+        """새 에포크 mAP50 추가. map50 < 0 이면 무시."""
+        if map50 < 0.0:
+            return
+        self._points.append((epoch, map50))
+        if _QT_AVAILABLE:
+            self.update()
+
+    def reset(self) -> None:
+        """차트 초기화."""
+        self._points = []
+        if _QT_AVAILABLE:
+            self.update()
+
+    def paintEvent(self, event: Any) -> None:  # noqa: N802
+        if not _QT_AVAILABLE:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        margin_l = 42  # y축 레이블용 왼쪽 여백
+        margin_b = 6
+        margin_t = 6
+        margin_r = 6
+
+        bg = QColor("#f5f5f5")
+        grid_c = QColor("#cccccc")
+        line_c = QColor("#1565c0")
+        text_c = QColor("#333333")
+
+        # 배경
+        painter.fillRect(0, 0, w, h, bg)
+
+        # y축 그리드 (0.0 / 0.25 / 0.5 / 0.75 / 1.0)
+        chart_h = h - margin_t - margin_b
+        chart_w = w - margin_l - margin_r
+        for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+            y = int(margin_t + (1.0 - frac) * chart_h)
+            painter.setPen(QPen(grid_c, 1))
+            painter.drawLine(margin_l, y, w - margin_r, y)
+            painter.setPen(QPen(text_c, 1))
+            painter.drawText(2, y + 4, f"{frac:.2f}")
+
+        if len(self._points) < 2:
+            painter.setPen(QPen(text_c, 1))
+            painter.drawText(margin_l + 4, h // 2, "mAP50 — starts after epoch 1")
+            painter.end()
+            return
+
+        max_epoch = max(p[0] for p in self._points)
+        x_scale = chart_w / max(max_epoch, 1)
+
+        painter.setPen(QPen(line_c, 2))
+        prev_x = prev_y = None
+        for epoch, val in self._points:
+            px = int(margin_l + epoch * x_scale)
+            py = int(margin_t + (1.0 - val) * chart_h)
+            if prev_x is not None:
+                painter.drawLine(prev_x, prev_y, px, py)
+            prev_x, prev_y = px, py
+
+        # 마지막 포인트 값 레이블
+        if self._points and prev_x is not None:
+            last_val = self._points[-1][1]
+            painter.setPen(QPen(text_c, 1))
+            painter.drawText(prev_x + 3, prev_y - 3, f"{last_val:.3f}")
+
+        painter.end()
+
+
+# ---------------------------------------------------------------------------
 # TrainingPanel — full Tab 7 widget
 # ---------------------------------------------------------------------------
 
@@ -453,13 +541,15 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._canvas.set_image(QPixmap.fromImage(qimg))
         self._lbl_image_name.setText(f"Image: {name}")
 
-    def on_training_progress(self, epoch: int, total: int) -> None:
+    def on_training_progress(self, epoch: int, total: int, map50: float = -1.0) -> None:
         if not _QT_AVAILABLE:
             return
         self._progress.setMaximum(total)
         self._progress.setValue(epoch)
         pct = int(epoch / total * 100) if total > 0 else 0
-        self._log(f"  Epoch {epoch}/{total} — {pct}%")
+        map_str = f" | mAP50={map50:.3f}" if map50 >= 0 else ""
+        self._log(f"  Epoch {epoch}/{total} — {pct}%{map_str}")
+        self._chart.add_point(epoch, map50)
 
     def on_training_done(self, weights_path: str) -> None:
         if not _QT_AVAILABLE:
@@ -746,6 +836,10 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._progress = QProgressBar()
         self._progress.setValue(0)
         rv.addWidget(self._progress)
+
+        rv.addWidget(QLabel("mAP50 per Epoch:"))
+        self._chart = EpochChartWidget()
+        rv.addWidget(self._chart)
 
         rv.addWidget(QLabel("Training Log:"))
         self._txt_log = QTextEdit()
@@ -1094,6 +1188,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         self._log(f"  Base model: {base_model}")
         self._progress.setValue(0)
         self._progress.setMaximum(epochs)
+        self._chart.reset()
         self._btn_train.setEnabled(False)
         self._btn_reload.setEnabled(False)
 
@@ -1111,7 +1206,10 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             base_model=base_model,
             parent=self,
         )
-        self._training_worker.progress.connect(self.on_training_progress)
+        self._training_worker.progress.connect(
+            lambda ep, tot: self.on_training_progress(ep, tot)
+        )
+        self._training_worker.epoch_metrics.connect(self.on_training_progress)
         self._training_worker.finished_ok.connect(self.on_training_done)
         self._training_worker.log_ready.connect(self.on_training_log_ready)
         self._training_worker.error_occurred.connect(self.on_training_error)

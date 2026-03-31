@@ -19,8 +19,11 @@ Usage:
 from __future__ import annotations
 
 import difflib
+import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 import cv2
@@ -93,6 +96,8 @@ class OCREngine:
         Minimum fuzzy-match ratio (0–1) for find_text().
     """
 
+    _FAILURE_LOG: Path = Path("logs/ocr_failures.jsonl")
+
     def __init__(self, backend: str = "auto", threshold: float = 0.80) -> None:
         self.threshold = threshold
         self._backend = self._resolve_backend(backend)
@@ -154,6 +159,41 @@ class OCREngine:
             logger.warning("OCR scan_all error (%s): %s", self._backend, exc)
             return []
 
+    def _log_failure(
+        self,
+        target: str,
+        best_score: float,
+        candidate_count: int,
+        threshold: float,
+    ) -> None:
+        """find_text() 미스 시 JSONL 레코드를 logs/ocr_failures.jsonl 에 추가.
+
+        OSError (디스크 권한 없음, 경로 불가 등) 는 무시한다 — 로그 실패가
+        SOP 실행을 중단해서는 안 된다.
+        """
+        try:
+            self._FAILURE_LOG.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "ts": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                "level": "WARNING",
+                "step": "ocr.find_text",
+                "message": (
+                    f"OCR miss: {target!r} "
+                    f"(best_score={best_score:.3f}, thr={threshold:.2f})"
+                ),
+                "data": {
+                    "target": target,
+                    "best_score": best_score,
+                    "threshold": threshold,
+                    "candidate_count": candidate_count,
+                    "backend": self._backend,
+                },
+            }
+            with self._FAILURE_LOG.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
     def find_text(
         self,
         img_np: np.ndarray,
@@ -205,6 +245,15 @@ class OCREngine:
                 best_score,
                 best.source,
                 best.center,
+            )
+        else:
+            self._log_failure(target, best_score, len(regions), thr)
+            logger.debug(
+                "OCR miss: %r (best_score=%.3f, thr=%.2f, candidates=%d)",
+                target,
+                best_score,
+                thr,
+                len(regions),
             )
         return best
 

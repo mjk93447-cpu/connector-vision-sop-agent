@@ -978,13 +978,34 @@ class TestHandleTrainOom:
 
 
 class TestBatchDefault:
-    def test_default_batch_is_2(self) -> None:
-        """train() default batch must be 2 (CPU-only safe default)."""
+    def test_default_batch_is_4(self) -> None:
+        """train() default batch must be 4 (OLED line PC memory baseline)."""
         import inspect
 
         from src.training.training_manager import TrainingManager
 
         sig = inspect.signature(TrainingManager.train)
         assert (
-            sig.parameters["batch"].default == 2
-        ), "Default batch must be 2 for CPU-only environments"
+            sig.parameters["batch"].default == 4
+        ), "Default batch must be 4 (OLED line PC memory baseline)"
+
+
+class TestProgressCbMapSignature:
+    """progress_cb(epoch, total, map50) 시그니처 + mAP50 추출 검증."""
+
+    def test_progress_cb_accepts_three_args(self) -> None:
+        """TrainingWorker._progress_cb 는 map50 세 번째 인자를 받아야 한다."""
+        import inspect
+
+        from src.gui.workers import TrainingWorker
+
+        src = inspect.getsource(TrainingWorker.run)
+        assert "map50" in src, "_progress_cb must accept map50 parameter"
+
+    def test_epoch_metrics_signal_exists(self) -> None:
+        """TrainingWorker.epoch_metrics 시그널이 존재해야 한다."""
+        from src.gui.workers import TrainingWorker
+
+        assert hasattr(
+            TrainingWorker, "epoch_metrics"
+        ), "TrainingWorker must have epoch_metrics signal"

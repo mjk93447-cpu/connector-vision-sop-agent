@@ -229,7 +229,7 @@ class OfflineLLM:
         else:
             return (
                 f"ℹ️ CPU-only mode ({num_thread} threads) — "
-                "Granite Vision 3.3-2b: ~10-30s per response on CPU"
+                "Granite Vision 3.2-2b: ~10-30s per response on CPU"
             )
 
     # ------------------------------------------------------------------ #

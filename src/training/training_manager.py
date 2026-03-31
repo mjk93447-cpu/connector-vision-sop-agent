@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.config_loader import get_base_dir
+from src.training.train_config import OLED_TRAIN_PARAMS
 
 _DEFAULT_BASE_MODEL = (
     "yolo26x.pt"  # YOLO26x: NMS-free, highest mAP in YOLO26 family (ultralytics>=8.4.0)
@@ -96,11 +97,11 @@ class TrainingManager:
     def train(
         self,
         dataset_yaml: str | Path,
-        epochs: int = 10,
+        epochs: int = 50,  # OLED 200장 기준 수렴 epoch
         image_size: int = 640,
-        batch: int = 2,  # CPU-only default: smaller batch to avoid OOM
+        batch: int = 4,  # 라인 PC 메모리 기준 (CPU-only)
         base_model: Optional[str] = None,
-        progress_cb: Optional[Callable[[int, int], None]] = None,
+        progress_cb: Optional[Callable[[int, int, float], None]] = None,
     ) -> Path:
         # last_training_log is set inside _run_training(); initialise here so
         # callers can always inspect it even if training raises an exception.
@@ -205,7 +206,11 @@ class TrainingManager:
             def _epoch_cb(trainer: object) -> None:  # noqa: ANN001
                 epoch = getattr(trainer, "epoch", 0) + 1
                 total = getattr(trainer, "epochs", epochs)
-                progress_cb(epoch, total)
+                metrics = getattr(trainer, "metrics", {}) or {}
+                map50 = float(
+                    metrics.get("metrics/mAP50(B)", metrics.get("mAP50", -1.0))
+                )
+                progress_cb(epoch, total, map50)
 
             model.add_callback("on_train_epoch_end", _epoch_cb)
 
@@ -251,7 +256,7 @@ class TrainingManager:
                     exist_ok=True,  # overwrite previous run directory
                     rect=False,  # disable rectangular training
                     verbose=True,
-                    plots=False,
+                    **OLED_TRAIN_PARAMS,  # OLED 라인 특화 설정 일괄 적용
                 )
             except RuntimeError as _oom_exc:
                 self._handle_train_oom(_oom_exc)
