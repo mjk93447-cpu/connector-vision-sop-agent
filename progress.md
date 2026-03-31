@@ -1,9 +1,9 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-27 (v4.0.0 정식 배포 — SOP Editor 타입별 편집 UI + CI 빌드 수정 + 733 pass)_
+_최종 갱신: 2026-03-31 (v4.1.0 개발 완료 — OLED 특화 학습 + 7개 기능 + CI pretrain 잡 + 758 pass)_
 
 ## 현재 브랜치
-`main` (v4.0.0 정식 배포 완료)
+`claude/vigorous-gates` (v4.1.0 PR 준비 중)
 
 ## 완료 체크포인트
 | CP | 내용 | 테스트 | 커버리지 |
@@ -44,6 +44,7 @@ _최종 갱신: 2026-03-27 (v4.0.0 정식 배포 — SOP Editor 타입별 편집
 | **v3.10.1 Granite Chat 버그 수정** | **image_b64 TypeError 수정 (on_llm_send+Workers) + config.json 직접 수정 활성화 + Granite 체인 통합 테스트 18개 신규** | **670 pass** | **92%+** |
 | **v3.10.2 LLM Chat UX 개선** | **ROI 스크린샷 오버레이+800px JPEG압축 / ChatGPT-like token+ETA / Stop 버튼 실제 취소+버블 복구 / 600s timeout** | **701 pass** | **92%+** |
 | **v4.0.0 SOP Editor 편집 + CI 수정** | **type_text/press_key/wait_ms 타입별 전용 입력 필드 + CI unit/integ timeout 분리 + ci_check.sh 로컬 시뮬레이션** | **733 pass** | **92%+** |
+| **v4.1.0 OLED 특화 학습 + 기능 개선** | **OLED_TRAIN_PARAMS+OLEDConnectorGenerator+EpochChartWidget+OCR JSONL 로그+LLM 히스토리 저장+config 툴팁+CI pretrain 잡** | **758 pass** | **92%+** |
 
 ## 현재 스택 (v4.0.0)
 - YOLO: yolo26x (`assets/models/yolo26x.pt`, 베이스: yolo26x COCO pretrained, ultralytics>=8.4.0)
