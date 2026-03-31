@@ -1,5 +1,5 @@
 """
-YOLOv26n button detection + Tesseract OCR PSM7.
+YOLOv26x button detection + Tesseract OCR PSM7.
 
 Line UI: left 60% image + right 40% control panel.
 Core targets: Mold ROI drag (100,200 -> 800,350) and Pin 40 cluster checks.
@@ -43,6 +43,7 @@ DEFAULT_MOLD_ROI = ((100, 200), (800, 350))
 @dataclass
 class DetectionConfig:
     """Runtime thresholds for object detection and OCR-assisted UI lookup."""
+    model_path: str = "assets/models/yolo26x.pt"
 
     confidence_threshold: float = 0.6
     ocr_psm: int = 7
@@ -62,11 +63,12 @@ class VisionAgent:
 
     def __init__(
         self,
-        model_path: str = "assets/models/yolo26n.pt",
+        model_path: str | None = None,
         confidence_threshold: float = 0.6,
         ocr_psm: int = 7,
     ) -> None:
-        self.model_path = self._resolve_runtime_path(model_path)
+        resolved_model_path = model_path or "assets/models/yolo26x.pt"
+        self.model_path = self._resolve_runtime_path(resolved_model_path)
         self.confidence_threshold = confidence_threshold
         self.ocr_psm = ocr_psm
         self.model = self._load_model(self.model_path)
@@ -89,9 +91,9 @@ class VisionAgent:
         Load YOLO weights when available without breaking scaffold runs.
 
         Priority:
-        1. Use a local .pt file if it exists (offline line PC, assets/models/yolo26n.pt).
+        1. Use a local .pt file if it exists (offline line PC, assets/models/yolo26x.pt).
         2. If the local file is missing, fall back to the Ultralytics hub name
-           (e.g. 'yolo26n.pt') so that CI or online dev machines can auto-download.
+           (e.g. 'yolo26x.pt') so that CI or online dev machines can auto-download.
         """
 
         if os.path.exists(model_path):
@@ -212,15 +214,49 @@ class VisionAgent:
 
         return detections
 
+    def detect_roi(
+        self,
+        image: np.ndarray,
+        roi: tuple[int, int, int, int],
+        conf_threshold: float | None = None,
+    ) -> list[UiDetection]:
+        """Run detection inside a cropped region of interest."""
+
+        x1, y1, x2, y2 = roi
+        cropped = image[y1:y2, x1:x2]
+        detections = self.detect_objects(cropped, conf_threshold=conf_threshold)
+
+        adjusted: list[UiDetection] = []
+        for detection in detections:
+            dx1, dy1, dx2, dy2 = detection.bbox
+            adjusted.append(
+                UiDetection(
+                    label=detection.label,
+                    confidence=detection.confidence,
+                    bbox=(dx1 + x1, dy1 + y1, dx2 + x1, dy2 + y1),
+                )
+            )
+        return adjusted
+
     def find_detection(
-        self, image: np.ndarray, label: str, min_score: float | None = None
+        self,
+        image: np.ndarray,
+        label: str,
+        min_score: float | None = None,
+        roi: tuple[int, int, int, int] | None = None,
     ) -> UiDetection | None:
         """Return the highest-confidence detection for the requested label."""
 
         score_threshold = min_score or self.confidence_threshold
+        if roi is None:
+            candidates = self.detect_objects(image, conf_threshold=score_threshold)
+        else:
+            candidates = self.detect_roi(
+                image, roi=roi, conf_threshold=score_threshold
+            )
         matches = [
             detection
-            for detection in self.detect_objects(image, conf_threshold=score_threshold)
+            for detection in candidates
             if detection.label == label
         ]
         if not matches:
@@ -296,11 +332,12 @@ class VisionEngine(VisionAgent):
     def __init__(
         self,
         config: DetectionConfig | None = None,
-        model_path: str = "assets/models/yolo26n.pt",
+        model_path: str | None = None,
     ) -> None:
         self.config = config or DetectionConfig()
+        resolved_model_path = model_path or self.config.model_path
         super().__init__(
-            model_path=model_path,
+            model_path=resolved_model_path,
             confidence_threshold=self.config.confidence_threshold,
             ocr_psm=self.config.ocr_psm,
         )
