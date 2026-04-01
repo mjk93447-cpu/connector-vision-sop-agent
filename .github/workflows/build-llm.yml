@@ -10,10 +10,8 @@ on:
       - "src/ocr_engine.py"
       - "src/gui/panels/llm_panel.py"
       - "src/gui/main_window.py"
-      - "src/main.py"
       - "assets/config.json"
-      - "assets/launchers/**"
-      - "scripts/**"
+      - "assets/launchers/PLACE_LLM_HERE.txt"
       - ".github/workflows/build-llm.yml"
 
 env:

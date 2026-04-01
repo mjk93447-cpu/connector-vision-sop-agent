@@ -1,32 +1,35 @@
-name: Build Connector Vision App Pack
+name: Build Connector Vision Pretrain Artifact
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-    tags:
-      - "v*"
     paths:
-      - "src/**"
-      - "tests/**"
+      - "scripts/run_pretrain_local.py"
+      - "scripts/run_pretrain.py"
+      - "src/config_loader.py"
+      - "src/training/**"
+      - "src/gui/panels/training_panel.py"
+      - "pretrain_data_test/**"
       - "assets/config.json"
-      - "assets/sop_steps.json"
-      - "assets/launchers/**"
       - "assets/models/*.pt"
-      - "build_exe.spec"
-      - "requirements.txt"
-      - "requirements-dev.txt"
-      - "scripts/preflight_release.ps1"
-      - "scripts/assemble_release_pack.ps1"
-      - ".github/workflows/build.yml"
-  workflow_dispatch:
+      - "assets/launchers/start_pretrain.bat"
+      - "assets/launchers/INSTALL_GUIDE.txt"
+      - "assets/launchers/MERGE_GUIDE.txt"
+      - "pretrain_exe.spec"
+      - "tests/unit/test_dataset_manager.py"
+      - "tests/unit/test_pretrain_pipeline.py"
+      - "tests/unit/test_training_manager.py"
+      - "tests/unit/test_training_manager_line_profile.py"
+      - ".github/workflows/build-pretrain.yml"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-app:
-    name: App pack
+  build-pretrain:
+    name: Pretrain artifact
     runs-on: windows-latest
     permissions:
       contents: read
@@ -48,9 +51,16 @@ jobs:
           python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
           python -m pip install -r requirements-dev.txt
 
-      - name: Preflight tests
+      - name: Pretrain preflight tests
         shell: pwsh
-        run: scripts\preflight_release.ps1 -IntegrationTests @()
+        run: |
+          python -m pytest `
+            tests/unit/test_dataset_manager.py `
+            tests/unit/test_pretrain_pipeline.py `
+            tests/unit/test_training_manager.py `
+            tests/unit/test_training_manager_line_profile.py `
+            tests/unit/test_config_loader.py `
+            -q --tb=short --no-header --timeout=120
 
       - name: Ensure YOLO26x base weights exist
         shell: pwsh
@@ -66,58 +76,48 @@ jobs:
         shell: cmd
         run: python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26x.pt'); print('YOLO26x classes:', len(m.names))"
 
-      - name: Build EXE with PyInstaller
+      - name: Build pretrain EXE with PyInstaller
         shell: cmd
-        run: pyinstaller build_exe.spec --distpath dist --clean
+        run: pyinstaller pretrain_exe.spec --distpath dist-pretrain --clean
 
       - name: Verify EXE built
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist\connector_vision_agent.exe")) {
-            throw "EXE build failed - file not found"
+          if (-not (Test-Path "dist-pretrain\connector_pretrain.exe")) {
+            throw "Pretrain EXE build failed - file not found"
           }
 
-      - name: Assemble app bundle
+      - name: Assemble pretrain bundle
         shell: pwsh
         run: |
-          $pkg = "connector_agent_app"
+          $pkg = "connector_agent_pretrain"
           if (Test-Path $pkg) {
             Remove-Item -LiteralPath $pkg -Recurse -Force
           }
 
           New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
           New-Item -ItemType Directory -Path "$pkg\pretrain_data" -Force | Out-Null
 
-          Copy-Item "dist\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
+          $datasetSource = "pretrain_data"
+          if (-not (Test-Path $datasetSource)) {
+            $datasetSource = "pretrain_data_test"
+          }
+          if (-not (Test-Path $datasetSource)) {
+            throw "No pretrain dataset source found"
+          }
+
+          Copy-Item "dist-pretrain\connector_pretrain.exe" "$pkg\connector_pretrain.exe"
           Copy-Item "assets\config.json" "$pkg\assets\config.json"
-          Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json"
           Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"
           Copy-Item "assets\models\yolo26x_pretrained.pt" "$pkg\assets\models\yolo26x_pretrained.pt"
-          Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
-          Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
+          Copy-Item "assets\launchers\start_pretrain.bat" "$pkg\start_pretrain.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
-          Copy-Item "assets\launchers\PLACE_APP_HERE.txt" "$pkg\PLACE_APP_HERE.txt"
-          Copy-Item "assets\launchers\PLACE_LLM_HERE.txt" "$pkg\ollama_models\PLACE_LLM_HERE.txt"
-          Copy-Item "assets\launchers\PLACE_PRETRAIN_DATA_HERE.txt" "$pkg\pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt"
-          if (Test-Path "README_INSTALL_EN.md") { Copy-Item "README_INSTALL_EN.md" "$pkg\README_INSTALL_EN.md" }
-          if (Test-Path "README.md") { Copy-Item "README.md" "$pkg\README.md" }
+          Copy-Item "$datasetSource\*" "$pkg\pretrain_data" -Recurse -Force
 
-      - name: Upload app bundle artifact
+      - name: Upload pretrain artifact
         uses: actions/upload-artifact@v4
         with:
-          name: connector-agent-app
-          path: connector_agent_app/
+          name: connector-agent-pretrain
+          path: connector_agent_pretrain/
           retention-days: 90
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            connector_agent_app/connector_vision_agent.exe
-            connector_agent_app/INSTALL_GUIDE.txt
-            connector_agent_app/MERGE_GUIDE.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

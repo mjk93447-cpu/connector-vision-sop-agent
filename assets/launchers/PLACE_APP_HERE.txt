@@ -1,4 +1,4 @@
 This is the root deployment folder for the final line pack.
 
-Place connector_vision_agent.exe, connector_pretrain.exe, start_agent.bat,
-start_pretrain.bat, and the asset folders in this root.
+Place connector_vision_agent.exe, start_agent.bat, stop_ollama.bat,
+the asset folders, and any merged optional artifacts in this root.

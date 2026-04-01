@@ -2,8 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$AppRoot,
 
-    [Parameter(Mandatory = $true)]
-    [string]$PretrainRoot,
+    [string]$PretrainRoot = "",
 
     [string]$OutputRoot = "connector_agent_pack",
 
@@ -52,18 +51,63 @@ function New-TextFile {
     Set-Content -LiteralPath $Path -Value $Content -Encoding UTF8
 }
 
+function Ensure-PlaceholderDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DirectoryPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PlaceholderPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PlaceholderContent
+    )
+
+    if (-not (Test-Path $DirectoryPath)) {
+        New-Item -ItemType Directory -Path $DirectoryPath -Force | Out-Null
+    }
+    if (-not (Test-Path $PlaceholderPath)) {
+        New-TextFile -Path $PlaceholderPath -Content $PlaceholderContent
+    }
+}
+
 if (Test-Path $OutputRoot) {
     Remove-Item -LiteralPath $OutputRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 
 Copy-Tree -Source $AppRoot -Destination $OutputRoot
-Copy-Tree -Source $PretrainRoot -Destination $OutputRoot
+
+if ($PretrainRoot -and (Test-Path $PretrainRoot)) {
+    $pretrainExe = Join-Path $PretrainRoot "connector_pretrain.exe"
+    if (Test-Path $pretrainExe) {
+        Copy-Item -LiteralPath $pretrainExe -Destination (Join-Path $OutputRoot "connector_pretrain.exe") -Force
+    }
+
+    $pretrainDataRoot = Join-Path $PretrainRoot "pretrain_data"
+    if (-not (Test-Path $pretrainDataRoot)) {
+        $pretrainDataRoot = $PretrainRoot
+    }
+
+    Copy-Tree -Source $pretrainDataRoot -Destination (Join-Path $OutputRoot "pretrain_data")
+} else {
+    Ensure-PlaceholderDirectory `
+        -DirectoryPath (Join-Path $OutputRoot "pretrain_data") `
+        -PlaceholderPath (Join-Path $OutputRoot "pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt") `
+        -PlaceholderContent @"
+Drop the connector-agent-pretrain artifact contents here:
+  - connector_pretrain.exe
+  - pretrain_data\
+
+This folder is intentionally left as a placeholder until the pretrain artifact is merged.
+"@
+}
 
 if ($LlmArtifactRoot -and (Test-Path $LlmArtifactRoot)) {
     Copy-Tree -Source $LlmArtifactRoot -Destination (Join-Path $OutputRoot "ollama_models")
 } else {
-    New-TextFile -Path (Join-Path $OutputRoot "ollama_models\PLACE_LLM_HERE.txt") -Content @"
+    Ensure-PlaceholderDirectory `
+        -DirectoryPath (Join-Path $OutputRoot "ollama_models") `
+        -PlaceholderPath (Join-Path $OutputRoot "ollama_models\PLACE_LLM_HERE.txt") `
+        -PlaceholderContent @"
 Drop the connector-agent-llm artifact contents here:
   - blobs\
   - manifests\
@@ -72,21 +116,13 @@ This folder is intentionally left as a placeholder until the LLM artifact is mer
 "@
 }
 
-if (-not (Test-Path (Join-Path $OutputRoot "pretrain_data"))) {
-    New-Item -ItemType Directory -Path (Join-Path $OutputRoot "pretrain_data") -Force | Out-Null
-    New-TextFile -Path (Join-Path $OutputRoot "pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt") -Content @"
-This folder should contain the bundled local pretraining dataset.
-Extract connector-agent-pretrain.zip here if the dataset is distributed separately.
-"@
-}
-
 New-TextFile -Path (Join-Path $OutputRoot "MERGE_GUIDE.txt") -Content @"
 Connector Vision SOP Agent 4.2.0 Deployment Pack
 
 Contents:
-  - Root: connector_vision_agent.exe, connector_pretrain.exe, start_agent.bat
-  - pretrain_data\: bundled dataset for local YOLO26x training
-  - ollama_models\: LLM blobs and manifests from connector-agent-llm
+  - connector-agent-app.zip: main app EXE + launchers + config/models
+  - connector-agent-pretrain.zip: connector_pretrain.exe + pretrain_data tree
+  - connector-agent-llm.zip: Ollama model blobs/manifests
 
 If you only received part of the artifacts:
   1. Copy the app bundle into this folder first.
@@ -99,7 +135,8 @@ Look for PLACE_PRETRAIN_DATA_HERE.txt and PLACE_LLM_HERE.txt for drop locations.
 
 New-TextFile -Path (Join-Path $OutputRoot "PLACE_APP_HERE.txt") -Content @"
 This folder is the final line deployment root.
-Put connector_vision_agent.exe, connector_pretrain.exe, and the launchers here.
+Put connector_vision_agent.exe, connector_pretrain.exe, start_agent.bat,
+start_pretrain.bat, and the asset folders here.
 "@
 
 Write-Host "[assemble] pack ready -> $OutputRoot"

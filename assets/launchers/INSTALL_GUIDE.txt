@@ -1,95 +1,58 @@
 ================================================================
- Connector Vision SOP Agent v4.2.0 - All-in-One Package
+ Connector Vision SOP Agent v4.2.0 - Split Deployment Package
  INSTALL GUIDE
 ================================================================
 
-STEP 1.  Copy IBM Granite Vision model blobs (~2.0 GB)
+PACKAGE ARTIFACTS
 --------------------------------------------------
-Download the connector-agent-llm artifact from the separate LLM workflow:
-  GitHub Actions:
-  https://github.com/mjk93447-cpu/connector-vision-sop-agent/actions
+  1. connector-agent-app.zip
+     - connector_vision_agent.exe
+     - launchers and config/model placeholders
+  2. connector-agent-pretrain.zip
+     - connector_pretrain.exe
+     - pretrain_data\ with the bundled training dataset
+  3. connector-agent-llm.zip
+     - ollama_models\blobs\
+     - ollama_models\manifests\
 
-Extract the ZIP and copy the blobs\ and manifests\ folders to:
-
-  [this package folder]\ollama_models\blobs\
-  [this package folder]\ollama_models\manifests\
-
-STEP 2.  Run first-time setup (once only)
+ASSEMBLY
 --------------------------------------------------
-  Right-click install_first_time.bat -> Run as administrator
-  Wait for "Setup Complete!" message (2-5 minutes)
+  1. Extract connector-agent-app.zip into the final deployment folder.
+  2. Extract connector-agent-pretrain.zip into the same folder.
+  3. Extract connector-agent-llm.zip into ollama_models\.
+  4. Replace PLACE_* txt files with the real artifact contents.
 
-STEP 3.  Launch
+RUN
 --------------------------------------------------
-  Double-click start_agent.bat
+  - Double-click start_agent.bat to launch the main SOP agent.
+  - Double-click start_pretrain.bat after the pretrain artifact is merged.
+  - Keep ollama_models\ separate if you only want to refresh the LLM blobs.
 
-  => Ollama server starts automatically (port 11434)
-  => IBM Granite Vision 3.2-2b model loads
-  => PyQt6 GUI opens (7 tabs)
-
-Optional local pretraining:
-  Double-click start_pretrain.bat
-  => Uses the bundled pretrain_data folder
-  => Saves yolo26x_pretrained.pt next to the EXE
-
-If you only received the separate pretrain artifact:
-  - Copy its contents into this same root folder
-  - Use PLACE_PRETRAIN_DATA_HERE.txt and PLACE_LLM_HERE.txt as guides
-
-Final folder structure
+FINAL FOLDER STRUCTURE
 --------------------------------------------------
   connector_agent\
-  +-- connector_vision_agent.exe   <- SOP Agent (GUI + YOLO26x)
-  +-- ollama.exe                   <- LLM runtime
-  +-- start_agent.bat              <- Launch script (double-click)
-  +-- start_pretrain.bat           <- Local pretrain launcher (double-click)
-  +-- stop_ollama.bat              <- Stop Ollama server
-  +-- install_first_time.bat       <- First-time setup (run once as Admin)
-  +-- INSTALL_GUIDE.txt            <- This file
-  +-- QUICK_START_EN.md            <- One-page daily reference
-  +-- README_INSTALL_EN.md         <- Full user guide
-  +-- MERGE_GUIDE.txt              <- Artifact merge instructions
-  +-- PLACE_APP_HERE.txt           <- Root deployment placeholder
+  +-- connector_vision_agent.exe
+  +-- connector_pretrain.exe
+  +-- start_agent.bat
+  +-- start_pretrain.bat
+  +-- stop_ollama.bat
   +-- assets\
-  |   +-- config.json              <- Settings (edit via Tab 5)
-  |   +-- sop_steps.json           <- SOP 40-step atomic definition (edit via Tab 4)
+  |   +-- config.json
+  |   +-- sop_steps.json
   |   +-- models\
-  |       +-- yolo26x.pt           <- YOLO26x weights (COCO pretrained baseline)
-  +-- pretrain_data\               <- Bundled local training dataset
-  +-- ollama_models\
-      +-- PLACE_LLM_HERE.txt       <- Copy the LLM artifact here
-      +-- blobs\     <- copy from connector-agent-llm artifact
-      +-- manifests\ <- copy from connector-agent-llm artifact
+  |       +-- yolo26x.pt
+  |       +-- yolo26x_pretrained.pt
   +-- pretrain_data\
-      +-- PLACE_PRETRAIN_DATA_HERE.txt <- Copy the pretrain dataset here if separate
-
-GUI 7-Tab Layout
---------------------------------------------------
-  Tab 1: SOP Runner  - Run 40-step atomic SOP / real-time log
-  Tab 2: Vision      - Screenshot + YOLO bbox overlay / file open
-  Tab 3: LLM Chat    - Ask LLM (ROI screenshot, Stop button, token counter)
-  Tab 4: SOP Editor  - Add/delete/reorder/edit SOP steps (type_text/press_key/wait_ms)
-  Tab 5: Config      - Edit config.json via UI (saves to config.proposed.json)
-  Tab 6: Audit       - Config change history viewer
-  Tab 7: Training    - Annotate connector images and fine-tune YOLO26x
+  +-- ollama_models\
+  +-- MERGE_GUIDE.txt
+  +-- PLACE_APP_HERE.txt
+  +-- PLACE_PRETRAIN_DATA_HERE.txt
+  +-- PLACE_LLM_HERE.txt
 
 NOTES
 --------------------------------------------------
-  - Tabs 1/2/5 work without LLM (Ollama not required for core SOP)
-  - yolo26x.pt: COCO pretrained by default; fine-tune via Tab 7 for better accuracy
-  - start_pretrain.bat: one-click local pretraining on the bundled dataset
-  - sop_steps.json edits take effect immediately (no restart needed)
-  - config.json changes: always use Tab 5 -> review config.proposed.json -> apply manually
-  - Training: second run "NoneType write" error is fixed (stale cache auto-cleared)
-  - ROI Picker: Pick ROI (Fullscreen) no longer quits the app
-  - SOP Editor (Tab 4): type_text PW field / press_key key name / wait_ms duration
-    all editable directly in the GUI — no JSON editing required
-  - LLM first response may take 60-120 seconds on CPU-only hardware (normal)
-
-REQUIREMENTS
---------------------------------------------------
-  - Windows 10 Pro 1803+ or Windows 11 (64-bit)
-  - 1920x1080 display resolution (REQUIRED)
-  - 16 GB RAM minimum
-  - 15 GB free disk space
+  - The app bundle is intentionally lean and does not ship the LLM blobs.
+  - The pretrain bundle is a separate temporary artifact and can be refreshed
+    independently of the main app pack.
+  - The LLM bundle only needs rebuilding when OCR/LLM behavior changes.
 ================================================================
