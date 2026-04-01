@@ -72,9 +72,35 @@ jobs:
             throw "Missing assets/models/yolo26x_pretrained.pt"
           }
 
+      - name: Create pretrain dataset manifest
+        shell: pwsh
+        run: |
+          $manifest = @"
+          sources:
+            - name: synthetic
+              enabled: true
+              license: MIT
+              format: yolo
+              class_map:
+                oled_inspection_top_view: 0
+                connector_pin_cluster_upper: 1
+                connector_pin_cluster_lower: 2
+                connector_pin_mold_left: 3
+                connector_pin_mold_right: 4
+                oled_panel_marker: 5
+          "@
+          $manifest | Out-File -FilePath pretrain_dataset_manifest.yaml -Encoding utf8
+
+      - name: Verify compact pretrain script
+        shell: pwsh
+        run: |
+          python -c "import scripts.run_pretrain_compact; print('Compact pretrain script import OK')"
+          python scripts/run_pretrain_compact.py --help | Out-String -Stream | Select-Object -First 10
+
       - name: Verify YOLO26x loads
         shell: cmd
         run: python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26x.pt'); print('YOLO26x classes:', len(m.names))"
+
 
       - name: Build pretrain EXE with PyInstaller
         shell: cmd
