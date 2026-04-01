@@ -390,6 +390,17 @@ def _collect_rico_nodes(
 class SyntheticGUIGenerator:
     """⛔ DEPRECATED: 테스트·시연용 합성 GUI 생성기 (더 이상 pretrain에 사용되지 않음)."""
 
+    # 요소별 색상 (BGR) - 테스트 목적만
+    _COLORS = {
+        "button": (50, 120, 200),
+        "icon": (80, 180, 80),
+        "label": (180, 180, 60),
+        "connector": (200, 80, 80),
+        "input_field": (200, 200, 200),
+        "checkbox": (120, 80, 200),
+        "dropdown": (180, 120, 50),
+    }
+
     def __init__(self, seed: int = 42) -> None:
         import warnings
         warnings.warn(

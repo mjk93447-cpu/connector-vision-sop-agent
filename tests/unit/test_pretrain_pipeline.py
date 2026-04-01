@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from src.training.dataset_converter import (
     PRETRAIN_CLASSES,
@@ -452,6 +453,7 @@ class TestPretrainConfig:
 
 
 class TestPretrainPipelineSynthetic:
+    @pytest.mark.skip(reason="Synthetic dataset deprecated (2026-04-01) - use Tier A real datasets")
     def test_build_synthetic_creates_images(self, tmp_path: Path) -> None:
         pipeline = PretrainPipeline(output_dir=tmp_path)
         n = pipeline.build_synthetic_dataset(n_images=10)
@@ -461,7 +463,16 @@ class TestPretrainPipelineSynthetic:
 
     def test_prepare_dataset_yaml(self, tmp_path: Path) -> None:
         pipeline = PretrainPipeline(output_dir=tmp_path)
-        pipeline.build_synthetic_dataset(n_images=10)
+        # Create minimal dataset for yaml preparation test
+        images_dir = tmp_path / "images"
+        labels_dir = tmp_path / "labels"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        labels_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create dummy image and label files
+        (images_dir / "test_001.png").write_bytes(b"fake_image")
+        (labels_dir / "test_001.txt").write_text("0 0.5 0.5 0.3 0.3\n")
+        
         yaml_path = pipeline.prepare_dataset_yaml()
         assert yaml_path.exists()
         content = yaml_path.read_text(encoding="utf-8")
@@ -475,7 +486,7 @@ class TestPretrainPipelineSynthetic:
             "map50_95": 0.321,
             "precision": 0.75,
             "recall": 0.68,
-            "classes": {"button": 0.60, "icon": 0.52},
+            "classes": {"oled_inspection_top_view": 0.60, "connector_pin_cluster_upper": 0.52},
             "weights": "assets/models/yolo26x_pretrained.pt",
             "epochs": 20,
             "n_train": 160,
@@ -487,10 +498,11 @@ class TestPretrainPipelineSynthetic:
         text = report.read_text(encoding="utf-8")
         assert "mAP50" in text
         assert "0.5120" in text
-        assert "button" in text
+        assert "oled_inspection_top_view" in text
 
+    @pytest.mark.skip(reason="Synthetic dataset deprecated (2026-04-01) - use Tier A real datasets")
     def test_train_and_evaluate_with_mock(self, tmp_path: Path) -> None:
-        """YOLO.train() / YOLO.val() 을 mock하여 전체 파이프라인 통과 검증."""
+        """⛔ DEPRECATED: YOLO.train() / YOLO.val() 목 테스트 (Synthetic 사용 불가)."""
         # pretrained_weights를 tmp_path 안으로 격리 (실제 assets/ 오염 방지)
         cfg = PretrainConfig(
             output_dir=tmp_path,
