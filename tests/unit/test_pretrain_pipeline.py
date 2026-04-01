@@ -28,17 +28,16 @@ from src.training.pretrain_pipeline import PretrainConfig, PretrainPipeline
 
 class TestPretrainClasses:
     def test_class_count(self) -> None:
-        assert len(PRETRAIN_CLASSES) == 7
+        assert len(PRETRAIN_CLASSES) == 6
 
     def test_required_classes_present(self) -> None:
         required = {
-            "button",
-            "icon",
-            "label",
-            "connector",
-            "input_field",
-            "checkbox",
-            "dropdown",
+            "oled_inspection_top_view",
+            "connector_pin_cluster_upper",
+            "connector_pin_cluster_lower",
+            "connector_pin_mold_left",
+            "connector_pin_mold_right",
+            "oled_panel_marker",
         }
         assert required == set(PRETRAIN_CLASSES)
 
@@ -128,7 +127,7 @@ class TestConvertShowUIDesktopSample:
         img, anns = convert_showui_desktop_sample(sample)
         assert img is not None
         assert len(anns) == 1
-        assert anns[0]["label"] == "button"
+        assert anns[0]["label"] == "oled_inspection_top_view"
         x1, y1, x2, y2 = anns[0]["bbox"]
         assert abs(x1 - 0.1 * 640) < 2
         assert abs(y1 - 0.2 * 480) < 2
@@ -142,7 +141,8 @@ class TestConvertShowUIDesktopSample:
             "element_type": "combobox",
         }
         _, anns = convert_showui_desktop_sample(sample)
-        assert anns[0]["label"] == "dropdown"
+        # 'combobox' -> 'panel' keywords: class index 4
+        assert anns[0]["label"] == "connector_pin_mold_right"
 
     def test_missing_image_returns_none(self) -> None:
         img, anns = convert_showui_desktop_sample({"bbox": [0.1, 0.1, 0.2, 0.1]})
@@ -184,7 +184,7 @@ class TestConvertShowUIDesktopSample:
             "element_type": "unknownwidget",
         }
         _, anns = convert_showui_desktop_sample(sample)
-        assert anns[0]["label"] == "button"
+        assert anns[0]["label"] == "oled_inspection_top_view"
 
 
 # ---------------------------------------------------------------------------
