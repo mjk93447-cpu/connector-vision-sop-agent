@@ -26,7 +26,7 @@ pytesseract>=0.3.10
 
 # OCR (optional — loaded lazily at runtime)
 # Priority: winsdk (WinRT, Win10 built-in) → easyocr → paddleocr
-winsdk>=1.0.0b9       # Windows.Media.Ocr WinRT wrapper (Windows 10 1803+ only)
+winsdk>=1.0.0b9; platform_system == "Windows"  # Windows.Media.Ocr WinRT wrapper (Windows 10 1803+ only)
 easyocr>=1.7.0        # Fallback OCR (PyTorch-based, works without WinRT)
 # PaddleOCR optional legacy fallback (broken in 3.x; 2.x requires separate install):
 # paddlepaddle          # CPU paddle runtime (~200 MB); uncomment to install
