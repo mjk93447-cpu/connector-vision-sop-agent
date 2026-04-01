@@ -6,22 +6,18 @@ on:
     branches:
       - main
     paths:
+      - "scripts/prepare_pretrain_data.py"
       - "scripts/run_pretrain_local.py"
-      - "scripts/run_pretrain.py"
+      - "src/training/compact_pretrain_pipeline.py"
+      - "src/training/dataset_converter.py"
       - "src/config_loader.py"
-      - "src/training/**"
-      - "src/gui/panels/training_panel.py"
-      - "pretrain_data_test/**"
       - "assets/config.json"
       - "assets/models/*.pt"
       - "assets/launchers/start_pretrain.bat"
       - "assets/launchers/INSTALL_GUIDE.txt"
       - "assets/launchers/MERGE_GUIDE.txt"
       - "pretrain_exe.spec"
-      - "tests/unit/test_dataset_manager.py"
-      - "tests/unit/test_pretrain_pipeline.py"
-      - "tests/unit/test_training_manager.py"
-      - "tests/unit/test_training_manager_line_profile.py"
+      - "tests/unit/test_compact_pretrain_pipeline.py"
       - ".github/workflows/build-pretrain.yml"
 
 env:
@@ -55,21 +51,41 @@ jobs:
         shell: pwsh
         run: |
           python -m pytest `
-            tests/unit/test_dataset_manager.py `
-            tests/unit/test_pretrain_pipeline.py `
-            tests/unit/test_training_manager.py `
-            tests/unit/test_training_manager_line_profile.py `
+            tests/unit/test_compact_pretrain_pipeline.py `
             tests/unit/test_config_loader.py `
             -q --tb=short --no-header --timeout=120
+
+      - name: Prepare compact pretrain dataset
+        shell: pwsh
+        run: |
+          python scripts/prepare_pretrain_data.py `
+            --output-dir pretrain_data `
+            --max-samples-per-source 400
+
+      - name: Validate prepared dataset
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "pretrain_data\manifest.json")) {
+            throw "Pretrain manifest was not created"
+          }
+          if (-not (Test-Path "pretrain_data\train\images")) {
+            throw "Train split images folder is missing"
+          }
+          if (-not (Test-Path "pretrain_data\train\labels")) {
+            throw "Train split labels folder is missing"
+          }
+          $imgCount = (Get-ChildItem "pretrain_data\train\images" -File | Measure-Object).Count
+          $lblCount = (Get-ChildItem "pretrain_data\train\labels" -File | Measure-Object).Count
+          if ($imgCount -lt 1 -or $lblCount -lt 1) {
+            throw "Prepared dataset is empty after split"
+          }
+          Write-Host "Prepared dataset validated. train images=$imgCount labels=$lblCount"
 
       - name: Ensure YOLO26x base weights exist
         shell: pwsh
         run: |
           if (-not (Test-Path "assets\models\yolo26x.pt")) {
             python -c "from ultralytics import YOLO; import shutil, pathlib; m=YOLO('yolo26x.pt'); src=pathlib.Path(getattr(m,'ckpt_path','yolo26x.pt')); src=pathlib.Path('yolo26x.pt') if not src.exists() else src; pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True); shutil.copy2(str(src), 'assets/models/yolo26x.pt')"
-          }
-          if (-not (Test-Path "assets\models\yolo26x_pretrained.pt")) {
-            throw "Missing assets/models/yolo26x_pretrained.pt"
           }
 
       - name: Create pretrain dataset manifest (Tier A real datasets only)
@@ -196,22 +212,20 @@ jobs:
           New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
           New-Item -ItemType Directory -Path "$pkg\pretrain_data" -Force | Out-Null
 
-          $datasetSource = "pretrain_data"
-          if (-not (Test-Path $datasetSource)) {
-            $datasetSource = "pretrain_data_test"
-          }
-          if (-not (Test-Path $datasetSource)) {
-            throw "No pretrain dataset source found"
-          }
-
           Copy-Item "dist-pretrain\connector_pretrain.exe" "$pkg\connector_pretrain.exe"
           Copy-Item "assets\config.json" "$pkg\assets\config.json"
           Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"
-          Copy-Item "assets\models\yolo26x_pretrained.pt" "$pkg\assets\models\yolo26x_pretrained.pt"
           Copy-Item "assets\launchers\start_pretrain.bat" "$pkg\start_pretrain.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
-          Copy-Item "$datasetSource\*" "$pkg\pretrain_data" -Recurse -Force
+          Copy-Item "pretrain_data\*" "$pkg\pretrain_data" -Recurse -Force
+
+          New-Item -ItemType File -Path "$pkg\pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt" -Force | Out-Null
+          $note = @(
+            "Bundled compact PCB / electronics dataset for offline local pretraining."
+            "This folder is prepared automatically during the pretrain artifact build."
+          ) -join [Environment]::NewLine
+          Set-Content -LiteralPath "$pkg\pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt" -Encoding UTF8 -Value $note
 
       - name: Upload pretrain artifact
         uses: actions/upload-artifact@v4

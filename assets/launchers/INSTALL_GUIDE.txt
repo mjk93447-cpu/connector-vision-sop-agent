@@ -10,7 +10,7 @@ PACKAGE ARTIFACTS
      - launchers and config/model placeholders
   2. connector-agent-pretrain.zip
      - connector_pretrain.exe
-     - pretrain_data\ with the bundled training dataset
+     - pretrain_data\ with the bundled pcb_inspection + pcb_component_detection dataset
   3. connector-agent-llm.zip
      - ollama_models\blobs\
      - ollama_models\manifests\
@@ -41,7 +41,7 @@ FINAL FOLDER STRUCTURE
   |   +-- sop_steps.json
   |   +-- models\
   |       +-- yolo26x.pt
-  |       +-- yolo26x_pretrained.pt
+  |       +-- yolo26x_local_pretrained.pt
   +-- pretrain_data\
   +-- ollama_models\
   +-- MERGE_GUIDE.txt

@@ -21,6 +21,7 @@ a = Analysis(
         'PIL',
         'PIL.Image',
         'datasets',
+        'huggingface_hub',
         'roboflow',
     ],
     hookspath=[],

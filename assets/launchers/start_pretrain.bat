@@ -9,14 +9,21 @@ set no_proxy=localhost,127.0.0.1,::1
 
 echo ================================================================
 echo  Connector Vision SOP Agent v4.2.0  [Local Pretrain]
-echo  Data : pretrain_data (bundled)
-echo  Model: yolo26x_pretrained.pt
+echo  Data : pretrain_data (PCB inspection + PCB component detection)
+echo  Model: yolo26x_local_pretrained.pt
 echo ================================================================
 echo.
 
 if exist "%~dp0connector_pretrain.exe" (
-    echo [1/1] Launching local pretrain EXE...
-    "%~dp0connector_pretrain.exe" --source local_bundle
+    set "EPOCHS=40"
+    set "BATCH=16"
+    set /p EPOCHS=Enter epochs [40]:
+    if "%EPOCHS%"=="" set "EPOCHS=40"
+    set /p BATCH=Enter batch [16]:
+    if "%BATCH%"=="" set "BATCH=16"
+    echo.
+    echo [1/1] Launching local pretrain EXE with epochs=%EPOCHS% batch=%BATCH%...
+    "%~dp0connector_pretrain.exe" --epochs %EPOCHS% --batch %BATCH%
 ) else (
     echo [ERROR] connector_pretrain.exe not found.
     echo         Rebuild the local pretrain bundle or restore the EXE next to this BAT.

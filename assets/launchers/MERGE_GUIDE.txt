@@ -21,7 +21,7 @@ FINAL FOLDER STRUCTURE:
   connector_agent\
   +-- connector_vision_agent.exe   <- SOP agent (YOLO26x + PyQt6 GUI embedded)
   +-- start_agent.bat              <- DOUBLE-CLICK TO RUN (GUI mode)
-  +-- connector_pretrain.exe       <- Local pretrain runner
+  +-- connector_pretrain.exe       <- Local pretrain runner (epochs/batch only)
   +-- assets\
   |   +-- config.json              <- settings (editable)
   |   +-- sop_steps.json           <- 40-step atomic SOP definition (editable)
@@ -29,7 +29,8 @@ FINAL FOLDER STRUCTURE:
   |       +-- yolo26x.pt           <- YOLO weights
   +-- start_pretrain.bat           <- DOUBLE-CLICK TO START LOCAL TRAINING
   +-- stop_ollama.bat
-  +-- pretrain_data\               <- bundled local training dataset
+  +-- pretrain_data\               <- bundled PCB / electronics training dataset
+  |   +-- source data: pcb_inspection + pcb_component_detection
   +-- ollama_models\
       +-- blobs\sha256-...         <- from connector-agent-llm zip
       +-- manifests\...            <- from connector-agent-llm zip
@@ -58,6 +59,7 @@ HOW TO RUN:
   Double-click start_pretrain.bat
   -> Starts local YOLO26x pretraining on the bundled dataset
   -> Uses the local GPU when available
+  -> Produces assets\models\yolo26x_local_pretrained.pt
 
 CUSTOMIZATION:
   - Edit assets\config.json to tune pin counts, timing, thresholds
