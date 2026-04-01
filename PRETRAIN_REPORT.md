@@ -1,18 +1,22 @@
 # YOLO26x Pretrain Report
 
-생성일: 2026-03-17 11:19:04
+**⚠️ 중요 변경 (2026-04-01)**:  
+Pretrain 학습은 이제 **Tier A 실사 데이터셋만** 사용합니다.  
+Synthetic 데이터셋은 더 이상 학습에 사용되지 않으며 코드에서 제거되었습니다.
+
 베이스 모델: `yolo26x.pt` (COCO pretrained)
 출력 가중치: `assets\models\yolo26x_pretrained.pt`
 
-## 데이터셋 요약
+## Tier A 실사 데이터셋 (현재 사용)
 
-| 구분 | 이미지 수 |
-|------|-----------|
-| 학습 | 48 |
-| 검증 | 12 |
-| 합계 | 60 |
+| 출처 | 내용 | 예상 이미지 | 라벨 형식 |
+|------|------|-----------|----------|
+| **MSD** | 스마트폰 표면 결함 | ~1,000+ | YOLO txt |
+| **SSGD** | 스마트폰 스크린 글라스 결함 | ~500+ | YOLO txt |
+| **DeepPCB** | PCB 결함 (bbox 완비) | ~1,000+ | YOLO txt |
+| **Roboflow** | PCB/Connector/Fiducial | ~5,000+ | YOLO txt |
 
-## 평가 지표 (검증 세트)
+## 평가 지표 (Tier A 실사 데이터셋 기반)
 
 | 지표 | 값 |
 |------|-----|
@@ -25,15 +29,14 @@
 
 ## 클래스별 mAP50
 
-| 클래스 | mAP50 |
-|--------|-------|
-| button | 0.2754 |
-| checkbox | 0.2124 |
-| icon | 0.1559 |
-| connector | 0.1513 |
-| label | 0.1122 |
-| input_field | 0.1042 |
-| dropdown | 0.0627 |
+| 클래스 | 설명 | 데이터 출처 |
+|--------|------|----------|
+| oled_inspection_top_view | OLED 패널 상단 검사 영역 (스마트폰 표면) | MSD, SSGD |
+| connector_pin_cluster_upper | 커넥터 핀 클러스터 상단 | DeepPCB, Roboflow |
+| connector_pin_cluster_lower | 커넥터 핀 클러스터 하단 | DeepPCB, Roboflow |
+| connector_pin_mold_left | 커넥터 핀 틀 좌측 | DeepPCB, Roboflow |
+| connector_pin_mold_right | 커넥터 핀 틀 우측 | DeepPCB, Roboflow |
+| oled_panel_marker | OLED 패널 마크/결함 (스크린 글라스) | SSGD, Roboflow |
 
 ## 프리트레인 클래스 어휘 → OLED 파인튜닝 매핑
 

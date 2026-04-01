@@ -72,15 +72,28 @@ jobs:
             throw "Missing assets/models/yolo26x_pretrained.pt"
           }
 
-      - name: Create pretrain dataset manifest
+      - name: Create pretrain dataset manifest (Tier A real datasets only)
         shell: pwsh
         run: |
           $manifest = @"
           sources:
-            - name: synthetic
+            - name: msd
+              enabled: true
+              license: GPL
+              format: yolo
+              description: MSD - Smartphone surface defects
+              class_map:
+                oled_inspection_top_view: 0
+                connector_pin_cluster_upper: 1
+                connector_pin_cluster_lower: 2
+                connector_pin_mold_left: 3
+                connector_pin_mold_right: 4
+                oled_panel_marker: 5
+            - name: ssgd
               enabled: true
               license: MIT
               format: yolo
+              description: SSGD - Smartphone screen glass defects
               class_map:
                 oled_inspection_top_view: 0
                 connector_pin_cluster_upper: 1
@@ -90,6 +103,48 @@ jobs:
                 oled_panel_marker: 5
           "@
           $manifest | Out-File -FilePath pretrain_dataset_manifest.yaml -Encoding utf8
+
+      - name: Download Tier A real datasets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "pretrain_data" -Force | Out-Null
+          New-Item -ItemType Directory -Path "pretrain_data/images" -Force | Out-Null
+          New-Item -ItemType Directory -Path "pretrain_data/labels" -Force | Out-Null
+          
+          # Download MSD dataset (스마트폰 표면 결함)
+          Write-Host "Downloading MSD dataset (smartphone surface defects)..."
+          $msdTemp = New-TemporaryFile -ChildPath "msd" -Force
+          git clone --depth 1 https://github.com/jianzhang96/MSD.git $msdTemp 2>&1 | Select-Object -First 5
+          if (Test-Path "$msdTemp/train/images") {
+            Get-ChildItem "$msdTemp/train/images/*.jpg" -ErrorAction SilentlyContinue | ForEach-Object {
+              Copy-Item $_ "pretrain_data/images/" -ErrorAction SilentlyContinue
+            }
+            Get-ChildItem "$msdTemp/train/labels/*.txt" -ErrorAction SilentlyContinue | ForEach-Object {
+              Copy-Item $_ "pretrain_data/labels/" -ErrorAction SilentlyContinue
+            }
+          }
+          
+          # Download SSGD dataset (스크린 글라스 결함)
+          Write-Host "Downloading SSGD dataset (screen glass defects)..."
+          $ssgdTemp = New-TemporaryFile -ChildPath "ssgd" -Force
+          git clone --depth 1 https://github.com/VincentHancoder/SSGD.git $ssgdTemp 2>&1 | Select-Object -First 5
+          if (Test-Path "$ssgdTemp/train/images") {
+            Get-ChildItem "$ssgdTemp/train/images/*.jpg" -ErrorAction SilentlyContinue | ForEach-Object {
+              Copy-Item $_ "pretrain_data/images/" -ErrorAction SilentlyContinue
+            }
+            Get-ChildItem "$ssgdTemp/train/labels/*.txt" -ErrorAction SilentlyContinue | ForEach-Object {
+              Copy-Item $_ "pretrain_data/labels/" -ErrorAction SilentlyContinue
+            }
+          }
+          
+          # Verify dataset was downloaded
+          $imgCount = (Get-ChildItem "pretrain_data/images/*.jpg" -ErrorAction SilentlyContinue).Count
+          $lblCount = (Get-ChildItem "pretrain_data/labels/*.txt" -ErrorAction SilentlyContinue).Count
+          Write-Host "Downloaded $imgCount images and $lblCount labels"
+          
+          if ($imgCount -lt 10) {
+            throw "Not enough real dataset images downloaded. Expected >= 10, got $imgCount"
+          }
 
       - name: Verify compact pretrain script
         shell: pwsh

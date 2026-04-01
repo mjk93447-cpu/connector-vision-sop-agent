@@ -52,7 +52,30 @@ gh workflow run "Build Connector Vision Agent (All-in-One)" --ref main
 - 빌드 → `.claude/rules/build.md`
 - Vision/학습/테스트 → `.claude/rules/vision.md`, `training.md`, `testing.md`
 
-## ★ 현재 상태: v4.0.0 — SOP Editor 타입별 편집 + LLM Chat 대폭 개선
+## ⚠️ Pretrain 정책 (v4.0.0, 2026-04-01)
+
+**Tier A 실사 데이터셋만 사용 — Synthetic 제거됨**
+
+```
+Synthetic 데이터셋: ❌ 더 이상 학습에 사용하지 않음 (코드에서 제거)
+Tier A 실사: ✅ MSD / SSGD / DeepPCB / Roboflow
+```
+
+### Pretrain 워크플로우
+1. **CI 단계** (workflow): Tier A 데이터셋 다운로드 → 아티펙트 번들 생성
+2. **로컬 고사양 PC**: 아티펙트 다운로드 → `start_pretrain.bat` 실행 → GPU로 학습
+3. **결과**: `assets/models/yolo26x_local_pretrained.pt` 생성
+
+### Tier A 데이터셋 구성
+| 출처 | 용도 | 라이선스 | 예상 이미지 |
+|------|------|--------|-----------|
+| MSD | 스마트폰 표면 결함 | GPL | ~1,000+ |
+| SSGD | 스크린 글라스 결함 | MIT | ~500+ |
+| DeepPCB | PCB 결함 (bbox) | 학술용 | ~1,000+ |
+| Roboflow | PCB/Connector/Fiducial | 프로젝트별 | ~5,000+ |
+
+## ★ 현재 상태: v4.0.0 — SOP Editor 타입별 편집 + Tier A Pretrain
+
 - SOP Editor (Tab 4): type_text/press_key/wait_ms/auth_sequence 타입별 전용 입력 필드
 - LLM Chat ROI: 📸 버튼 → 드래그로 영역 선택 → 800px/JPEG q80 압축
 - ChatGPT-like UI: 즉시 ETA 표시, token count 실시간, cold/warm 상태 구분

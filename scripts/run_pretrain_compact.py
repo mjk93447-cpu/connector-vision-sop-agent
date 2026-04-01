@@ -16,10 +16,15 @@ from src.training.dataset_manifest import DatasetManifest, DatasetManifestError
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compact pretrain runner")
+    parser = argparse.ArgumentParser(description="Compact pretrain runner (Tier A real datasets only)")
     parser.add_argument("--epochs", type=int, required=True, help="학습 epoch")
     parser.add_argument("--batch", type=int, required=True, help="배치 크기")
-    parser.add_argument("--source", choices=["showui_desktop", "synthetic", "rico_widget", "pcb_components"], default="showui_desktop", help="데이터 소스")
+    parser.add_argument(
+        "--source",
+        choices=["msd", "ssgd", "deeppcb", "roboflow"],
+        default="msd",
+        help="Tier A 실사 데이터 소스 (synthetic 제거됨)"
+    )
     parser.add_argument("--manifest", type=str, default="pretrain_dataset_manifest.yaml", help="dataset manifest path")
     parser.add_argument("--output-dir", type=str, default="pretrain_data", help="output directory")
     parser.add_argument("--device", type=str, default=None, help="트레이닝 디바이스 (cpu/cuda)")
@@ -36,7 +41,7 @@ def main() -> None:
         except DatasetManifestError as ex:
             raise
     else:
-        print(f"[run_pretrain_compact] Manifest not found: {args.manifest}, continuing with source= {args.source}")
+        print(f"[run_pretrain_compact] Manifest not found: {args.manifest}, continuing with source={args.source}")
 
     profile = suggest_training_profile()
     if args.device:
@@ -57,16 +62,19 @@ def main() -> None:
 
     pipeline = PretrainPipeline(output_dir=args.output_dir, config=cfg)
 
-    # source 별 build 메소드
-    if args.source == "showui_desktop":
-        pipeline.build_showui_desktop_dataset(max_samples=500)
-    elif args.source == "synthetic":
-        pipeline.build_synthetic_dataset(n_images=500)
-    elif args.source == "rico_widget":
-        pipeline.build_rico_dataset(max_samples=500)
-    elif args.source == "pcb_components":
+    # Tier A 실사 데이터셋 로더 (Synthetic 제거됨)
+    if args.source == "msd":
+        print("[run_pretrain_compact] Loading MSD (smartphone surface defects)...")
+        pipeline.build_msd_dataset(max_samples=500)
+    elif args.source == "ssgd":
+        print("[run_pretrain_compact] Loading SSGD (screen glass defects)...")
+        pipeline.build_ssgd_dataset(max_samples=500)
+    elif args.source == "deeppcb":
+        print("[run_pretrain_compact] Loading DeepPCB (PCB defects)...")
+        pipeline.build_deeppcb_dataset(max_samples=500)
+    elif args.source == "roboflow":
+        print("[run_pretrain_compact] Loading Roboflow (PCB/Connector/Fiducial)...")
         import os  # noqa: PLC0415
-
         pipeline.build_pcb_components_dataset(
             max_samples=500,
             api_key=os.environ.get("ROBOFLOW_API_KEY"),
@@ -76,6 +84,11 @@ def main() -> None:
     pipeline.save_report(metrics)
 
     print(f"[run_pretrain_compact] complete. weights: {metrics.get('weights')}")
+
+
+if __name__ == "__main__":
+    main()
+
 
 
 if __name__ == "__main__":

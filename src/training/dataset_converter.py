@@ -378,28 +378,26 @@ def _collect_rico_nodes(
 # ---------------------------------------------------------------------------
 # 합성 GUI 데이터 생성기 (테스트 및 파이프라인 시연용)
 # ---------------------------------------------------------------------------
+# ⛔ DEPRECATED: Synthetic GUI Generator (2026-04-01)
+# ---------------------------------------------------------------------------
+# Synthetic 데이터셋은 더 이상 Pretrain에 사용되지 않습니다.
+# 대신 Tier A 실사 데이터셋 (MSD/SSGD/DeepPCB/Roboflow)을 사용하세요.
+#
+# SyntheticGUIGenerator는 테스트 목적으로만 유지됩니다 (폐기 예정).
+# ---------------------------------------------------------------------------
 
 
 class SyntheticGUIGenerator:
-    """테스트·시연용 합성 GUI 스크린샷 생성기.
-
-    실제 화면과 유사한 버튼/레이블/아이콘/커넥터 요소를
-    numpy 배열로 생성하며, YOLO 학습에 바로 사용 가능한
-    annotations를 함께 반환한다.
-    """
-
-    # 요소별 색상 (BGR)
-    _COLORS = {
-        "button": (50, 120, 200),
-        "icon": (80, 180, 80),
-        "label": (180, 180, 60),
-        "connector": (200, 80, 80),
-        "input_field": (200, 200, 200),
-        "checkbox": (120, 80, 200),
-        "dropdown": (180, 120, 50),
-    }
+    """⛔ DEPRECATED: 테스트·시연용 합성 GUI 생성기 (더 이상 pretrain에 사용되지 않음)."""
 
     def __init__(self, seed: int = 42) -> None:
+        import warnings
+        warnings.warn(
+            "SyntheticGUIGenerator is deprecated and no longer used for pretrain. "
+            "Use real datasets (MSD/SSGD/DeepPCB/Roboflow) instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self._rng = random.Random(seed)
 
     def generate(
@@ -408,20 +406,9 @@ class SyntheticGUIGenerator:
         height: int = 800,
         n_elements: int = 8,
     ) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
-        """합성 화면 1장 + annotations 반환.
-
-        Parameters
-        ----------
-        width, height: 출력 이미지 크기 (픽셀).
-        n_elements:    화면에 배치할 GUI 요소 수.
-
-        Returns
-        -------
-        (BGR ndarray, annotations)
-        """
+        """⛔ DEPRECATED: 합성 화면 생성 (테스트 목적만)."""
         img = np.full((height, width, 3), 240, dtype=np.uint8)
 
-        # 격자 배치로 겹침 최소화
         cols = 4
         cell_w = width // cols
         cell_h = height // (n_elements // cols + 1)

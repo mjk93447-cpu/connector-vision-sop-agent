@@ -176,27 +176,36 @@ class PretrainPipeline:
         width: int = 1280,
         height: int = 800,
     ) -> int:
-        """합성 GUI 데이터셋 생성 후 DatasetManager에 추가.
-
+        """⛔ DEPRECATED: 합성 GUI 데이터셋 생성은 더 이상 지원되지 않습니다.
+        
+        대신 Tier A 실사 데이터셋을 사용하세요:
+        - MSD (스마트폰 표면 결함)
+        - SSGD (스크린 글라스 결함)
+        - DeepPCB (PCB 결함)
+        - Roboflow PCB/Connector/Fiducial
+        
         Parameters
         ----------
-        n_images:  생성할 이미지 수.
-        width, height: 이미지 해상도 (픽셀).
+        n_images:  (deprecat됨)
+        width, height: (deprecated됨)
 
         Returns
         -------
-        저장된 이미지 수.
+        int
+            0 (아무 이미지도 생성되지 않음)
         """
-        gen = SyntheticGUIGenerator(seed=self.cfg.random_seed)
-        batch = gen.generate_batch(n_images=n_images, width=width, height=height)
-
-        for idx, (img, anns) in enumerate(batch):
-            self._save_pretrain_sample(f"synthetic_{idx:05d}", img, anns)
-
-        print(
-            f"[PretrainPipeline] 합성 데이터 {n_images}장 생성 완료 → {self.output_dir}"
+        import warnings
+        warnings.warn(
+            "build_synthetic_dataset() is deprecated and no longer used for pretrain. "
+            "Use real datasets (MSD/SSGD/DeepPCB/Roboflow) instead.",
+            DeprecationWarning,
+            stacklevel=2
         )
-        return n_images
+        print(
+            "[PretrainPipeline] ⛔ Synthetic dataset generation is deprecated. "
+            "Using Tier A real datasets instead."
+        )
+        return 0
 
     def build_showui_desktop_dataset(
         self,
@@ -499,7 +508,250 @@ class PretrainPipeline:
         return saved
 
     # ------------------------------------------------------------------
-    # 2단계: dataset.yaml 생성 + train/val 분할
+    # Tier A 실사 데이터셋 로더 (2026-04-01)
+    # PRETRAIN에서만 사용됨. Synthetic은 deprecated.
+    # ------------------------------------------------------------------
+
+    def build_msd_dataset(
+        self,
+        max_samples: int = 1000,
+        repo_path: Optional[str | Path] = None,
+    ) -> int:
+        """MSD (스마트폰 표면 결함) 데이터셋 로드.
+        
+        GitHub: https://github.com/jianzhang96/MSD
+        
+        Parameters
+        ----------
+        max_samples: 최대 이미지 수.
+        repo_path:   MSD 레포 로컬 경로 (없으면 GitHub에서 clone).
+        
+        Returns
+        -------
+        로드된 이미지 수.
+        """
+        import shutil  # noqa: PLC0415
+        
+        if repo_path is None:
+            repo_path = self.output_dir / "_msd_repo"
+            if not repo_path.exists():
+                print("[PretrainPipeline] Cloning MSD dataset from GitHub...")
+                import subprocess  # noqa: PLC0415
+                subprocess.run(
+                    ["git", "clone", "https://github.com/jianzhang96/MSD.git", str(repo_path)],
+                    check=True,
+                    timeout=300
+                )
+        
+        repo_path = Path(repo_path)
+        saved = 0
+        
+        # MSD 데이터셋 구조: 이미지 + YOLO 형식 라벨
+        for split in ["train", "val"]:
+            split_dir = repo_path / split
+            img_dir = split_dir / "images"
+            lbl_dir = split_dir / "labels"
+            
+            if not img_dir.exists():
+                continue
+            
+            for img_file in sorted(img_dir.glob("*.jpg")) + sorted(img_dir.glob("*.png")):
+                if saved >= max_samples:
+                    break
+                
+                lbl_file = lbl_dir / (img_file.stem + ".txt")
+                if not lbl_file.exists():
+                    continue
+                
+                img = cv2.imread(str(img_file))
+                if img is None:
+                    continue
+                
+                # Parse YOLO labels → remap to PRETRAIN_CLASSES
+                anns = self._parse_yolo_annotations_to_pretrain(lbl_file, img.shape[1], img.shape[0])
+                
+                self._save_pretrain_sample(f"msd_{saved:06d}", img, anns)
+                saved += 1
+                if saved % 50 == 0:
+                    print(f"  ... {saved}/{max_samples} MSD 이미지 로드 완료")
+        
+        print(f"[PretrainPipeline] MSD 데이터 {saved}장 저장 완료")
+        return saved
+
+    def build_ssgd_dataset(
+        self,
+        max_samples: int = 500,
+        repo_path: Optional[str | Path] = None,
+    ) -> int:
+        """SSGD (스마트폰 스크린 글라스 결함) 데이터셋 로드.
+        
+        GitHub: https://github.com/VincentHancoder/SSGD
+        
+        Parameters
+        ----------
+        max_samples: 최대 이미지 수.
+        repo_path:   SSGD 레포 로컬 경로.
+        
+        Returns
+        -------
+        로드된 이미지 수.
+        """
+        import shutil  # noqa: PLC0415
+        
+        if repo_path is None:
+            repo_path = self.output_dir / "_ssgd_repo"
+            if not repo_path.exists():
+                print("[PretrainPipeline] Cloning SSGD dataset from GitHub...")
+                import subprocess  # noqa: PLC0415
+                subprocess.run(
+                    ["git", "clone", "https://github.com/VincentHancoder/SSGD.git", str(repo_path)],
+                    check=True,
+                    timeout=300
+                )
+        
+        repo_path = Path(repo_path)
+        saved = 0
+        
+        for split in ["train", "val"]:
+            split_dir = repo_path / split
+            img_dir = split_dir / "images"
+            lbl_dir = split_dir / "labels"
+            
+            if not img_dir.exists():
+                continue
+            
+            for img_file in sorted(img_dir.glob("*.jpg")) + sorted(img_dir.glob("*.png")):
+                if saved >= max_samples:
+                    break
+                
+                lbl_file = lbl_dir / (img_file.stem + ".txt")
+                if not lbl_file.exists():
+                    continue
+                
+                img = cv2.imread(str(img_file))
+                if img is None:
+                    continue
+                
+                anns = self._parse_yolo_annotations_to_pretrain(lbl_file, img.shape[1], img.shape[0])
+                self._save_pretrain_sample(f"ssgd_{saved:06d}", img, anns)
+                saved += 1
+                if saved % 50 == 0:
+                    print(f"  ... {saved}/{max_samples} SSGD 이미지 로드 완료")
+        
+        print(f"[PretrainPipeline] SSGD 데이터 {saved}장 저장 완료")
+        return saved
+
+    def build_deeppcb_dataset(
+        self,
+        max_samples: int = 1000,
+        repo_path: Optional[str | Path] = None,
+    ) -> int:
+        """DeepPCB (결함 bbox 완비) 데이터셋 로드.
+        
+        GitHub: https://github.com/tangsanli5201/DeepPCB
+        
+        Parameters
+        ----------
+        max_samples: 최대 이미지 수.
+        repo_path:   DeepPCB 레포 로컬 경로.
+        
+        Returns
+        -------
+        로드된 이미지 수.
+        """
+        import shutil  # noqa: PLC0415
+        
+        if repo_path is None:
+            repo_path = self.output_dir / "_deeppcb_repo"
+            if not repo_path.exists():
+                print("[PretrainPipeline] Cloning DeepPCB dataset from GitHub...")
+                import subprocess  # noqa: PLC0415
+                subprocess.run(
+                    ["git", "clone", "https://github.com/tangsanli5201/DeepPCB.git", str(repo_path)],
+                    check=True,
+                    timeout=300
+                )
+        
+        repo_path = Path(repo_path)
+        saved = 0
+        
+        # DeepPCB 구조: train/images, train/labels, etc
+        for split in ["train", "test"]:
+            img_dir = repo_path / split / "images"
+            lbl_dir = repo_path / split / "labels"
+            
+            if not img_dir.exists():
+                continue
+            
+            for img_file in sorted(img_dir.glob("*.png")) + sorted(img_dir.glob("*.jpg")):
+                if saved >= max_samples:
+                    break
+                
+                lbl_file = lbl_dir / (img_file.stem + ".txt")
+                if not lbl_file.exists():
+                    continue
+                
+                img = cv2.imread(str(img_file))
+                if img is None:
+                    continue
+                
+                anns = self._parse_yolo_annotations_to_pretrain(lbl_file, img.shape[1], img.shape[0])
+                self._save_pretrain_sample(f"deeppcb_{saved:06d}", img, anns)
+                saved += 1
+                if saved % 50 == 0:
+                    print(f"  ... {saved}/{max_samples} DeepPCB 이미지 로드 완료")
+        
+        print(f"[PretrainPipeline] DeepPCB 데이터 {saved}장 저장 완료")
+        return saved
+
+    def _parse_yolo_annotations_to_pretrain(
+        self,
+        label_file: Path,
+        img_width: int,
+        img_height: int,
+    ) -> List[Dict[str, Any]]:
+        """YOLO 형식 라벨 → PRETRAIN_CLASSES 어노테이션으로 변환.
+        
+        YOLO 형식: class_id center_x center_y width height (정규화 좌표)
+        """
+        from src.training.dataset_converter import PRETRAIN_CLASSES  # noqa: PLC0415
+        
+        annotations = []
+        if not label_file.exists():
+            return annotations
+        
+        try:
+            with open(label_file, encoding="utf-8") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) < 5:
+                        continue
+                    
+                    class_id = int(parts[0])
+                    # Clamp class_id to valid range
+                    if 0 <= class_id < len(PRETRAIN_CLASSES):
+                        pass
+                    else:
+                        # Default to first class if out of range
+                        class_id = 0
+                    
+                    cx, cy, w, h = map(float, parts[1:5])
+                    
+                    # Convert from normalized coordinates to pixels
+                    x1 = (cx - w / 2) * img_width
+                    y1 = (cy - h / 2) * img_height
+                    x2 = (cx + w / 2) * img_width
+                    y2 = (cy + h / 2) * img_height
+                    
+                    annotations.append({
+                        "label": PRETRAIN_CLASSES[class_id],
+                        "bbox": [max(0, x1), max(0, y1), min(img_width, x2), min(img_height, y2)],
+                    })
+        except Exception as e:
+            print(f"  ⚠️  Error parsing {label_file}: {e}")
+        
+        return annotations
+
     # ------------------------------------------------------------------
 
     def prepare_dataset_yaml(self) -> Path:
