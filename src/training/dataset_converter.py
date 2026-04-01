@@ -50,7 +50,7 @@ PRETRAIN_CLASSES: List[str] = [
 # OmniAct 15종: button, checkbox, combobox, editbox, link, menu, menuitem,
 #               pane, radiobutton, scrollbar, slider, statictext, tab, toolbar, treeitem
 _OMNIACT_CLASS_MAP: Dict[str, int] = {
-    # button variants (class 0)
+    # oled_inspection_top_view variants (class 0)
     "button": 0,
     "menuitem": 0,
     "menu": 0,
@@ -60,27 +60,44 @@ _OMNIACT_CLASS_MAP: Dict[str, int] = {
     "radiobutton": 0,
     "link": 0,
     "splitbutton": 0,
-    # icon/image variants (class 1)
+    "editbox": 0,
+    "textbox": 0,
+    "inputfield": 4,
+    "input_field": 4,
+
+    # connector_pin_cluster_upper variants (class 1)
     "image": 1,
     "icon": 1,
     "picture": 1,
-    # label/text variants (class 2)
+
+    # connector_pin_cluster_lower variants (class 2)
     "statictext": 2,
     "text": 2,
     "label": 2,
     "header": 2,
     "pane": 2,
     "title": 2,
-    # connector variants (class 3)
+
+    # connector_pin_mold_left (class 3)
     "connector": 3,
     "pin": 3,
     "pincluster": 3,
-    # panel variants (class 4)
+
+    # connector_pin_mold_right (class 4)
     "panel": 4,
     "mold": 4,
-    # marker variants (class 5)
+    "combobox": 4,
+    "dropdown": 4,
+    "listbox": 4,
+    "spinner": 4,
+    "slider": 4,
+
+    # oled_panel_marker (class 5)
     "marker": 5,
     "labelmarker": 5,
+    "checkbox": 5,
+    "switch": 5,
+    "toggle": 5,
 }
 
 # 설명 텍스트에서 element type 키워드 탐지용 (순서 중요 — 더 구체적인 것 먼저)
@@ -91,6 +108,7 @@ _KEYWORD_CLASS_MAP: List[Tuple[str, int]] = [
     ("mold", 4),
     ("panel", 4),
     ("marker", 5),
+    ("input", 4),
     ("label", 2),
     ("text", 2),
     ("icon", 1),
@@ -439,7 +457,10 @@ class SyntheticGUIGenerator:
                 1,
             )
 
-            annotations.append({"label": cls, "bbox": [x1, y1, x2, y2]})
+            class_index = map_omniact_class(cls) if isinstance(cls, str) else None
+            if class_index is None:
+                class_index = 0
+            annotations.append({"label": PRETRAIN_CLASSES[class_index], "bbox": [x1, y1, x2, y2]})
 
         return img, annotations
 

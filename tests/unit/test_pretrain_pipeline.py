@@ -42,10 +42,10 @@ class TestPretrainClasses:
         assert required == set(PRETRAIN_CLASSES)
 
     def test_button_is_index_0(self) -> None:
-        assert PRETRAIN_CLASSES[0] == "button"
+        assert PRETRAIN_CLASSES[0] == "oled_inspection_top_view"
 
     def test_connector_is_index_3(self) -> None:
-        assert PRETRAIN_CLASSES[3] == "connector"
+        assert PRETRAIN_CLASSES[3] == "connector_pin_mold_left"
 
 
 class TestPretrainPipelineRuntimePaths:
@@ -81,17 +81,17 @@ class TestMapOmniactClass:
         assert map_omniact_class("statictext") == 2
         assert map_omniact_class("label") == 2
 
-    def test_editbox_maps_to_4(self) -> None:
-        assert map_omniact_class("editbox") == 4
-        assert map_omniact_class("textbox") == 4
+    def test_editbox_maps_to_0(self) -> None:
+        assert map_omniact_class("editbox") == 0
+        assert map_omniact_class("textbox") == 0
 
     def test_checkbox_maps_to_5(self) -> None:
         assert map_omniact_class("checkbox") == 5
         assert map_omniact_class("switch") == 5
 
-    def test_combobox_maps_to_6(self) -> None:
-        assert map_omniact_class("combobox") == 6
-        assert map_omniact_class("dropdown") == 6
+    def test_combobox_maps_to_4(self) -> None:
+        assert map_omniact_class("combobox") == 4
+        assert map_omniact_class("dropdown") == 4
 
     def test_keyword_fallback(self) -> None:
         assert map_omniact_class("Close Button") == 0
@@ -174,7 +174,7 @@ class TestConvertShowUIDesktopSample:
         }
         img, anns = convert_showui_desktop_sample(sample)
         assert img is not None
-        assert anns[0]["label"] == "input_field"
+        assert anns[0]["label"] == "oled_inspection_top_view"
 
     def test_unknown_type_defaults_to_button(self) -> None:
         pil_img = _make_rgb_array()
@@ -303,7 +303,7 @@ class TestConvertRicoSample:
         img, ann = convert_rico_sample(sample)
         assert img is not None
         assert len(ann) == 1
-        assert ann[0]["label"] == "button"
+        assert ann[0]["label"] == "oled_inspection_top_view"
         assert ann[0]["bbox"] == [10, 20, 200, 80]
 
     def test_skips_unknown_class(self) -> None:
@@ -369,7 +369,11 @@ class TestConvertRicoSample:
         )
         _, ann = convert_rico_sample(sample)
         labels = {a["label"] for a in ann}
-        assert labels == {"button", "label", "icon"}
+        assert labels == {
+            "oled_inspection_top_view",
+            "connector_pin_cluster_lower",
+            "connector_pin_cluster_upper",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -461,8 +465,8 @@ class TestPretrainPipelineSynthetic:
         yaml_path = pipeline.prepare_dataset_yaml()
         assert yaml_path.exists()
         content = yaml_path.read_text(encoding="utf-8")
-        assert "nc: 7" in content
-        assert "button" in content
+        assert "nc: 6" in content
+        assert "oled_inspection_top_view" in content
 
     def test_save_report_creates_file(self, tmp_path: Path) -> None:
         pipeline = PretrainPipeline(output_dir=tmp_path)
