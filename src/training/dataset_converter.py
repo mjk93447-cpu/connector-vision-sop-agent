@@ -30,16 +30,15 @@ import cv2
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# 프리트레인 클래스 어휘 (공개 GUI 데이터셋과 OLED 도메인 교집합)
+# 프리트레인 클래스 어휘 (6개 고정)
 # ---------------------------------------------------------------------------
 PRETRAIN_CLASSES: List[str] = [
-    "button",  # 0: 클릭 가능한 버튼 전반
-    "icon",  # 1: 아이콘·이미지 요소
-    "label",  # 2: 텍스트 레이블·제목
-    "connector",  # 3: 커넥터 핀·핀 클러스터
-    "input_field",  # 4: 입력창·텍스트 박스
-    "checkbox",  # 5: 체크박스·토글
-    "dropdown",  # 6: 드롭다운·셀렉트 메뉴
+    "oled_inspection_top_view",        # 0
+    "connector_pin_cluster_upper",     # 1
+    "connector_pin_cluster_lower",     # 2
+    "connector_pin_mold_left",         # 3
+    "connector_pin_mold_right",        # 4
+    "oled_panel_marker",               # 5
 ]
 
 # ---------------------------------------------------------------------------
@@ -72,49 +71,36 @@ _OMNIACT_CLASS_MAP: Dict[str, int] = {
     "header": 2,
     "pane": 2,
     "title": 2,
-    # input variants (class 4)
-    "editbox": 4,
-    "textbox": 4,
-    "edit": 4,
-    "searchbox": 4,
-    "inputfield": 4,
-    # checkbox variants (class 5)
-    "checkbox": 5,
-    "switch": 5,
-    "toggle": 5,
-    # dropdown variants (class 6)
-    "combobox": 6,
-    "dropdown": 6,
-    "listbox": 6,
-    "spinner": 6,
-    "slider": 6,
+    # connector variants (class 3)
+    "connector": 3,
+    "pin": 3,
+    "pincluster": 3,
+    # panel variants (class 4)
+    "panel": 4,
+    "mold": 4,
+    # marker variants (class 5)
+    "marker": 5,
+    "labelmarker": 5,
 }
 
 # 설명 텍스트에서 element type 키워드 탐지용 (순서 중요 — 더 구체적인 것 먼저)
 _KEYWORD_CLASS_MAP: List[Tuple[str, int]] = [
-    ("editbox", 4),
-    ("textbox", 4),
-    ("input", 4),
-    ("checkbox", 5),
-    ("check box", 5),
-    ("radio", 5),
-    ("combobox", 6),
-    ("combo box", 6),
-    ("dropdown", 6),
-    ("drop down", 6),
-    ("spinner", 6),
-    ("button", 0),
-    ("menuitem", 0),
-    ("menu item", 0),
-    ("toolbar", 0),
-    ("tab ", 0),
-    ("link", 0),
-    ("icon", 1),
-    ("image", 1),
+    ("connector", 3),
+    ("pin", 3),
+    ("cluster", 3),
+    ("mold", 4),
+    ("panel", 4),
+    ("marker", 5),
     ("label", 2),
     ("text", 2),
-    ("title", 2),
-    ("header", 2),
+    ("icon", 1),
+    ("image", 1),
+    ("button", 0),
+    ("menuitem", 0),
+    ("menu", 0),
+    ("toolbar", 0),
+    ("tab", 0),
+    ("link", 0),
 ]
 
 

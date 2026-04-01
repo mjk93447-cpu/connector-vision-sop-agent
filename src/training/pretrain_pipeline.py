@@ -53,6 +53,7 @@ from src.training.dataset_converter import (
     split_train_val,
 )
 from src.training.dataset_manager import DatasetManager
+from src.training.dataset_manifest import DatasetManifest, DatasetManifestError
 from src.config_loader import get_base_dir, suggest_training_profile
 
 _DEFAULT_OUTPUT_DIR = get_base_dir() / "pretrain_data"
@@ -73,16 +74,28 @@ class PretrainConfig:
     output_dir: Path = field(default_factory=lambda: _DEFAULT_OUTPUT_DIR)
     base_model: str = "yolo26x.pt"  # COCO pretrained → 프리트레인 시작점
     pretrained_weights: Path = field(default_factory=lambda: _PRETRAIN_WEIGHTS)
+    output_weights: Path = field(default_factory=lambda: get_base_dir() / "assets/models/yolo26x_local_pretrained.pt")
+    mode: str = "pretrain"  # pretrain / finetune
+    manifest_path: Optional[Path] = None
     epochs: int = 20
     batch: int = 4
     image_size: int = 640
     val_ratio: float = 0.20
     random_seed: int = 42
     device: str = "cpu"
+    rebalance: bool = True
+    gray_ratio: float = 0.85
 
     def __post_init__(self) -> None:
         self.output_dir = Path(self.output_dir)
         self.pretrained_weights = Path(self.pretrained_weights)
+        self.output_weights = Path(self.output_weights)
+
+        if self.mode not in {"pretrain", "finetune"}:
+            raise ValueError("mode must be 'pretrain' or 'finetune'")
+        if not (0.0 <= self.gray_ratio <= 1.0):
+            raise ValueError("gray_ratio must be between 0.0 and 1.0")
+
 
     @classmethod
     def from_runtime_defaults(
@@ -133,6 +146,19 @@ class PretrainPipeline:
         self._labels_dir = self.output_dir / "labels"
         self._images_dir.mkdir(parents=True, exist_ok=True)
         self._labels_dir.mkdir(parents=True, exist_ok=True)
+
+        # Validate manifest if provided
+        self._manifest = None
+        if self.cfg.manifest_path is not None:
+            self._manifest = self._validate_manifest(self.cfg.manifest_path)
+
+    def _validate_manifest(self, manifest_path: str | Path) -> DatasetManifest:
+        manifest = DatasetManifest(Path(manifest_path))
+        manifest.validate()
+        active = manifest.active_sources
+        if not active:
+            raise DatasetManifestError("No active data sources in manifest")
+        return manifest
 
     @staticmethod
     def suggest_runtime_defaults(image_count: int | None = None) -> Dict[str, Any]:
@@ -587,12 +613,12 @@ class PretrainPipeline:
         if best_pt and best_pt.exists():
             import shutil
 
-            self.cfg.pretrained_weights.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(best_pt, self.cfg.pretrained_weights)
-            print(f"[PretrainPipeline] 가중치 저장 → {self.cfg.pretrained_weights}")
+            self.cfg.output_weights.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(best_pt, self.cfg.output_weights)
+            print(f"[PretrainPipeline] 가중치 저장 → {self.cfg.output_weights}")
 
         # 검증 (mAP50 측정)
-        val_model = YOLO(str(self.cfg.pretrained_weights))
+        val_model = YOLO(str(self.cfg.output_weights))
         val_results = val_model.val(
             data=str(yaml_path),
             imgsz=self.cfg.image_size,
@@ -805,7 +831,7 @@ class PretrainPipeline:
             "precision": _safe("mp"),
             "recall": _safe("mr"),
             "classes": classes_map,
-            "weights": str(self.cfg.pretrained_weights),
+            "weights": str(self.cfg.output_weights),
             "epochs": epochs,
             "n_train": n_train,
             "n_val": n_val,
