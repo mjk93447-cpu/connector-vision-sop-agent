@@ -10,7 +10,7 @@ PACKAGE ARTIFACTS
      - launchers and config/model placeholders
   2. connector-agent-pretrain.zip
      - connector_pretrain.exe
-     - pretrain_data\ with the bundled pcb_inspection + pcb_component_detection + pcb_defect_detection dataset
+     - pretrain_data\ with the bundled pcb_inspection + pcb_component_detection + pcb_defect_detection + rf100_smd_components + rf100_deeppcb dataset
   3. connector-agent-llm.zip
      - ollama_models\blobs\
      - ollama_models\manifests\

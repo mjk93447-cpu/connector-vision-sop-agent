@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -13,6 +14,8 @@ from src.training.compact_pretrain_pipeline import (
     CompactPretrainPipeline,
     LINE_PRETRAIN_CLASSES,
     _pcb_defect_target_from_name,
+    _roboflow_folder_target,
+    _smd_component_target_from_name,
 )
 
 
@@ -97,6 +100,9 @@ class TestCompactPretrainPipeline:
         ), patch(
             "src.training.compact_pretrain_pipeline.CompactPretrainPipeline._ingest_pcb_defect_source",
             return_value=1,
+        ), patch(
+            "src.training.compact_pretrain_pipeline.CompactPretrainPipeline._ingest_roboflow_folder_source",
+            return_value=1,
         ):
             manifest = pipeline.build_bundle(max_samples_per_source=1, grayscale=True, reset=True)
 
@@ -104,6 +110,8 @@ class TestCompactPretrainPipeline:
         assert "pcb_inspection" in manifest["sources"]
         assert "pcb_component_detection" in manifest["sources"]
         assert "pcb_defect_detection" in manifest["sources"]
+        assert "rf100_smd_components" in manifest["sources"]
+        assert "rf100_deeppcb" in manifest["sources"]
         assert (tmp_path / "pretrain_dataset.yaml").exists()
         assert (tmp_path / "train" / "images").exists()
         assert (tmp_path / "val" / "images").exists()
@@ -125,3 +133,47 @@ class TestCompactPretrainPipeline:
     def test_pcb_defect_name_mapping(self) -> None:
         assert _pcb_defect_target_from_name("l_light_01_missing_hole_01_1_600.jpg") == "pin_hole"
         assert _pcb_defect_target_from_name("pcb_spurious_copper.jpg") == "copper"
+
+    def test_roboflow_component_and_defect_mapping(self) -> None:
+        assert _smd_component_target_from_name("IC Footprint") == "pads"
+        assert _smd_component_target_from_name("Resistor Top") == "resistor"
+        assert _roboflow_folder_target("rf100_deeppcb", "missing hole") == "pin_hole"
+        assert _roboflow_folder_target("rf100_deeppcb", "short circuit") == "short"
+
+    def test_ingest_roboflow_coco_folder_reads_annotations(self, tmp_path: Path) -> None:
+        pipeline = CompactPretrainPipeline(output_dir=tmp_path)
+        source_root = tmp_path / "source" / "smd-components"
+        split_dir = source_root / "train"
+        split_dir.mkdir(parents=True, exist_ok=True)
+
+        image = np.zeros((32, 32, 3), dtype=np.uint8)
+        Image.fromarray(image).save(split_dir / "sample_001.jpg")
+
+        annotation = {
+            "images": [
+                {"id": 1, "file_name": "sample_001.jpg", "width": 32, "height": 32}
+            ],
+            "categories": [
+                {"id": 1, "name": "Resistor Top"},
+            ],
+            "annotations": [
+                {"id": 1, "image_id": 1, "category_id": 1, "bbox": [4, 5, 10, 11]},
+            ],
+        }
+        (split_dir / "_annotations.coco.json").write_text(
+            json.dumps(annotation),
+            encoding="utf-8",
+        )
+
+        saved = pipeline._ingest_roboflow_coco_folder(
+            source_root=source_root,
+            source_name="rf100_smd_components",
+            max_samples=10,
+            grayscale=False,
+            splits=("train",),
+        )
+
+        assert saved == 1
+        assert any((tmp_path / "images").iterdir())
+        label_text = next((tmp_path / "labels").glob("*.txt")).read_text(encoding="utf-8").strip()
+        assert label_text.startswith(f"{LINE_PRETRAIN_CLASSES.index('resistor')} ")

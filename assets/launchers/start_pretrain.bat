@@ -9,7 +9,7 @@ set no_proxy=localhost,127.0.0.1,::1
 
 echo ================================================================
 echo  Connector Vision SOP Agent v4.2.0  [Local Pretrain]
-echo  Data : pretrain_data (pcb_inspection + pcb_component_detection + pcb_defect_detection)
+echo  Data : pretrain_data (pcb_inspection + pcb_component_detection + pcb_defect_detection + rf100_smd_components + rf100_deeppcb)
 echo  Model: yolo26x_local_pretrained.pt
 echo ================================================================
 echo.

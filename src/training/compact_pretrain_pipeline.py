@@ -6,6 +6,8 @@ import json
 import re
 import shutil
 import time
+import tempfile
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -77,7 +79,7 @@ _RAW_TO_TARGET: dict[str, str] = {
     "buzzer": "buzzer",
 }
 
-_SOURCE_SPECS: list[dict[str, str]] = [
+_SOURCE_SPECS: list[dict[str, Any]] = [
     {
         "name": "pcb_inspection",
         "repo_id": "Francesco/printed-circuit-board",
@@ -95,6 +97,20 @@ _SOURCE_SPECS: list[dict[str, str]] = [
         "repo_id": "itsyoboieltr/pcb",
         "kind": "pcb_defects",
         "splits": ("train", "validation", "test"),
+    },
+    {
+        "name": "rf100_smd_components",
+        "repo_id": "gatilin/rf100-vl-datasets",
+        "kind": "roboflow_folder",
+        "folder": "smd-components",
+        "splits": ("train", "valid", "validation", "test"),
+    },
+    {
+        "name": "rf100_deeppcb",
+        "repo_id": "gatilin/rf100-vl-datasets",
+        "kind": "roboflow_folder",
+        "folder": "deeppcb",
+        "splits": ("train", "valid", "validation", "test"),
     },
 ]
 
@@ -121,6 +137,25 @@ def _normalize_label(label: str) -> str:
 def _target_label(raw_label: str) -> Optional[str]:
     normalized = _normalize_label(raw_label)
     return _RAW_TO_TARGET.get(normalized)
+
+
+def _smd_component_target_from_name(raw_label: str) -> Optional[str]:
+    normalized = _normalize_label(raw_label)
+    if not normalized:
+        return None
+    if "footprint" in normalized:
+        return "pads"
+    if "bottom" in normalized or "top" in normalized:
+        normalized = normalized.replace("bottom", "").replace("top", "")
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+    return _target_label(normalized)
+
+
+def _roboflow_defect_target_from_name(raw_label: str) -> Optional[str]:
+    normalized = _normalize_label(raw_label)
+    if not normalized:
+        return None
+    return _pcb_defect_target_from_name(normalized)
 
 
 def _raw_category_names(repo_id: str) -> list[str]:
@@ -223,6 +258,15 @@ class CompactPretrainPipeline:
                     grayscale=grayscale,
                     splits=splits,
                 )
+            elif kind == "roboflow_folder":
+                saved = self._ingest_roboflow_folder_source(
+                    repo_id=spec["repo_id"],
+                    folder_name=spec["folder"],
+                    source_name=spec["name"],
+                    max_samples=max_samples_per_source,
+                    grayscale=grayscale,
+                    splits=splits,
+                )
             else:
                 saved = self._ingest_hf_source(
                     repo_id=spec["repo_id"],
@@ -245,7 +289,7 @@ class CompactPretrainPipeline:
             "total_images": total_saved,
             "sources": totals,
             "classes": self.cfg.class_names,
-            "description": "Bundled grayscale PCB inspection, PCB component detection, and PCB defect data for offline YOLO26x pretraining.",
+            "description": "Bundled grayscale PCB inspection, PCB component detection, and PCB defect data from line-relevant PCB datasets for offline YOLO26x pretraining.",
             "yaml": str(yaml_path),
         }
         (self.output_dir / "manifest.json").write_text(
@@ -454,6 +498,143 @@ class CompactPretrainPipeline:
 
         return saved
 
+    def _ingest_roboflow_folder_source(
+        self,
+        repo_id: str,
+        folder_name: str,
+        source_name: str,
+        max_samples: int,
+        grayscale: bool,
+        splits: tuple[str, ...] = ("train",),
+    ) -> int:
+        from huggingface_hub import snapshot_download  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory(prefix="rf100_bundle_") as tmpdir:
+            local_root = Path(
+                snapshot_download(
+                    repo_id=repo_id,
+                    repo_type="dataset",
+                    allow_patterns=[f"{folder_name}/**"],
+                    local_dir=tmpdir,
+                    local_dir_use_symlinks=False,
+                )
+            )
+            source_root = local_root / folder_name
+            if not source_root.exists():
+                candidate = next((path for path in local_root.rglob(folder_name) if path.is_dir()), None)
+                if candidate is None:
+                    raise FileNotFoundError(f"Roboflow source folder not found: {folder_name}")
+                source_root = candidate
+            return self._ingest_roboflow_coco_folder(
+                source_root=source_root,
+                source_name=source_name,
+                max_samples=max_samples,
+                grayscale=grayscale,
+                splits=splits,
+            )
+
+    def _ingest_roboflow_coco_folder(
+        self,
+        source_root: Path,
+        source_name: str,
+        max_samples: int,
+        grayscale: bool,
+        splits: tuple[str, ...] = ("train",),
+    ) -> int:
+        saved = 0
+        for split_name in splits:
+            if saved >= max_samples:
+                break
+            split_dir = self._resolve_roboflow_split_dir(source_root, split_name)
+            if split_dir is None:
+                continue
+            annotation_file = self._find_roboflow_annotation_file(split_dir)
+            if annotation_file is None:
+                continue
+
+            annotations = json.loads(annotation_file.read_text(encoding="utf-8"))
+            category_map = {
+                category["id"]: category["name"]
+                for category in annotations.get("categories", [])
+                if "id" in category and "name" in category
+            }
+            image_map = {
+                image["id"]: image
+                for image in annotations.get("images", [])
+                if "id" in image and "file_name" in image
+            }
+            grouped: dict[Any, list[dict[str, Any]]] = defaultdict(list)
+            for annot in annotations.get("annotations", []):
+                image_id = annot.get("image_id")
+                if image_id is not None:
+                    grouped[image_id].append(annot)
+
+            for image_id, image in image_map.items():
+                if saved >= max_samples:
+                    break
+                image_path = split_dir / image["file_name"]
+                if not image_path.exists():
+                    image_path = next((path for path in split_dir.rglob(image["file_name"]) if path.is_file()), None)
+                    if image_path is None:
+                        continue
+
+                img_bgr = cv2.imread(str(image_path))
+                if img_bgr is None:
+                    continue
+                if grayscale:
+                    img_bgr = _grayscale_profile(img_bgr)
+
+                annotations_out: list[dict[str, Any]] = []
+                for annot in grouped.get(image_id, []):
+                    category_name = category_map.get(annot.get("category_id"))
+                    if category_name is None:
+                        continue
+                    target = _roboflow_folder_target(source_name, category_name)
+                    if target is None or target not in self.cfg.class_names:
+                        continue
+                    bbox = annot.get("bbox") or []
+                    if len(bbox) < 4:
+                        continue
+                    x, y, w, h = [float(v) for v in bbox[:4]]
+                    if w <= 0 or h <= 0:
+                        continue
+                    annotations_out.append(
+                        {
+                            "label": target,
+                            "bbox": [x, y, x + w, y + h],
+                        }
+                    )
+
+                if not annotations_out:
+                    continue
+
+                stem = f"{source_name}_{saved:05d}"
+                self._save_sample(stem, img_bgr, annotations_out)
+                saved += 1
+
+        return saved
+
+    @staticmethod
+    def _resolve_roboflow_split_dir(source_root: Path, split_name: str) -> Optional[Path]:
+        candidates = [split_name]
+        if split_name == "validation":
+            candidates.append("valid")
+        if split_name == "valid":
+            candidates.append("validation")
+        for candidate in candidates:
+            split_dir = source_root / candidate
+            if split_dir.exists():
+                return split_dir
+        return None
+
+    @staticmethod
+    def _find_roboflow_annotation_file(split_dir: Path) -> Optional[Path]:
+        candidates = list(split_dir.rglob("*_annotations.coco.json"))
+        if candidates:
+            return candidates[0]
+        candidates = list(split_dir.rglob("*.json"))
+        return candidates[0] if candidates else None
+
     def _save_sample(self, stem: str, img_bgr: np.ndarray, annotations: list[dict[str, Any]]) -> None:
         img_path = self.images_dir / f"{stem}.jpg"
         lbl_path = self.labels_dir / f"{stem}.txt"
@@ -498,4 +679,23 @@ def _pcb_defect_target_from_name(name: str) -> Optional[str]:
     ):
         if _normalize_label(token) in normalized:
             return target
+    return None
+
+
+def _roboflow_folder_target(source_name: str, raw_label: str) -> Optional[str]:
+    normalized_source = _normalize_label(source_name)
+    if "smd" in normalized_source or "component" in normalized_source:
+        target = _smd_component_target_from_name(raw_label)
+        if target is not None:
+            return target
+    if "deeppcb" in normalized_source:
+        target = _roboflow_defect_target_from_name(raw_label)
+        if target is not None:
+            return target
+    target = _target_label(raw_label)
+    if target is not None:
+        return target
+    target = _pcb_defect_target_from_name(raw_label)
+    if target is not None:
+        return target
     return None

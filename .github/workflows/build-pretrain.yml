@@ -78,6 +78,22 @@ jobs:
           $lblCount = (Get-ChildItem "pretrain_data\train\labels" -File | Measure-Object).Count
           $manifest = Get-Content "pretrain_data\manifest.json" -Raw | ConvertFrom-Json
           $totalImages = [int]$manifest.total_images
+          $requiredSources = @(
+            "pcb_inspection",
+            "pcb_component_detection",
+            "pcb_defect_detection",
+            "rf100_smd_components",
+            "rf100_deeppcb"
+          )
+          foreach ($source in $requiredSources) {
+            $value = $manifest.sources.$source
+            if ($null -eq $value) {
+              throw "Missing required dataset source in manifest: $source"
+            }
+            if ([int]$value -le 0) {
+              throw "Required dataset source was empty: $source"
+            }
+          }
           if ($imgCount -lt 1 -or $lblCount -lt 1) {
             throw "Prepared dataset is empty after split"
           }

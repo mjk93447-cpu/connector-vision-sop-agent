@@ -15,7 +15,7 @@ from src.training.compact_pretrain_pipeline import (  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare compact PCB defect pretrain data")
+    parser = argparse.ArgumentParser(description="Prepare compact PCB electronics pretrain data")
     parser.add_argument(
         "--output-dir",
         default="pretrain_data",
