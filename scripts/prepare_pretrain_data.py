@@ -32,13 +32,23 @@ def main() -> None:
         action="store_true",
         help="Keep the original color images instead of converting to grayscale.",
     )
+    parser.add_argument(
+        "--sources",
+        default=None,
+        help="Optional comma-separated source names to include in the bundle.",
+    )
     args = parser.parse_args()
+
+    source_names = None
+    if args.sources:
+        source_names = [item.strip() for item in args.sources.split(",") if item.strip()]
 
     pipeline = CompactPretrainPipeline(output_dir=args.output_dir)
     manifest = pipeline.build_bundle(
         max_samples_per_source=args.max_samples_per_source,
         grayscale=not args.no_grayscale,
         reset=True,
+        source_names=source_names,
     )
     print("[prepare_pretrain_data] bundle ready")
     print(manifest)

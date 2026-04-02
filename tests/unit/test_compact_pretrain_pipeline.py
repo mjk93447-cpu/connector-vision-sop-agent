@@ -121,6 +121,70 @@ class TestCompactPretrainPipeline:
         assert any((tmp_path / "train" / "labels").iterdir())
         assert not any((tmp_path / "images").glob("*"))
 
+    def test_build_bundle_can_filter_sources(self, tmp_path: Path) -> None:
+        pipeline = CompactPretrainPipeline(output_dir=tmp_path)
+
+        fake_raw_names = [
+            "circuit",
+            "Button",
+            "Buzzer",
+            "Capacitor",
+            "Capacitor Jumper",
+            "Capacitor Network",
+            "Clock",
+            "Connector",
+            "Diode",
+            "EM",
+            "Electrolytic Capacitor",
+            "Electrolytic capacitor",
+            "Ferrite Bead",
+            "Flex Cable",
+            "Fuse",
+            "IC",
+            "Inductor",
+            "Jumper",
+            "Led",
+            "Pads",
+            "Pins",
+            "Potentiometer",
+            "RP",
+            "Resistor",
+            "Resistor Jumper",
+            "Resistor Network",
+            "Switch",
+            "Test Point",
+            "Transducer",
+            "Transformer",
+            "Transistor",
+            "Unknown Unlabeled",
+        ]
+
+        with patch(
+            "src.training.compact_pretrain_pipeline._raw_category_names",
+            return_value=fake_raw_names,
+        ), patch(
+            "datasets.load_dataset",
+            side_effect=lambda *args, **kwargs: iter([_fake_sample()]),
+        ), patch(
+            "src.training.compact_pretrain_pipeline.CompactPretrainPipeline._ingest_pcb_defect_source",
+            return_value=1,
+        ), patch(
+            "src.training.compact_pretrain_pipeline.CompactPretrainPipeline._ingest_roboflow_folder_source",
+            return_value=1,
+        ):
+            manifest = pipeline.build_bundle(
+                max_samples_per_source=1,
+                grayscale=True,
+                reset=True,
+                source_names=["pcb_inspection", "pcb_component_detection"],
+            )
+
+        assert "pcb_inspection" in manifest["sources"]
+        assert "pcb_component_detection" in manifest["sources"]
+        assert "pcb_defect_detection" not in manifest["sources"]
+        assert "rf100_smd_components" not in manifest["sources"]
+        assert "rf100_deeppcb" not in manifest["sources"]
+
     def test_save_sample_writes_yolo_label(self, tmp_path: Path) -> None:
         pipeline = CompactPretrainPipeline(output_dir=tmp_path)
         img = np.zeros((64, 64, 3), dtype=np.uint8)

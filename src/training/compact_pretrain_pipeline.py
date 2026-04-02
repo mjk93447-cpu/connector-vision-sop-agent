@@ -229,6 +229,7 @@ class CompactPretrainPipeline:
         max_samples_per_source: int = 10000,
         grayscale: bool = True,
         reset: bool = True,
+        source_names: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         if reset and self.output_dir.exists():
             shutil.rmtree(self.output_dir)
@@ -238,7 +239,10 @@ class CompactPretrainPipeline:
 
         totals: dict[str, int] = {}
         total_saved = 0
+        selected_sources = set(source_names) if source_names else None
         for spec in _SOURCE_SPECS:
+            if selected_sources is not None and spec["name"] not in selected_sources:
+                continue
             kind = spec.get("kind", "objects")
             splits = tuple(spec.get("splits", ("train",)))
             if kind == "pcb_defects":

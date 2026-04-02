@@ -61,7 +61,8 @@ jobs:
         run: |
           python scripts/prepare_pretrain_data.py `
             --output-dir pretrain_data `
-            --max-samples-per-source 10000
+            --max-samples-per-source 1500 `
+            --sources pcb_inspection,pcb_component_detection,pcb_defect_detection
 
       - name: Validate dataset yaml and auto profile
         shell: pwsh
@@ -94,9 +95,7 @@ jobs:
           $requiredSources = @(
             "pcb_inspection",
             "pcb_component_detection",
-            "pcb_defect_detection",
-            "rf100_smd_components",
-            "rf100_deeppcb"
+            "pcb_defect_detection"
           )
           foreach ($source in $requiredSources) {
             $value = $manifest.sources.$source
