@@ -81,12 +81,36 @@ _SOURCE_SPECS: list[dict[str, str]] = [
     {
         "name": "pcb_inspection",
         "repo_id": "Francesco/printed-circuit-board",
+        "kind": "objects",
+        "splits": ("train", "validation", "test"),
     },
     {
         "name": "pcb_component_detection",
         "repo_id": "Francesco/circuit-elements",
+        "kind": "objects",
+        "splits": ("train",),
+    },
+    {
+        "name": "pcb_defect_detection",
+        "repo_id": "itsyoboieltr/pcb",
+        "kind": "pcb_defects",
+        "splits": ("train", "validation", "test"),
     },
 ]
+
+_PCB_DEFECT_NAME_TO_TARGET: dict[str, str] = {
+    "missing_hole": "pin_hole",
+    "pin_hole": "pin_hole",
+    "mouse_bite": "mousebite",
+    "mousebite": "mousebite",
+    "open_circuit": "open",
+    "open": "open",
+    "short": "short",
+    "spur": "spur",
+    "spurious_copper": "copper",
+    "spurious copper": "copper",
+    "copper": "copper",
+}
 
 
 def _normalize_label(label: str) -> str:
@@ -176,7 +200,7 @@ class CompactPretrainPipeline:
 
     def build_bundle(
         self,
-        max_samples_per_source: int = 400,
+        max_samples_per_source: int = 10000,
         grayscale: bool = True,
         reset: bool = True,
     ) -> dict[str, Any]:
@@ -189,12 +213,24 @@ class CompactPretrainPipeline:
         totals: dict[str, int] = {}
         total_saved = 0
         for spec in _SOURCE_SPECS:
-            saved = self._ingest_hf_source(
-                repo_id=spec["repo_id"],
-                source_name=spec["name"],
-                max_samples=max_samples_per_source,
-                grayscale=grayscale,
-            )
+            kind = spec.get("kind", "objects")
+            splits = tuple(spec.get("splits", ("train",)))
+            if kind == "pcb_defects":
+                saved = self._ingest_pcb_defect_source(
+                    repo_id=spec["repo_id"],
+                    source_name=spec["name"],
+                    max_samples=max_samples_per_source,
+                    grayscale=grayscale,
+                    splits=splits,
+                )
+            else:
+                saved = self._ingest_hf_source(
+                    repo_id=spec["repo_id"],
+                    source_name=spec["name"],
+                    max_samples=max_samples_per_source,
+                    grayscale=grayscale,
+                    splits=splits,
+                )
             totals[spec["name"]] = saved
             total_saved += saved
 
@@ -209,7 +245,7 @@ class CompactPretrainPipeline:
             "total_images": total_saved,
             "sources": totals,
             "classes": self.cfg.class_names,
-            "description": "Bundled grayscale PCB inspection and PCB component detection data for offline YOLO26x pretraining.",
+            "description": "Bundled grayscale PCB inspection, PCB component detection, and PCB defect data for offline YOLO26x pretraining.",
             "yaml": str(yaml_path),
         }
         (self.output_dir / "manifest.json").write_text(
@@ -301,61 +337,127 @@ class CompactPretrainPipeline:
         source_name: str,
         max_samples: int,
         grayscale: bool,
+        splits: tuple[str, ...] = ("train",),
     ) -> int:
         from datasets import load_dataset  # noqa: PLC0415
 
         raw_names = _raw_category_names(repo_id)
-        ds = load_dataset(repo_id, split="train", streaming=True, trust_remote_code=False)
         saved = 0
-        for sample in ds:
+        for split_name in splits:
             if saved >= max_samples:
                 break
-            image = sample.get("image")
-            if image is None:
-                continue
-
-            img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-            if grayscale:
-                img_bgr = _grayscale_profile(img_bgr)
-
-            objects = sample.get("objects") or {}
-            categories = objects.get("category") or []
-            bboxes = objects.get("bbox") or []
-            annotations: list[dict[str, Any]] = []
-
-            for cat_id, coco_box in zip(categories, bboxes):
-                try:
-                    raw_label = raw_names[int(cat_id)]
-                except Exception:
+            ds = load_dataset(repo_id, split=split_name, streaming=True, trust_remote_code=False)
+            for sample in ds:
+                if saved >= max_samples:
+                    break
+                image = sample.get("image")
+                if image is None:
                     continue
-                target = _target_label(raw_label)
-                if target is None:
-                    continue
-                if target not in self.cfg.class_names:
-                    continue
-                x, y, w, h = [float(v) for v in coco_box[:4]]
-                if w <= 0 or h <= 0:
-                    continue
-                annotations.append(
-                    {
-                        "label": target,
-                        "bbox": [x, y, x + w, y + h],
-                    }
-                )
 
-            if not annotations:
-                continue
+                img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+                if grayscale:
+                    img_bgr = _grayscale_profile(img_bgr)
 
-            stem = f"{source_name}_{saved:05d}"
-            self._save_sample(stem, img_bgr, annotations)
-            saved += 1
+                objects = sample.get("objects") or {}
+                categories = objects.get("category") or []
+                bboxes = objects.get("bbox") or []
+                annotations: list[dict[str, Any]] = []
+
+                for cat_id, coco_box in zip(categories, bboxes):
+                    try:
+                        raw_label = raw_names[int(cat_id)]
+                    except Exception:
+                        continue
+                    target = _target_label(raw_label)
+                    if target is None:
+                        continue
+                    if target not in self.cfg.class_names:
+                        continue
+                    x, y, w, h = [float(v) for v in coco_box[:4]]
+                    if w <= 0 or h <= 0:
+                        continue
+                    annotations.append(
+                        {
+                            "label": target,
+                            "bbox": [x, y, x + w, y + h],
+                        }
+                    )
+
+                if not annotations:
+                    continue
+
+                stem = f"{source_name}_{saved:05d}"
+                self._save_sample(stem, img_bgr, annotations)
+                saved += 1
+
+        return saved
+
+    def _ingest_pcb_defect_source(
+        self,
+        repo_id: str,
+        source_name: str,
+        max_samples: int,
+        grayscale: bool,
+        splits: tuple[str, ...] = ("train",),
+    ) -> int:
+        from datasets import load_dataset  # noqa: PLC0415
+
+        saved = 0
+        for split_name in splits:
+            if saved >= max_samples:
+                break
+            ds = load_dataset(repo_id, split=split_name, streaming=True, trust_remote_code=False)
+            for sample in ds:
+                if saved >= max_samples:
+                    break
+
+                image = sample.get("image")
+                label = sample.get("label") or {}
+                if image is None or not isinstance(label, dict):
+                    continue
+
+                label_name = str(label.get("name", ""))
+                target = _pcb_defect_target_from_name(label_name)
+                if target is None or target not in self.cfg.class_names:
+                    continue
+
+                img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+                if grayscale:
+                    img_bgr = _grayscale_profile(img_bgr)
+
+                bboxes = label.get("bboxes") or []
+                annotations: list[dict[str, Any]] = []
+                for bbox_info in bboxes:
+                    bbox = bbox_info.get("bbox") if isinstance(bbox_info, dict) else None
+                    if not bbox or len(bbox) < 4:
+                        continue
+                    cx, cy, bw, bh = [float(v) for v in bbox[:4]]
+                    if bw <= 0 or bh <= 0:
+                        continue
+                    x1 = (cx - bw / 2.0) * img_bgr.shape[1]
+                    y1 = (cy - bh / 2.0) * img_bgr.shape[0]
+                    x2 = (cx + bw / 2.0) * img_bgr.shape[1]
+                    y2 = (cy + bh / 2.0) * img_bgr.shape[0]
+                    annotations.append(
+                        {
+                            "label": target,
+                            "bbox": [x1, y1, x2, y2],
+                        }
+                    )
+
+                if not annotations:
+                    continue
+
+                stem = f"{source_name}_{saved:05d}"
+                self._save_sample(stem, img_bgr, annotations)
+                saved += 1
 
         return saved
 
     def _save_sample(self, stem: str, img_bgr: np.ndarray, annotations: list[dict[str, Any]]) -> None:
-        img_path = self.images_dir / f"{stem}.png"
+        img_path = self.images_dir / f"{stem}.jpg"
         lbl_path = self.labels_dir / f"{stem}.txt"
-        cv2.imwrite(str(img_path), img_bgr)
+        cv2.imwrite(str(img_path), img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
         h, w = img_bgr.shape[:2]
         lines: list[str] = []
         for ann in annotations:
@@ -376,7 +478,6 @@ class CompactPretrainPipeline:
             if folder.exists():
                 shutil.rmtree(folder)
 
-    @staticmethod
     def _find_best_weights(results: object) -> Optional[Path]:
         save_dir = getattr(results, "save_dir", None)
         if save_dir is not None:
@@ -386,3 +487,15 @@ class CompactPretrainPipeline:
         for candidate in Path("runs").rglob("best.pt"):
             return candidate
         return None
+
+
+def _pcb_defect_target_from_name(name: str) -> Optional[str]:
+    normalized = _normalize_label(name)
+    for token, target in sorted(
+        _PCB_DEFECT_NAME_TO_TARGET.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if _normalize_label(token) in normalized:
+            return target
+    return None

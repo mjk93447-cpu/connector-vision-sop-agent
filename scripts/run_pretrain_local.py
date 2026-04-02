@@ -45,7 +45,7 @@ def main() -> None:
     val_path = output_dir / "val" / "images"
     if not train_path.exists() or not val_path.exists():
         print("[run_pretrain] Dataset split missing. Preparing bundle in place...")
-        pipeline.build_bundle(max_samples_per_source=400, grayscale=True, reset=False)
+        pipeline.build_bundle(max_samples_per_source=10000, grayscale=True, reset=False)
 
     if args.device is not None:
         if args.device.lower() == "cpu":

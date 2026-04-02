@@ -500,9 +500,15 @@ def split_train_val(
     images_dir = dataset_dir / "images"
     labels_dir = dataset_dir / "labels"
 
+    image_files = [
+        p
+        for p in images_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp"}
+    ]
+    image_file_map = {p.stem: p for p in image_files}
     all_stems = sorted(
         p.stem
-        for p in images_dir.glob("*.png")
+        for p in image_files
         if (labels_dir / f"{p.stem}.txt").exists()
     )
     rng = random.Random(seed)
@@ -518,9 +524,11 @@ def split_train_val(
         (split_dir / "labels").mkdir(parents=True, exist_ok=True)
 
         for stem in stems:
-            src_img = images_dir / f"{stem}.png"
+            src_img = image_file_map.get(stem)
             src_lbl = labels_dir / f"{stem}.txt"
-            dst_img = split_dir / "images" / f"{stem}.png"
+            if src_img is None:
+                continue
+            dst_img = split_dir / "images" / src_img.name
             dst_lbl = split_dir / "labels" / f"{stem}.txt"
             if not dst_img.exists():
                 import shutil

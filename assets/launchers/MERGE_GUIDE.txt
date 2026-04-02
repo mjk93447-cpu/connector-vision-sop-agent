@@ -30,7 +30,7 @@ FINAL FOLDER STRUCTURE:
   +-- start_pretrain.bat           <- DOUBLE-CLICK TO START LOCAL TRAINING
   +-- stop_ollama.bat
   +-- pretrain_data\               <- bundled PCB / electronics training dataset
-  |   +-- source data: pcb_inspection + pcb_component_detection
+  |   +-- source data: pcb_inspection + pcb_component_detection + pcb_defect_detection
   +-- ollama_models\
       +-- blobs\sha256-...         <- from connector-agent-llm zip
       +-- manifests\...            <- from connector-agent-llm zip

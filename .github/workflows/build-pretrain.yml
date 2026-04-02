@@ -60,7 +60,7 @@ jobs:
         run: |
           python scripts/prepare_pretrain_data.py `
             --output-dir pretrain_data `
-            --max-samples-per-source 400
+            --max-samples-per-source 10000
 
       - name: Validate prepared dataset
         shell: pwsh
@@ -76,10 +76,15 @@ jobs:
           }
           $imgCount = (Get-ChildItem "pretrain_data\train\images" -File | Measure-Object).Count
           $lblCount = (Get-ChildItem "pretrain_data\train\labels" -File | Measure-Object).Count
+          $manifest = Get-Content "pretrain_data\manifest.json" -Raw | ConvertFrom-Json
+          $totalImages = [int]$manifest.total_images
           if ($imgCount -lt 1 -or $lblCount -lt 1) {
             throw "Prepared dataset is empty after split"
           }
-          Write-Host "Prepared dataset validated. train images=$imgCount labels=$lblCount"
+          if ($totalImages -lt 1000) {
+            throw "Prepared dataset is too small after collection: $totalImages"
+          }
+          Write-Host "Prepared dataset validated. train images=$imgCount labels=$lblCount total_images=$totalImages sources=$($manifest.sources | ConvertTo-Json -Compress)"
 
       - name: Ensure YOLO26x base weights exist
         shell: pwsh
@@ -88,107 +93,15 @@ jobs:
             python -c "from ultralytics import YOLO; import shutil, pathlib; m=YOLO('yolo26x.pt'); src=pathlib.Path(getattr(m,'ckpt_path','yolo26x.pt')); src=pathlib.Path('yolo26x.pt') if not src.exists() else src; pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True); shutil.copy2(str(src), 'assets/models/yolo26x.pt')"
           }
 
-      - name: Create pretrain dataset manifest (Tier A real datasets only)
-        shell: pwsh
-        run: |
-          $manifest = @"
-          sources:
-            - name: msd
-              enabled: true
-              license: GPL
-              format: yolo
-              description: MSD - Smartphone surface defects
-              class_map:
-                oled_inspection_top_view: 0
-                connector_pin_cluster_upper: 1
-                connector_pin_cluster_lower: 2
-                connector_pin_mold_left: 3
-                connector_pin_mold_right: 4
-                oled_panel_marker: 5
-            - name: ssgd
-              enabled: true
-              license: MIT
-              format: yolo
-              description: SSGD - Smartphone screen glass defects
-              class_map:
-                oled_inspection_top_view: 0
-                connector_pin_cluster_upper: 1
-                connector_pin_cluster_lower: 2
-                connector_pin_mold_left: 3
-                connector_pin_mold_right: 4
-                oled_panel_marker: 5
-          "@
-          $manifest | Out-File -FilePath pretrain_dataset_manifest.yaml -Encoding utf8
-
-      - name: Download Tier A real datasets
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path "pretrain_data/images" -Force | Out-Null
-          New-Item -ItemType Directory -Path "pretrain_data/labels" -Force | Out-Null
-          
-          # Download MSD dataset (스마트폰 표면 결함)
-          Write-Host "Downloading MSD dataset (smartphone surface defects)..."
-          $msdDir = (New-Item -ItemType Directory -Path "temp_datasets/msd" -Force).FullName
-          try {
-            git clone --depth 1 --quiet https://github.com/jianzhang96/MSD.git $msdDir 2>&1
-            if (Test-Path "$msdDir/train/images") {
-              Get-ChildItem "$msdDir/train/images" -Include "*.jpg","*.png" -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item $_.FullName "pretrain_data/images/" -ErrorAction SilentlyContinue
-              }
-              Get-ChildItem "$msdDir/train/labels" -Include "*.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item $_.FullName "pretrain_data/labels/" -ErrorAction SilentlyContinue
-              }
-              Write-Host "✓ MSD dataset loaded"
-            }
-          } catch {
-            Write-Host "⚠ MSD download failed: $_"
-          }
-          
-          # Download SSGD dataset (스크린 글라스 결함)
-          Write-Host "Downloading SSGD dataset (screen glass defects)..."
-          $ssgdDir = (New-Item -ItemType Directory -Path "temp_datasets/ssgd" -Force).FullName
-          try {
-            git clone --depth 1 --quiet https://github.com/VincentHancoder/SSGD.git $ssgdDir 2>&1
-            if (Test-Path "$ssgdDir/train/images") {
-              Get-ChildItem "$ssgdDir/train/images" -Include "*.jpg","*.png" -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item $_.FullName "pretrain_data/images/" -ErrorAction SilentlyContinue
-              }
-              Get-ChildItem "$ssgdDir/train/labels" -Include "*.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item $_.FullName "pretrain_data/labels/" -ErrorAction SilentlyContinue
-              }
-              Write-Host "✓ SSGD dataset loaded"
-            }
-          } catch {
-            Write-Host "⚠ SSGD download failed: $_"
-          }
-          
-          # Verify and report dataset statistics
-          $imgCount = (Get-ChildItem "pretrain_data/images" -Include "*.jpg","*.png" -ErrorAction SilentlyContinue | Measure-Object).Count
-          $lblCount = (Get-ChildItem "pretrain_data/labels" -Include "*.txt" -ErrorAction SilentlyContinue | Measure-Object).Count
-          Write-Host ""
-          Write-Host "Dataset Summary:"
-          Write-Host "  Images: $imgCount"
-          Write-Host "  Labels: $lblCount"
-          
-          if ($imgCount -lt 5) {
-            Write-Host "⚠ Warning: Limited real dataset images ($imgCount). Proceeding with available data."
-          } else {
-            Write-Host "✓ Real dataset ready for artifact bundling"
-          }
-          
-          # Cleanup temporary directories
-          Remove-Item -Path "temp_datasets" -Recurse -Force -ErrorAction SilentlyContinue
-
       - name: Verify compact pretrain script
         shell: pwsh
         run: |
-          python -c "import scripts.run_pretrain_compact; print('Compact pretrain script import OK')"
-          python scripts/run_pretrain_compact.py --help | Out-String -Stream | Select-Object -First 10
+          python -c "import scripts.run_pretrain_local; print('Compact pretrain script import OK')"
+          python scripts/run_pretrain_local.py --help | Out-String -Stream | Select-Object -First 10
 
       - name: Verify YOLO26x loads
         shell: cmd
         run: python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26x.pt'); print('YOLO26x classes:', len(m.names))"
-
 
       - name: Build pretrain EXE with PyInstaller
         shell: cmd

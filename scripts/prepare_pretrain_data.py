@@ -15,7 +15,7 @@ from src.training.compact_pretrain_pipeline import (  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare compact PCB pretrain data")
+    parser = argparse.ArgumentParser(description="Prepare compact PCB defect pretrain data")
     parser.add_argument(
         "--output-dir",
         default="pretrain_data",
@@ -24,8 +24,8 @@ def main() -> None:
     parser.add_argument(
         "--max-samples-per-source",
         type=int,
-        default=400,
-        help="Maximum usable samples to keep from each PCB/electronics source dataset.",
+        default=10000,
+        help="Maximum usable samples to keep from each source dataset.",
     )
     parser.add_argument(
         "--no-grayscale",
