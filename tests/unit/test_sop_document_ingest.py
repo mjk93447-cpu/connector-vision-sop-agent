@@ -30,7 +30,7 @@ class _FakeLLM:
 def test_ingest_txt_with_llm(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("src.sop_document_ingest.ClassRegistry.load", lambda: _FakeRegistry())
     llm_payload = {
-        "version": "4.2.0",
+        "version": "4.4.0",
         "title": "Sample SOP",
         "source_path": "sample.txt",
         "source_type": "txt",
@@ -77,7 +77,7 @@ def test_export_json_round_trip(monkeypatch, tmp_path: Path) -> None:
     ingestor = SOPDocumentIngestor()
     artifact = ingestor._normalize_artifact(  # noqa: SLF001
         {
-            "version": "4.2.0",
+            "version": "4.4.0",
             "title": "Export SOP",
             "steps": [
                 {

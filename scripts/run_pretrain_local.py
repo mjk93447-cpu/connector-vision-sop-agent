@@ -3,66 +3,111 @@
 from __future__ import annotations
 
 import argparse
+from multiprocessing import freeze_support
 import sys
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
-from src.config_loader import get_base_dir  # noqa: E402
+from src.pretrain_runtime import (  # noqa: E402
+    count_prepared_images,
+    detect_pretrain_hardware,
+    resolve_pretrain_data_root,
+    suggest_pretrain_profile,
+)
 from src.training.compact_pretrain_pipeline import (  # noqa: E402
     CompactPretrainConfig,
     CompactPretrainPipeline,
 )
 
 
-def _resolve_output_dir() -> Path:
-    base_dir = get_base_dir()
-    for name in ("pretrain_data", "pretrain_data_test"):
-        candidate = base_dir / name
-        if candidate.exists():
-            return candidate
-    return base_dir / "pretrain_data"
-
-
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Compact YOLO26x local pretrain")
-    parser.add_argument("--epochs", type=int, default=40, help="Training epochs.")
-    parser.add_argument("--batch", type=int, default=16, help="Training batch size.")
+    parser.add_argument("--epochs", type=int, default=None, help="Training epochs.")
+    parser.add_argument("--batch", type=int, default=None, help="Training batch size.")
+    parser.add_argument("--imgsz", type=int, default=None, help="Training image size.")
+    parser.add_argument("--workers", type=int, default=None, help="Data loader workers.")
+    parser.add_argument("--data-root", type=str, default=None, help="Pretrain data root.")
     parser.add_argument(
         "--device",
         type=str,
         default=None,
         help="Optional device override: auto/cpu/0",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the selected profile and exit without training.",
+    )
+    return parser
+
+
+def main() -> None:
+    freeze_support()
+    parser = _build_parser()
     args = parser.parse_args()
 
-    output_dir = _resolve_output_dir()
+    output_dir = resolve_pretrain_data_root(args.data_root)
     cfg = CompactPretrainConfig(output_dir=output_dir)
     pipeline = CompactPretrainPipeline(output_dir=output_dir, config=cfg)
+
+    hardware = detect_pretrain_hardware()
+    image_count = count_prepared_images(output_dir)
+    profile = suggest_pretrain_profile(image_count=image_count)
+
+    train_device = profile.device
+    if args.device is not None:
+        if args.device.lower() == "cpu":
+            train_device = "cpu"
+        elif args.device.lower() == "auto":
+            train_device = profile.device
+        elif args.device.lower() in {"0", "cuda", "cuda:0", "gpu"}:
+            train_device = 0
+        else:
+            train_device = args.device
+
+    profile = suggest_pretrain_profile(image_count=image_count, explicit_device=train_device)
+    train_epochs = args.epochs if args.epochs is not None else profile.epochs
+    train_batch = args.batch if args.batch is not None else profile.batch
+    train_imgsz = args.imgsz if args.imgsz is not None else profile.image_size
+    train_workers = args.workers if args.workers is not None else profile.workers
 
     train_path = output_dir / "train" / "images"
     val_path = output_dir / "val" / "images"
     if not train_path.exists() or not val_path.exists():
         print("[run_pretrain] Dataset split missing. Preparing bundle in place...")
         pipeline.build_bundle(max_samples_per_source=10000, grayscale=True, reset=False)
+        image_count = count_prepared_images(output_dir)
+        profile = suggest_pretrain_profile(image_count=image_count, explicit_device=train_device)
+        if args.epochs is None:
+            train_epochs = profile.epochs
+        if args.batch is None:
+            train_batch = profile.batch
+        if args.imgsz is None:
+            train_imgsz = profile.image_size
+        if args.workers is None:
+            train_workers = profile.workers
 
-    if args.device is not None:
-        if args.device.lower() == "cpu":
-            cfg.device = "cpu"
-        elif args.device.lower() in {"0", "cuda", "cuda:0", "gpu"}:
-            cfg.device = 0
-        else:
-            cfg.device = args.device
+    pipeline.prepare_dataset_yaml()
 
     print(
-        f"[run_pretrain] start epochs={args.epochs} batch={args.batch} "
-        f"device={cfg.device} data={output_dir}"
+        "[run_pretrain] profile "
+        f"device={train_device} gpu={hardware.get('name')} vram={hardware.get('memory_gb')}GB "
+        f"ram={hardware.get('ram_gb')}GB cores={hardware.get('physical_cores')} "
+        f"epochs={train_epochs} batch={train_batch} imgsz={train_imgsz} "
+        f"workers={train_workers} data={output_dir} images={image_count}"
     )
+
+    if args.dry_run:
+        return
+
     weights = pipeline.train_and_save(
-        epochs=args.epochs,
-        batch=args.batch,
-        device=cfg.device,
+        epochs=train_epochs,
+        batch=train_batch,
+        device=train_device,
+        imgsz=train_imgsz,
+        workers=train_workers,
     )
     print(f"[run_pretrain] finished -> {weights}")
 

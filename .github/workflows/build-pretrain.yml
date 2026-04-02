@@ -45,6 +45,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
+          python -m pip install --force-reinstall --index-url https://download.pytorch.org/whl/cu121 torch==2.3.1 torchvision==0.18.1
           python -m pip install -r requirements-dev.txt
 
       - name: Pretrain preflight tests
@@ -61,6 +62,18 @@ jobs:
           python scripts/prepare_pretrain_data.py `
             --output-dir pretrain_data `
             --max-samples-per-source 10000
+
+      - name: Validate dataset yaml and auto profile
+        shell: pwsh
+        run: |
+          python scripts/run_pretrain_local.py --dry-run --data-root pretrain_data | Out-String -Stream
+          $yaml = Get-Content "pretrain_data\pretrain_dataset.yaml" -Raw
+          if ($yaml -notmatch "train: train/images") {
+            throw "pretrain_dataset.yaml must use relative train/images path"
+          }
+          if ($yaml -notmatch "val: val/images") {
+            throw "pretrain_dataset.yaml must use relative val/images path"
+          }
 
       - name: Validate prepared dataset
         shell: pwsh

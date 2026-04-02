@@ -49,6 +49,8 @@ class TestCompactPretrainPipeline:
         content = yaml_path.read_text(encoding="utf-8")
         assert "connector" in content
         assert "button" not in content
+        assert "train: train/images" in content
+        assert "val: val/images" in content
 
     def test_build_bundle_creates_split_dataset(self, tmp_path: Path) -> None:
         pipeline = CompactPretrainPipeline(output_dir=tmp_path)

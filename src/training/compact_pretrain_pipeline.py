@@ -15,7 +15,8 @@ from typing import Any, Optional
 import cv2
 import numpy as np
 
-from src.config_loader import detect_local_accelerator, get_base_dir
+from src.config_loader import get_base_dir
+from src.pretrain_runtime import detect_pretrain_hardware, suggest_pretrain_profile
 from src.training.dataset_converter import split_train_val
 
 LINE_PRETRAIN_CLASSES: list[str] = [
@@ -214,23 +215,13 @@ class CompactPretrainPipeline:
 
     @staticmethod
     def suggest_runtime_defaults(image_count: int | None = None) -> dict[str, Any]:
-        accelerator = detect_local_accelerator()
-        sample_count = image_count or 0
-        if accelerator["device"] == "cpu":
-            return {
-                "device": "cpu",
-                "epochs": 8 if sample_count <= 30 else 5,
-                "batch": 2,
-                "image_size": 320,
-            }
-        memory_gb = accelerator.get("memory_gb")
-        batch = 16 if memory_gb and memory_gb >= 20 else 8 if memory_gb and memory_gb >= 12 else 4
-        epochs = 60 if sample_count <= 30 else 40 if sample_count <= 120 else 30
+        profile = suggest_pretrain_profile(image_count=image_count)
         return {
-            "device": accelerator["device"],
-            "epochs": epochs,
-            "batch": batch,
-            "image_size": 640,
+            "device": profile.device,
+            "epochs": profile.epochs,
+            "batch": profile.batch,
+            "image_size": profile.image_size,
+            "workers": profile.workers,
         }
 
     def build_bundle(
@@ -300,12 +291,11 @@ class CompactPretrainPipeline:
 
     def prepare_dataset_yaml(self) -> Path:
         yaml_path = self.output_dir / "pretrain_dataset.yaml"
-        train_path = (self.output_dir / "train" / "images").resolve()
-        val_path = (self.output_dir / "val" / "images").resolve()
+        root_path = self.output_dir.resolve()
         content = (
-            f"path: {self.output_dir.resolve()}\n"
-            f"train: {train_path}\n"
-            f"val: {val_path}\n"
+            f"path: {root_path}\n"
+            f"train: train/images\n"
+            f"val: val/images\n"
             f"nc: {len(self.cfg.class_names)}\n"
             f"names: {json.dumps(self.cfg.class_names, ensure_ascii=False)}\n"
         )
@@ -317,16 +307,16 @@ class CompactPretrainPipeline:
         epochs: Optional[int] = None,
         batch: Optional[int] = None,
         device: Optional[object] = None,
+        imgsz: Optional[int] = None,
+        workers: Optional[int] = None,
     ) -> Path:
         from ultralytics import YOLO  # noqa: PLC0415
 
-        yaml_path = self.output_dir / "pretrain_dataset.yaml"
-        if not yaml_path.exists():
-            if not (self.output_dir / "train" / "images").exists():
-                raise RuntimeError(
-                    "Pretrain dataset is not prepared. Run the bundle prep step first."
-                )
-            self.prepare_dataset_yaml()
+        if not (self.output_dir / "train" / "images").exists():
+            raise RuntimeError(
+                "Pretrain dataset is not prepared. Run the bundle prep step first."
+            )
+        self.prepare_dataset_yaml()
 
         model_path = self.cfg.base_model if self.cfg.base_model.exists() else Path("yolo26x.pt")
         if not model_path.exists():
@@ -335,15 +325,19 @@ class CompactPretrainPipeline:
         train_device = device if device is not None else self.cfg.device
         train_epochs = epochs or self.cfg.epochs
         train_batch = batch or self.cfg.batch
+        train_imgsz = imgsz or self.cfg.image_size
+        if workers is None:
+            hw = detect_pretrain_hardware()
+            workers = max(2, min(int(hw["physical_cores"] or 2), 8))
 
         model = YOLO(str(model_path))
         results = model.train(
             data=str(yaml_path),
             epochs=train_epochs,
-            imgsz=self.cfg.image_size,
+            imgsz=train_imgsz,
             batch=train_batch,
             device=train_device,
-            workers=0,
+            workers=workers,
             exist_ok=True,
             rect=False,
             hsv_h=0.0,

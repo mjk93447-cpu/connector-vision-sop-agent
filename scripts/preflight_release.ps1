@@ -5,7 +5,10 @@ param(
         "tests/unit/test_annotation_queue.py",
         "tests/unit/test_sop_document_ingest.py",
         "tests/unit/test_llm_offline.py",
-        "tests/unit/test_check_local_runtime.py"
+        "tests/unit/test_check_local_runtime.py",
+        "tests/unit/test_pretrain_runtime.py",
+        "tests/unit/test_run_pretrain_local.py",
+        "tests/unit/test_start_pretrain_bat.py"
     ),
     [string[]]$IntegrationTests = @(
         "tests/integration/test_no_yolo_sop_run.py"
@@ -61,6 +64,14 @@ Test-RequiredFiles
 
 Write-Host "[preflight] running unit tests..."
 Invoke-Pytest -Tests $UnitTests -TimeoutSec 60
+
+if ((Test-Path "pretrain_data") -or (Test-Path "pretrain_data_test")) {
+    Write-Host "[preflight] verifying pretrain launcher dry-run..."
+    & python scripts/run_pretrain_local.py --dry-run
+    if ($LASTEXITCODE -ne 0) {
+        throw "Pretrain dry-run failed"
+    }
+}
 
 if ($IntegrationTests.Count -gt 0) {
     Write-Host "[preflight] running integration smoke tests..."

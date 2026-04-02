@@ -695,7 +695,7 @@ class OfflineLLM:
             "class_names": class_names,
             "document_text": document_text,
             "output_schema": {
-                "version": "4.2.0",
+                "version": "4.4.0",
                 "title": "string",
                 "source_path": "string",
                 "source_type": "pdf|txt",
@@ -746,7 +746,7 @@ class OfflineLLM:
         except Exception:
             pass
         return {
-            "version": "4.2.0",
+            "version": "4.4.0",
             "title": source_path or "Imported SOP",
             "source_path": source_path,
             "source_type": source_type,

@@ -1,5 +1,5 @@
 ================================================================
- Connector Vision SOP Agent v4.2.0 - Split Deployment Package
+Connector Vision SOP Agent v4.4.0 - Split Deployment Package
  INSTALL GUIDE
 ================================================================
 

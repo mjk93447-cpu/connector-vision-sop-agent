@@ -117,7 +117,7 @@ This folder is intentionally left as a placeholder until the LLM artifact is mer
 }
 
 New-TextFile -Path (Join-Path $OutputRoot "MERGE_GUIDE.txt") -Content @"
-Connector Vision SOP Agent 4.2.0 Deployment Pack
+Connector Vision SOP Agent 4.4.0 Deployment Pack
 
 Contents:
   - connector-agent-app.zip: main app EXE + launchers + config/models
