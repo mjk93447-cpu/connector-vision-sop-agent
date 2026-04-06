@@ -18,6 +18,8 @@ on:
       - "assets/launchers/MERGE_GUIDE.txt"
       - "pretrain_exe.spec"
       - "scripts/pyinstaller_support.py"
+      - "requirements-common.txt"
+      - "requirements-pretrain.txt"
       - "tests/unit/test_compact_pretrain_pipeline.py"
       - ".github/workflows/build-pretrain.yml"
 
@@ -44,12 +46,14 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements-common.txt
+            requirements-pretrain.txt
             requirements-dev.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-common.txt
+          python -m pip install -r requirements-pretrain.txt
           python -m pip install --force-reinstall --index-url https://download.pytorch.org/whl/cu121 torch==2.3.1 torchvision==0.18.1
           python -m pip install -r requirements-dev.txt
 

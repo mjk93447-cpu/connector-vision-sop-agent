@@ -1,0 +1,4 @@
+# Pretrain-only dependencies that are not needed by the main GUI app pack.
+
+datasets>=2.19.0
+huggingface_hub>=0.21.0

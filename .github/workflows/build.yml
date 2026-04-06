@@ -16,6 +16,7 @@ on:
       - "build_exe.spec"
       - "scripts/pyinstaller_support.py"
       - "src/model_artifacts.py"
+      - "requirements-common.txt"
       - "requirements.txt"
       - "requirements-dev.txt"
       - "scripts/preflight_release.ps1"
