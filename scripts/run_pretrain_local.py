@@ -52,6 +52,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip auto-building the pretrain dataset bundle when splits are missing.",
     )
+    parser.add_argument(
+        "--allow-bundle-prep",
+        action="store_true",
+        help="Allow automatic dataset bundle preparation when splits are missing.",
+    )
     return parser
 
 
@@ -97,8 +102,11 @@ def main() -> None:
     train_path = output_dir / "train" / "images"
     val_path = output_dir / "val" / "images"
     if not train_path.exists() or not val_path.exists():
-        if args.skip_bundle_prep:
-            print("[run_pretrain] Dataset split missing. Bundle prep skipped by flag.")
+        if args.skip_bundle_prep or not args.allow_bundle_prep:
+            print(
+                "[run_pretrain] Dataset split missing. Automatic bundle prep is disabled "
+                "unless --allow-bundle-prep is supplied."
+            )
             if args.dry_run:
                 print(
                     "[run_pretrain] Dry-run mode will continue without training, "
@@ -107,7 +115,8 @@ def main() -> None:
             else:
                 raise SystemExit(
                     "[run_pretrain] Pretrain dataset is missing. Merge local pretrain_data "
-                    "next to the EXE, or run a manual dataset build on a dev machine."
+                    "next to the EXE, or explicitly rerun with --allow-bundle-prep "
+                    "on a development machine."
                 )
         else:
             print("[run_pretrain] Dataset split missing. Preparing bundle in place...")

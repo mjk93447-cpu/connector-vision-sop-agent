@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path.cwd()))
 
 from scripts.pyinstaller_support import MAIN_BUNDLE_PACKAGES, collect_package_bundle
+from scripts.pyinstaller_support import OPTIONAL_BUNDLE_EXCLUDES
 
 block_cipher = None
 
@@ -39,7 +40,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=list(OPTIONAL_BUNDLE_EXCLUDES),
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

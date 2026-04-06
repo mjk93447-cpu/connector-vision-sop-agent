@@ -28,6 +28,19 @@ PRETRAIN_BUNDLE_PACKAGES: tuple[str, ...] = (
     "huggingface_hub",
 )
 
+# Packages that are noisy or heavyweight in the current environment, but are
+# not needed by the offline runtime paths we ship in the artifacts.
+OPTIONAL_BUNDLE_EXCLUDES: tuple[str, ...] = (
+    "tensorflow",
+    "keras",
+    "jax",
+    "jaxlib",
+    "tensorboard",
+    "torch.testing._internal",
+    "expecttest",
+    "pytest",
+)
+
 
 def collect_package_bundle(packages: Iterable[str]) -> tuple[list[Any], list[Any], list[str]]:
     """Collect datas, binaries, and hidden imports for a list of packages."""
