@@ -15,6 +15,7 @@ on:
       - "assets/models/*.pt"
       - "build_exe.spec"
       - "scripts/pyinstaller_support.py"
+      - "scripts/preflight_cuda_pretrain.py"
       - "src/model_artifacts.py"
       - "requirements-common.txt"
       - "requirements.txt"
@@ -80,6 +81,10 @@ jobs:
       - name: Verify YOLO26x loads
         shell: cmd
         run: python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26x.pt'); print('YOLO26x classes:', len(m.names))"
+
+      - name: Preflight CUDA/runtime smoke test
+        shell: cmd
+        run: python scripts/preflight_cuda_pretrain.py --model assets/models/yolo26x.pt
 
       - name: Build EXE with PyInstaller
         shell: cmd

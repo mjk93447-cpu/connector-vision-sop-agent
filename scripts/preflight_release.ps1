@@ -84,6 +84,16 @@ Test-RequiredFiles
 Write-Host "[preflight] running unit tests..."
 Invoke-Pytest -Tests $UnitTests -TimeoutSec 60
 
+Write-Host "[preflight] running CUDA/runtime smoke test..."
+if (Test-Path "assets\models\yolo26x.pt") {
+    & python scripts/preflight_cuda_pretrain.py --model assets/models/yolo26x.pt
+} else {
+    & python scripts/preflight_cuda_pretrain.py --skip-model-load
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "CUDA/runtime smoke test failed"
+}
+
 if ((Test-Path "pretrain_data") -or (Test-Path "pretrain_data_test")) {
     Write-Host "[preflight] verifying pretrain launcher dry-run..."
     & python scripts/run_pretrain_local.py --dry-run
