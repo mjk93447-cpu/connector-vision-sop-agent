@@ -35,7 +35,8 @@ pytestmark = pytest.mark.timeout(300)
 
 _MODEL_CANDIDATES = [
     Path("assets/models/yolo26n.pt"),  # nano — fastest
-    Path("assets/models/yolo26x_pretrained.pt"),  # pretrained — larger
+    Path("assets/models/yolo26x_pretrain.pt"),  # cloud pretrain — larger
+    Path("assets/models/yolo26x_pretrained.pt"),  # legacy compatibility alias
 ]
 
 
@@ -119,7 +120,7 @@ class TestTrainingE2E:
         if model_path is None:
             pytest.skip(
                 "No YOLO26 model found in assets/models/ — "
-                "place yolo26n.pt or yolo26x_pretrained.pt to run this test"
+                "place yolo26n.pt or yolo26x_pretrain.pt to run this test"
             )
         self._model_path = model_path
         try:

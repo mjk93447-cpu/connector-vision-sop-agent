@@ -9,6 +9,7 @@
 - Main agent: `src/main.py`
 - Local pretrain: `scripts/run_pretrain_local.py`
 - Active path map: `docs/ACTIVE_PATHS.md`
+- Model naming reference: `docs/MODEL_ARTIFACT_NAMING.md`
 
 Legacy pretrain scripts are compatibility-only and should not be used for new work.
 

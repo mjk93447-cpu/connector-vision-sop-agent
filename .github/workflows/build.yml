@@ -15,6 +15,7 @@ on:
       - "assets/models/*.pt"
       - "build_exe.spec"
       - "scripts/pyinstaller_support.py"
+      - "src/model_artifacts.py"
       - "requirements.txt"
       - "requirements-dev.txt"
       - "scripts/preflight_release.ps1"
@@ -59,8 +60,14 @@ jobs:
           if (-not (Test-Path "assets\models\yolo26x.pt")) {
             python -c "from ultralytics import YOLO; import shutil, pathlib; m=YOLO('yolo26x.pt'); src=pathlib.Path(getattr(m,'ckpt_path','yolo26x.pt')); src=pathlib.Path('yolo26x.pt') if not src.exists() else src; pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True); shutil.copy2(str(src), 'assets/models/yolo26x.pt')"
           }
-          if (-not (Test-Path "assets\models\yolo26x_pretrained.pt")) {
-            throw "Missing assets/models/yolo26x_pretrained.pt"
+          if (Test-Path "assets\models\yolo26x_pretrain.pt") {
+            Write-Host "Canonical cloud pretrain checkpoint already present."
+          }
+          elseif (Test-Path "assets\models\yolo26x_pretrained.pt") {
+            Copy-Item "assets\models\yolo26x_pretrained.pt" "assets\models\yolo26x_pretrain.pt"
+          }
+          else {
+            throw "Missing assets/models/yolo26x_pretrain.pt (legacy alias assets/models/yolo26x_pretrained.pt is also required for migration)"
           }
 
       - name: Verify YOLO26x loads
@@ -94,7 +101,7 @@ jobs:
           Copy-Item "assets\config.json" "$pkg\assets\config.json"
           Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json"
           Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"
-          Copy-Item "assets\models\yolo26x_pretrained.pt" "$pkg\assets\models\yolo26x_pretrained.pt"
+          Copy-Item "assets\models\yolo26x_pretrain.pt" "$pkg\assets\models\yolo26x_pretrain.pt"
           Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"

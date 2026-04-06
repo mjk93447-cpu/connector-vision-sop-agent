@@ -39,6 +39,7 @@ A-1. WHAT THIS PROGRAM DOES
     3. Verify pin counts and connector positions
     4. Save and apply settings
     5. Log all steps with screenshots for review
+  See docs/MODEL_ARTIFACT_NAMING.md for the canonical model filenames.
 
 A-2. SYSTEM REQUIREMENTS (Line PC)
 ------------------------------------
@@ -71,6 +72,7 @@ A-4. FILES YOU WILL NEED
     File 1: connector-agent-app.zip         (~500 MB)
              Contains: connector_vision_agent.exe, ollama.exe,
                        config.json, sop_steps.json, yolo26x.pt,
+                       yolo26x_pretrain.pt,
                        start_agent.bat, stop_ollama.bat, INSTALL_GUIDE.txt
 
     File 2: connector-agent-pretrain.zip    (small, dataset excluded)

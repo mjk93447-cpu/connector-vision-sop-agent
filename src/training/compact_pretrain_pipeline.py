@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from src.config_loader import get_base_dir
+from src.model_artifacts import COCO_BASE_MODEL_NAME, LOCAL_PRETRAIN_MODEL_NAME, resolve_model_artifact
 from src.pretrain_runtime import detect_pretrain_hardware, suggest_pretrain_profile
 from src.training.dataset_converter import split_train_val
 
@@ -178,12 +179,9 @@ def _grayscale_profile(img_bgr: np.ndarray) -> np.ndarray:
 @dataclass
 class CompactPretrainConfig:
     output_dir: Path = field(default_factory=lambda: get_base_dir() / "pretrain_data")
-    base_model: Path = field(
-        default_factory=lambda: get_base_dir() / "assets/models/yolo26x.pt"
-    )
+    base_model: Path = field(default_factory=lambda: get_base_dir() / "assets/models/yolo26x.pt")
     output_weights: Path = field(
-        default_factory=lambda: get_base_dir()
-        / "assets/models/yolo26x_local_pretrained.pt"
+        default_factory=lambda: get_base_dir() / f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}"
     )
     epochs: int = 40
     batch: int = 16
@@ -322,7 +320,7 @@ class CompactPretrainPipeline:
             )
         self.prepare_dataset_yaml()
 
-        model_path = self.cfg.base_model if self.cfg.base_model.exists() else Path("yolo26x.pt")
+        model_path = resolve_model_artifact(self.cfg.base_model or COCO_BASE_MODEL_NAME)
         if not model_path.exists():
             raise FileNotFoundError(f"Base model not found: {model_path}")
 

@@ -25,6 +25,7 @@ Use these first when exploring or extending the project:
 - `src/main.py` for the main agent
 - `scripts/run_pretrain_local.py` for local pretrain
 - `docs/ACTIVE_PATHS.md` for active vs legacy path guidance
+- `docs/MODEL_ARTIFACT_NAMING.md` for `yolo26x.pt` / `yolo26x_pretrain.pt` / `yolo26x_local_pretrained.pt`
 
 Legacy pretrain scripts are kept only as compatibility shims and should not be used for new work.
 
@@ -145,4 +146,3 @@ LLM 기반 SOP/비전 튜닝은 **항상 사람이 최종 승인**한다는 원�
    Step 12/12: apply ✓ (28.4s)
    ✅ SOP Complete!
    ```
-

@@ -27,10 +27,9 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.config_loader import detect_local_accelerator, get_base_dir
+from src.model_artifacts import COCO_BASE_MODEL_NAME, resolve_model_artifact
 
-_DEFAULT_BASE_MODEL = (
-    "yolo26x.pt"  # YOLO26x: NMS-free, highest mAP in YOLO26 family (ultralytics>=8.4.0)
-)
+_DEFAULT_BASE_MODEL = COCO_BASE_MODEL_NAME
 _TARGET_WEIGHTS = get_base_dir() / "assets/models/yolo26x.pt"
 
 
@@ -195,11 +194,9 @@ class TrainingManager:
         # Determine starting weights: prefer existing custom model if present,
         # then caller-supplied base_model override, then self.base_model default.
         if self.target_weights.exists():
-            start_weights = str(self.target_weights)
-        elif base_model is not None:
-            start_weights = base_model
+            start_weights = self.target_weights
         else:
-            start_weights = self.base_model
+            start_weights = resolve_model_artifact(base_model or self.base_model)
 
         # ------------------------------------------------------------------ #
         # Clean stale ultralytics label-cache files.                        #
@@ -218,10 +215,11 @@ class TrainingManager:
         if not Path(start_weights).exists():
             raise FileNotFoundError(
                 f"Model file not found: {start_weights}\n"
-                "Place yolo26x.pt in assets/models/ before training."
+                "Place yolo26x.pt, yolo26x_pretrain.pt, or yolo26x_local_pretrained.pt "
+                "in assets/models/ before training."
             )
 
-        model = YOLO(start_weights)
+        model = YOLO(str(start_weights))
         device = self._resolve_device()
 
         # Patch the on_train_epoch_end callback to forward progress.

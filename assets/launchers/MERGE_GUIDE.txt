@@ -27,6 +27,8 @@ FINAL FOLDER STRUCTURE:
   |   +-- sop_steps.json           <- 40-step atomic SOP definition (editable)
   |   +-- models\
   |       +-- yolo26x.pt           <- YOLO weights
+  |       +-- yolo26x_pretrain.pt  <- cloud/GitHub pretrain checkpoint
+  |       +-- yolo26x_local_pretrained.pt <- offline pretrain output
   +-- start_pretrain.bat           <- DOUBLE-CLICK TO START LOCAL TRAINING
   +-- stop_ollama.bat
   +-- pretrain_data\               <- optional local dataset folder (not bundled in GitHub artifact)
@@ -65,6 +67,7 @@ CANONICAL PATHS
 --------------------------------------------------
   - Primary pretrain entrypoint: scripts/run_pretrain_local.py
   - Legacy pretrain scripts are deprecated and kept only for compatibility
+  - Model naming reference: docs/MODEL_ARTIFACT_NAMING.md
 
 CUSTOMIZATION:
   - Edit assets\config.json to tune pin counts, timing, thresholds

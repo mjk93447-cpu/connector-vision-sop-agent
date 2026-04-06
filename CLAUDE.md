@@ -64,7 +64,7 @@ Tier A 실사: ✅ MSD / SSGD / DeepPCB / Roboflow
 ### Pretrain 워크플로우
 1. **CI 단계** (workflow): Tier A 데이터셋 다운로드 → 아티펙트 번들 생성
 2. **로컬 고사양 PC**: 아티펙트 다운로드 → `start_pretrain.bat` 실행 → GPU로 학습
-3. **결과**: `assets/models/yolo26x_local_pretrained.pt` 생성
+3. **결과**: `assets/models/yolo26x_local_pretrained.pt` 생성 (GitHub/cloud pretrain timeout 시 local/offline fallback)
 
 ### Tier A 데이터셋 구성
 | 출처 | 용도 | 라이선스 | 예상 이미지 |

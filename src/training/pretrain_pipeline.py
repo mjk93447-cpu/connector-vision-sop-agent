@@ -55,11 +55,16 @@ from src.training.dataset_converter import (
 from src.training.dataset_manager import DatasetManager
 from src.training.dataset_manifest import DatasetManifest, DatasetManifestError
 from src.config_loader import get_base_dir, suggest_training_profile
+from src.model_artifacts import (
+    CLOUD_PRETRAIN_MODEL_NAME,
+    LOCAL_PRETRAIN_MODEL_NAME,
+    resolve_cloud_pretrain_model,
+)
 
 _DEFAULT_OUTPUT_DIR = get_base_dir() / "pretrain_data"
 if not _DEFAULT_OUTPUT_DIR.exists():
     _DEFAULT_OUTPUT_DIR = get_base_dir() / "pretrain_data_test"
-_PRETRAIN_WEIGHTS = get_base_dir() / "assets/models/yolo26x_pretrained.pt"
+_PRETRAIN_WEIGHTS = resolve_cloud_pretrain_model()
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +79,7 @@ class PretrainConfig:
     output_dir: Path = field(default_factory=lambda: _DEFAULT_OUTPUT_DIR)
     base_model: str = "yolo26x.pt"  # COCO pretrained → 프리트레인 시작점
     pretrained_weights: Path = field(default_factory=lambda: _PRETRAIN_WEIGHTS)
-    output_weights: Path = field(default_factory=lambda: get_base_dir() / "assets/models/yolo26x_local_pretrained.pt")
+    output_weights: Path = field(default_factory=lambda: get_base_dir() / f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}")
     mode: str = "pretrain"  # pretrain / finetune
     manifest_path: Optional[Path] = None
     epochs: int = 20
@@ -968,9 +973,10 @@ class PretrainPipeline:
             "",
             "## 다음 단계",
             "",
-            "1. `assets/models/yolo26x_pretrained.pt` → OLED 라인 파인튜닝 시작 가중치로 사용",
-            "2. GUI Tab7 Training Panel에서 `기반 모델: yolo26x_pretrained.pt` 선택",
-            "3. OLED 스크린샷 + 어노테이션 수집 후 로컬 파인튜닝 실행",
+            f"1. `assets/models/{CLOUD_PRETRAIN_MODEL_NAME}` → GitHub/cloud pretrain 시작 가중치로 사용",
+            f"2. GUI Tab7 Training Panel에서 `기반 모델: {CLOUD_PRETRAIN_MODEL_NAME}` 선택",
+            f"3. `assets/models/{LOCAL_PRETRAIN_MODEL_NAME}` → GitHub artifact timeout 시 local/offline pretrain 결과로 사용",
+            "4. OLED 스크린샷 + 어노테이션 수집 후 로컬 파인튜닝 실행",
         ]
 
         report_path.write_text("\n".join(lines), encoding="utf-8")

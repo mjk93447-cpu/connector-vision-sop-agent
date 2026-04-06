@@ -45,10 +45,20 @@ function Invoke-Pytest {
 }
 
 function Test-RequiredFiles {
+    function Test-AnyPathExists {
+        param([string[]]$Paths)
+
+        foreach ($path in $Paths) {
+            if (Test-Path $path) {
+                return $true
+            }
+        }
+        return $false
+    }
+
     $required = @(
         "assets\config.json",
         "assets\sop_steps.json",
-        "assets\models\yolo26x_pretrained.pt",
         "assets\launchers\start_agent.bat",
         "assets\launchers\start_pretrain.bat",
         "build_exe.spec",
@@ -58,6 +68,13 @@ function Test-RequiredFiles {
         if (-not (Test-Path $item)) {
             throw "Required file not found: $item"
         }
+    }
+
+    if (-not (Test-AnyPathExists @(
+        "assets\models\yolo26x_pretrain.pt",
+        "assets\models\yolo26x_pretrained.pt"
+    ))) {
+        throw "Required cloud pretrain checkpoint not found: assets\models\yolo26x_pretrain.pt (legacy alias assets\models\yolo26x_pretrained.pt)"
     }
 }
 

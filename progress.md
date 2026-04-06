@@ -101,7 +101,7 @@ _최종 갱신: 2026-03-27 (v4.0.0 정식 배포 — SOP Editor 타입별 편집
 | mAP50-95 | 0.1483 |
 | Precision | 0.1368 / Recall 0.3487 |
 | 학습 시간 | 254.9s (4.2분, CPU) |
-| 출력 가중치 | `assets/models/yolo26x_pretrained.pt` |
+| 출력 가중치 | `assets/models/yolo26x_pretrain.pt` |
 
 클래스별 mAP50: button=0.2754, checkbox=0.2124, icon=0.1559, connector=0.1513, label=0.1122, input_field=0.1042, dropdown=0.0627
 
@@ -126,12 +126,12 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 | 아키텍처 | YOLO26x 단독 (COCO pretrained → GUI 특화 파인튜닝) |
 | 데이터 소스 | Rico WidgetCaptioning 500장 또는 합성 500장 |
 | 기본 epochs | 20 (조정 가능: 5~50) |
-| 출력 | `yolo26x_pretrained.pt` 아티팩트 + `PRETRAIN_REPORT.md` |
-| 번들링 | 아티팩트 → `assets/models/yolo26x_pretrained.pt` 배치 시 통팩에 자동 포함 |
+| 출력 | `yolo26x_pretrain.pt` 아티팩트 + `PRETRAIN_REPORT.md` |
+| 번들링 | 아티팩트 → `assets/models/yolo26x_pretrain.pt` 배치 시 통팩에 자동 포함 |
 
 **Tab7 파인튜닝 우선순위**:
 1. `assets/models/yolo26x.pt` 이미 파인튜닝됨 → 그대로 사용
-2. `assets/models/yolo26x_pretrained.pt` 존재 (CI GUI 프리트레인) → 이 모델로 파인튜닝 시작
+2. `assets/models/yolo26x_pretrain.pt` 존재 (CI/cloud pretrain) → 이 모델로 파인튜닝 시작
 3. 둘 다 없음 → `yolo26x.pt` (ultralytics hub 자동 다운로드)
 
 ## ★ 다음 작업 후보 (v4.0.0 이후)
@@ -143,7 +143,7 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 - [ ] **PW 마스킹**: type_text 편집 시 Text 필드를 password 모드로 표시 (보안 강화)
 - [ ] **LLM Chat 히스토리 저장**: 세션 간 대화 내용 유지 (JSONL 로컬 저장)
 - [ ] **OCR 정확도 로그**: 인식 실패한 텍스트 패턴 수집 → 전처리 개선 피드백
-- [ ] **yolo26x_pretrained.pt 다운로드**: CI GUI Pretrain 결과 아티팩트 → assets/models/ 배치
+- [ ] **yolo26x_pretrain.pt 다운로드**: CI/cloud Pretrain 결과 아티팩트 → assets/models/ 배치
 - [ ] **Config 항목 설명 툴팁**: Tab 5 각 설정 항목에 hover 설명 추가
 
 ### v4.0.0 완료 내용 (2026-03-27) ✅
@@ -231,7 +231,7 @@ YOLOv8 / YOLOv9 / YOLOv10 / YOLOv11 = 절대 금지
 - `connector-agent-llm`: phi4-mini-reasoning ~2.5 GB 별도 아티팩트
 
 ## 이전 다음 작업 후보 (홀드)
-- [ ] `YOLO26x GUI Pretrain` 결과(yolo26x_pretrained.pt) 아티팩트 다운로드 → `assets/models/` 배치
+- [ ] `YOLO26x GUI Pretrain` 결과(yolo26x_pretrain.pt) 아티팩트 다운로드 → `assets/models/` 배치
 - [ ] 통팩 빌드 워크플로우 재등록 수정 (dispatch 불가 이슈 해결) → 통팩 재빌드
 - [ ] phi4-mini 요약 응답 품질 개선 (다국어 혼용 문제)
 - [ ] actions/upload-artifact@v4 → Node.js 24 호환 버전 업그레이드 (2026-06 전)

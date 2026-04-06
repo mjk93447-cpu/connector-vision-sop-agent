@@ -10,6 +10,7 @@ on:
       - "src/training/compact_pretrain_pipeline.py"
       - "src/training/dataset_converter.py"
       - "src/config_loader.py"
+      - "src/model_artifacts.py"
       - "assets/config.json"
       - "assets/models/*.pt"
       - "assets/launchers/start_pretrain.bat"

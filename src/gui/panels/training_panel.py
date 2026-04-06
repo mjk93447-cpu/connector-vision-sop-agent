@@ -9,13 +9,15 @@ Three sub-sections:
 Key features (v3.0):
   - Polygon mask mode: click to add polygon vertices → right-click to close
   - Reload model button: load new weights into running VisionEngine (no restart)
-  - Base model priority: yolo26x_pretrained.pt (CI) → yolo26x.pt (COCO)
+  - Base model priority: yolo26x_pretrain.pt (cloud) → yolo26x.pt (COCO)
   - All UI text in English for Indian line engineers
   - on_training_done() calls VisionEngine.reload_model() automatically
 
 YOLO Training Minimization Strategy:
   GitHub Actions CI pretrains YOLO26x on industrial PCB/connector datasets
-  (roboflow PCB Components, ShowUI-Desktop) → shipped as yolo26x_pretrained.pt.
+  (roboflow PCB Components, ShowUI-Desktop) ships as yolo26x_pretrain.pt.
+  If the GitHub/cloud build times out, local/offline pretrain emits
+  yolo26x_local_pretrained.pt on the GPU workstation.
   Local Tab7 fine-tuning then needs only 30-50 OLED connector photos (vs 200+
   from scratch) to reach sufficient mAP50 for production use.
 """
@@ -71,6 +73,12 @@ except ImportError:
 
 from src.class_registry import ClassRegistry
 from src.config_loader import suggest_training_profile
+from src.model_artifacts import (
+    CLOUD_PRETRAIN_MODEL_NAME,
+    COCO_BASE_MODEL_NAME,
+    LOCAL_PRETRAIN_MODEL_NAME,
+    resolve_model_artifact,
+)
 from src.training.annotation_queue import AnnotationQueue
 from src.training.dataset_manager import OLED_CLASSES, DatasetManager
 
@@ -83,11 +91,33 @@ for _cls in ["mold_left_label", "mold_right_label", "connector_pin", "pin_cluste
 # Base model priority (highest quality first)
 _BASE_MODEL_OPTIONS = [
     (
-        "CI Pretrained (yolo26x_pretrained.pt) — Recommended",
-        "assets/models/yolo26x_pretrained.pt",
+        "Cloud Pretrain (yolo26x_pretrain.pt) — Recommended",
+        "assets/models/yolo26x_pretrain.pt",
     ),
     ("COCO Base (yolo26x.pt) — Default", "assets/models/yolo26x.pt"),
 ]
+
+
+def _resolve_base_model_options() -> list[tuple[str, str]]:
+    """Build the base-model selector entries with migration-aware paths."""
+
+    return [
+        (
+            f"Cloud Pretrain ({CLOUD_PRETRAIN_MODEL_NAME}) — Recommended",
+            f"assets/models/{CLOUD_PRETRAIN_MODEL_NAME}",
+        ),
+        (
+            f"COCO Base ({COCO_BASE_MODEL_NAME}) — Default",
+            f"assets/models/{COCO_BASE_MODEL_NAME}",
+        ),
+        (
+            f"Local Pretrained ({LOCAL_PRETRAIN_MODEL_NAME}) — Offline fallback",
+            f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}",
+        ),
+    ]
+
+
+_BASE_MODEL_OPTIONS = _resolve_base_model_options()
 
 
 # ---------------------------------------------------------------------------
@@ -581,11 +611,15 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
 
         # Training minimization note
         note = QLabel(
-            "Tip: Use CI-pretrained model (yolo26x_pretrained.pt) as base — "
+            "Tip: Use cloud pretrain model (yolo26x_pretrain.pt) as base — "
             "requires only 30-50 annotated photos for OLED connector fine-tuning."
         )
         note.setStyleSheet("color: #1565c0; font-size: 11px;")
         note.setWordWrap(True)
+        note.setText(
+            "Tip: Use cloud pretrain model (yolo26x_pretrain.pt) as base — "
+            "requires only 30-50 annotated photos for OLED connector fine-tuning."
+        )
         outer.addWidget(note)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -762,12 +796,13 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         tv.addWidget(QLabel("Base Model:"))
         self._combo_base = QComboBox()
         for label, path in _BASE_MODEL_OPTIONS:
-            available = Path(path).exists()
+            available = resolve_model_artifact(path).exists()
             display = f"{'✓' if available else '✗'} {label}"
             self._combo_base.addItem(display, userData=path)
         self._combo_base.setToolTip(
-            "CI-pretrained model (yolo26x_pretrained.pt) requires fewer images.\n"
-            "COCO base (yolo26x.pt) needs more annotated samples."
+            "Cloud pretrain (yolo26x_pretrain.pt) is the preferred seed.\n"
+            "COCO base (yolo26x.pt) is the fallback when no cloud checkpoint exists.\n"
+            "Local pretrained (yolo26x_local_pretrained.pt) is the offline GPU fallback output."
         )
         tv.addWidget(self._combo_base)
 
@@ -1250,7 +1285,9 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         batch = self._spin_batch.value()
 
         # Get selected base model
-        base_model = self._combo_base.currentData() or "assets/models/yolo26x.pt"
+        base_model = resolve_model_artifact(
+            self._combo_base.currentData() or f"assets/models/{COCO_BASE_MODEL_NAME}"
+        )
 
         if selected_classes:
             self._log(f"▶ Starting training: {epochs} epochs, batch={batch}")
@@ -1389,3 +1426,15 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
 
         # Sync class checkboxes with latest per-class image counts
         self._update_class_checkboxes()
+
+    def _set_default_base_model(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+
+        for idx, (_, path) in enumerate(_BASE_MODEL_OPTIONS):
+            if resolve_model_artifact(path).exists():
+                self._combo_base.setCurrentIndex(idx)
+                return
+
+        if self._combo_base.count() > 0:
+            self._combo_base.setCurrentIndex(0)

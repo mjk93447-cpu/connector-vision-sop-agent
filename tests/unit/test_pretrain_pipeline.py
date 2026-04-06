@@ -487,7 +487,7 @@ class TestPretrainPipelineSynthetic:
             "precision": 0.75,
             "recall": 0.68,
             "classes": {"oled_inspection_top_view": 0.60, "connector_pin_cluster_upper": 0.52},
-            "weights": "assets/models/yolo26x_pretrained.pt",
+            "weights": "assets/models/yolo26x_pretrain.pt",
             "epochs": 20,
             "n_train": 160,
             "n_val": 40,
@@ -506,7 +506,7 @@ class TestPretrainPipelineSynthetic:
         # pretrained_weights를 tmp_path 안으로 격리 (실제 assets/ 오염 방지)
         cfg = PretrainConfig(
             output_dir=tmp_path,
-            pretrained_weights=tmp_path / "yolo26x_pretrained.pt",
+            pretrained_weights=tmp_path / "yolo26x_pretrain.pt",
         )
         pipeline = PretrainPipeline(output_dir=tmp_path, config=cfg)
         pipeline.build_synthetic_dataset(n_images=10)
