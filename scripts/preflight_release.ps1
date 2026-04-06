@@ -94,6 +94,18 @@ if ($LASTEXITCODE -ne 0) {
     throw "CUDA/runtime smoke test failed"
 }
 
+Write-Host "[preflight] running GUI CUDA fine-tuning smoke test..."
+if (Test-Path "assets\models\yolo26x.pt") {
+    & python scripts/preflight_cuda_app.py --model assets/models/yolo26x.pt
+} elseif (Test-Path "yolo26x.pt") {
+    & python scripts/preflight_cuda_app.py --model yolo26x.pt
+} else {
+    throw "No YOLO26x base model found for GUI CUDA smoke test"
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "GUI CUDA fine-tuning smoke test failed"
+}
+
 if ((Test-Path "pretrain_data") -or (Test-Path "pretrain_data_test")) {
     Write-Host "[preflight] verifying pretrain launcher dry-run..."
     & python scripts/run_pretrain_local.py --dry-run

@@ -204,6 +204,52 @@ class TestTrainingManagerBaseModelPriority:
             tm.train(dataset_yaml=yaml_path, epochs=1)
 
 
+class TestTrainingManagerCudaDeviceSelection:
+    def test_train_passes_cuda_device_when_accelerator_is_available(self, tmp_path: Path) -> None:
+        """train() should pass CUDA device index 0 when the accelerator reports CUDA."""
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+
+        weights_path = tmp_path / "yolo26x.pt"
+        _write_dummy_pt(weights_path)
+
+        target_weights = tmp_path / "target.pt"
+        tm = TrainingManager(base_model=str(weights_path), target_weights=target_weights)
+
+        fake_result = MagicMock()
+        fake_result.save_dir = tmp_path / "runs" / "exp"
+        (fake_result.save_dir / "weights").mkdir(parents=True, exist_ok=True)
+        (fake_result.save_dir / "weights" / "best.pt").write_bytes(b"best")
+
+        fake_model = MagicMock()
+        fake_model.train.return_value = fake_result
+
+        with patch(
+            "src.training.training_manager.detect_local_accelerator",
+            return_value={
+                "device": 0,
+                "name": "NVIDIA RTX 4000 Ada Generation",
+                "memory_gb": 20.0,
+                "gpu_present": True,
+                "cuda_usable": True,
+            },
+        ), patch("ultralytics.YOLO", return_value=fake_model), patch.object(
+            TrainingManager, "_check_memory_requirements", lambda self: None
+        ), patch.object(
+            TrainingManager, "_clean_stale_caches", lambda self, dataset_yaml: None
+        ), patch.object(
+            TrainingManager, "_apply_ultralytics_tqdm_patch", lambda self: None
+        ):
+            result_path = tm.train(dataset_yaml=yaml_path, epochs=1, batch=1, image_size=64)
+
+        assert result_path == target_weights
+        assert fake_model.train.called
+        assert fake_model.train.call_args.kwargs["device"] == 0
+        assert fake_model.train.call_args.kwargs["workers"] == 0
+
+
 # ---------------------------------------------------------------------------
 # No-images pre-validation
 # ---------------------------------------------------------------------------

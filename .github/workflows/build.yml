@@ -15,6 +15,7 @@ on:
       - "assets/models/*.pt"
       - "build_exe.spec"
       - "scripts/pyinstaller_support.py"
+      - "scripts/preflight_cuda_app.py"
       - "scripts/preflight_cuda_pretrain.py"
       - "src/model_artifacts.py"
       - "requirements-common.txt"
@@ -84,7 +85,7 @@ jobs:
 
       - name: Preflight CUDA/runtime smoke test
         shell: cmd
-        run: python scripts/preflight_cuda_pretrain.py --model assets/models/yolo26x.pt
+        run: python scripts/preflight_cuda_app.py --model assets/models/yolo26x.pt
 
       - name: Build EXE with PyInstaller
         shell: cmd
