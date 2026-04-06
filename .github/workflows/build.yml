@@ -59,10 +59,6 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip install --force-reinstall --no-cache-dir numpy==1.26.4
 
-      - name: Preflight tests
-        shell: pwsh
-        run: scripts\preflight_release.ps1 -IntegrationTests @()
-
       - name: Ensure YOLO26x base weights exist
         shell: pwsh
         run: |
@@ -78,6 +74,10 @@ jobs:
           else {
             throw "Missing assets/models/yolo26x_pretrain.pt (legacy alias assets/models/yolo26x_pretrained.pt is also required for migration)"
           }
+
+      - name: Preflight tests
+        shell: pwsh
+        run: scripts\preflight_release.ps1 -IntegrationTests @()
 
       - name: Verify YOLO26x loads
         shell: cmd

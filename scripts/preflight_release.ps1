@@ -95,14 +95,17 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "[preflight] running GUI CUDA fine-tuning smoke test..."
+$guiSmokeRan = $false
 if (Test-Path "assets\models\yolo26x.pt") {
     & python scripts/preflight_cuda_app.py --model assets/models/yolo26x.pt
+    $guiSmokeRan = $true
 } elseif (Test-Path "yolo26x.pt") {
     & python scripts/preflight_cuda_app.py --model yolo26x.pt
+    $guiSmokeRan = $true
 } else {
-    throw "No YOLO26x base model found for GUI CUDA smoke test"
+    Write-Host "[preflight] skipping GUI CUDA smoke: no YOLO26x base model available yet."
 }
-if ($LASTEXITCODE -ne 0) {
+if ($guiSmokeRan -and $LASTEXITCODE -ne 0) {
     throw "GUI CUDA fine-tuning smoke test failed"
 }
 
