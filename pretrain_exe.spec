@@ -1,5 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.cwd()))
+
 from scripts.pyinstaller_support import (
     PRETRAIN_BUNDLE_PACKAGES,
     collect_package_bundle,
