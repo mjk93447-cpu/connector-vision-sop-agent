@@ -83,11 +83,27 @@ if ($PretrainRoot -and (Test-Path $PretrainRoot)) {
     }
 
     $pretrainDataRoot = Join-Path $PretrainRoot "pretrain_data"
-    if (-not (Test-Path $pretrainDataRoot)) {
-        $pretrainDataRoot = $PretrainRoot
+    $pretrainDataHasFiles = $false
+    if (Test-Path $pretrainDataRoot) {
+        $pretrainDataHasFiles = @(Get-ChildItem -LiteralPath $pretrainDataRoot -Force | Where-Object {
+            $_.Name -ne "PLACE_PRETRAIN_DATA_HERE.txt"
+        }).Count -gt 0
     }
 
-    Copy-Tree -Source $pretrainDataRoot -Destination (Join-Path $OutputRoot "pretrain_data")
+    if ($pretrainDataHasFiles) {
+        Copy-Tree -Source $pretrainDataRoot -Destination (Join-Path $OutputRoot "pretrain_data")
+    } else {
+        Ensure-PlaceholderDirectory `
+            -DirectoryPath (Join-Path $OutputRoot "pretrain_data") `
+            -PlaceholderPath (Join-Path $OutputRoot "pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt") `
+            -PlaceholderContent @"
+Drop the connector-agent-pretrain artifact contents here:
+  - connector_pretrain.exe
+  - optional pretrain_data folder if you prepared one locally
+
+The current GitHub pretrain artifact is built without bundling the dataset.
+"@
+    }
 } else {
     Ensure-PlaceholderDirectory `
         -DirectoryPath (Join-Path $OutputRoot "pretrain_data") `
@@ -121,13 +137,13 @@ Connector Vision SOP Agent 4.4.0 Deployment Pack
 
 Contents:
   - connector-agent-app.zip: main app EXE + launchers + config/models
-  - connector-agent-pretrain.zip: connector_pretrain.exe + pretrain_data tree
+  - connector-agent-pretrain.zip: connector_pretrain.exe + optional pretrain_data tree
   - connector-agent-llm.zip: Ollama model blobs/manifests
 
 If you only received part of the artifacts:
   1. Copy the app bundle into this folder first.
-  2. Copy the pretrain bundle into the same root so connector_pretrain.exe
-     and pretrain_data\ sit next to the main EXE.
+ 2. Copy the pretrain bundle into the same root so connector_pretrain.exe
+     and any local pretrain_data\ folder sit next to the main EXE.
   3. Copy the LLM bundle contents into ollama_models\.
 
 Look for PLACE_PRETRAIN_DATA_HERE.txt and PLACE_LLM_HERE.txt for drop locations.

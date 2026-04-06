@@ -1,16 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from scripts.pyinstaller_support import MAIN_BUNDLE_PACKAGES, collect_package_bundle
+
 block_cipher = None
+
+bundle_datas, bundle_binaries, bundle_hiddenimports = collect_package_bundle(
+    MAIN_BUNDLE_PACKAGES
+)
 
 a = Analysis(
     ['src/main.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=bundle_binaries,
     datas=[
         ('assets/config.json', 'assets'),
         # Package models directory (may only contain placeholders in git).
         ('assets/models', 'assets/models'),
-    ],
+    ] + bundle_datas,
     hiddenimports=[
         # Vision/ML Core
         'ultralytics',
@@ -24,7 +30,7 @@ a = Analysis(
         'PIL.Image',
         # Utils
         'numpy',
-    ],
+    ] + bundle_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

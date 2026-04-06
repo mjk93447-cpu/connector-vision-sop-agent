@@ -6,7 +6,6 @@ on:
     branches:
       - main
     paths:
-      - "scripts/prepare_pretrain_data.py"
       - "scripts/run_pretrain_local.py"
       - "src/training/compact_pretrain_pipeline.py"
       - "src/training/dataset_converter.py"
@@ -17,6 +16,7 @@ on:
       - "assets/launchers/INSTALL_GUIDE.txt"
       - "assets/launchers/MERGE_GUIDE.txt"
       - "pretrain_exe.spec"
+      - "scripts/pyinstaller_support.py"
       - "tests/unit/test_compact_pretrain_pipeline.py"
       - ".github/workflows/build-pretrain.yml"
 
@@ -56,63 +56,11 @@ jobs:
             tests/unit/test_config_loader.py `
             -q --tb=short --no-header --timeout=120
 
-      - name: Prepare compact pretrain dataset
+      - name: Validate compact pretrain script without dataset bundle
         shell: pwsh
         run: |
-          python scripts/prepare_pretrain_data.py `
-            --output-dir pretrain_data `
-            --max-samples-per-source 1500 `
-            --sources pcb_inspection,pcb_component_detection,pcb_defect_detection
-
-      - name: Validate dataset yaml and auto profile
-        shell: pwsh
-        run: |
-          python scripts/run_pretrain_local.py --dry-run --data-root pretrain_data | Out-String -Stream
-          $yaml = Get-Content "pretrain_data\pretrain_dataset.yaml" -Raw
-          if ($yaml -notmatch "train: train/images") {
-            throw "pretrain_dataset.yaml must use relative train/images path"
-          }
-          if ($yaml -notmatch "val: val/images") {
-            throw "pretrain_dataset.yaml must use relative val/images path"
-          }
-
-      - name: Validate prepared dataset
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "pretrain_data\manifest.json")) {
-            throw "Pretrain manifest was not created"
-          }
-          if (-not (Test-Path "pretrain_data\train\images")) {
-            throw "Train split images folder is missing"
-          }
-          if (-not (Test-Path "pretrain_data\train\labels")) {
-            throw "Train split labels folder is missing"
-          }
-          $imgCount = (Get-ChildItem "pretrain_data\train\images" -File | Measure-Object).Count
-          $lblCount = (Get-ChildItem "pretrain_data\train\labels" -File | Measure-Object).Count
-          $manifest = Get-Content "pretrain_data\manifest.json" -Raw | ConvertFrom-Json
-          $totalImages = [int]$manifest.total_images
-          $requiredSources = @(
-            "pcb_inspection",
-            "pcb_component_detection",
-            "pcb_defect_detection"
-          )
-          foreach ($source in $requiredSources) {
-            $value = $manifest.sources.$source
-            if ($null -eq $value) {
-              throw "Missing required dataset source in manifest: $source"
-            }
-            if ([int]$value -le 0) {
-              throw "Required dataset source was empty: $source"
-            }
-          }
-          if ($imgCount -lt 1 -or $lblCount -lt 1) {
-            throw "Prepared dataset is empty after split"
-          }
-          if ($totalImages -lt 1000) {
-            throw "Prepared dataset is too small after collection: $totalImages"
-          }
-          Write-Host "Prepared dataset validated. train images=$imgCount labels=$lblCount total_images=$totalImages sources=$($manifest.sources | ConvertTo-Json -Compress)"
+          python scripts/run_pretrain_local.py --dry-run --skip-bundle-prep | Out-String -Stream
+          Write-Host "Pretrain launcher import and profile validation passed without preparing dataset."
 
       - name: Ensure YOLO26x base weights exist
         shell: pwsh
@@ -159,12 +107,10 @@ jobs:
           Copy-Item "assets\launchers\start_pretrain.bat" "$pkg\start_pretrain.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
-          Copy-Item "pretrain_data\*" "$pkg\pretrain_data" -Recurse -Force
-
           New-Item -ItemType File -Path "$pkg\pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt" -Force | Out-Null
           $note = @(
-            "Bundled compact PCB / electronics dataset for offline local pretraining."
-            "This folder is prepared automatically during the pretrain artifact build."
+            "This pretrain artifact intentionally excludes the prepared dataset."
+            "Use your existing local pretrain_data folder next to connector_pretrain.exe."
           ) -join [Environment]::NewLine
           Set-Content -LiteralPath "$pkg\pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt" -Encoding UTF8 -Value $note
 

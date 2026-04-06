@@ -1,15 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from scripts.pyinstaller_support import (
+    PRETRAIN_BUNDLE_PACKAGES,
+    collect_package_bundle,
+)
+
 block_cipher = None
+
+bundle_datas, bundle_binaries, bundle_hiddenimports = collect_package_bundle(
+    PRETRAIN_BUNDLE_PACKAGES
+)
 
 a = Analysis(
     ['scripts/run_pretrain_local.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=bundle_binaries,
     datas=[
         ('assets/config.json', 'assets'),
         ('assets/models', 'assets/models'),
-    ],
+    ] + bundle_datas,
     hiddenimports=[
         'ultralytics',
         'torch',
@@ -23,7 +32,7 @@ a = Analysis(
         'datasets',
         'huggingface_hub',
         'roboflow',
-    ],
+    ] + bundle_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

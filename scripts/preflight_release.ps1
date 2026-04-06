@@ -8,6 +8,7 @@ param(
         "tests/unit/test_check_local_runtime.py",
         "tests/unit/test_pretrain_runtime.py",
         "tests/unit/test_run_pretrain_local.py",
+        "tests/unit/test_pyinstaller_support.py",
         "tests/unit/test_start_pretrain_bat.py"
     ),
     [string[]]$IntegrationTests = @(

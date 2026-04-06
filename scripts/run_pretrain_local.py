@@ -16,10 +16,17 @@ from src.pretrain_runtime import (  # noqa: E402
     resolve_pretrain_data_root,
     suggest_pretrain_profile,
 )
-from src.training.compact_pretrain_pipeline import (  # noqa: E402
-    CompactPretrainConfig,
-    CompactPretrainPipeline,
-)
+
+_PIPELINE_IMPORT_ERROR: ImportError | None = None
+try:
+    from src.training.compact_pretrain_pipeline import (  # noqa: E402
+        CompactPretrainConfig,
+        CompactPretrainPipeline,
+    )
+except ImportError as exc:  # pragma: no cover - exercised in packaged EXE failure cases
+    _PIPELINE_IMPORT_ERROR = exc
+    CompactPretrainConfig = None  # type: ignore[assignment]
+    CompactPretrainPipeline = None  # type: ignore[assignment]
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -40,6 +47,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the selected profile and exit without training.",
     )
+    parser.add_argument(
+        "--skip-bundle-prep",
+        action="store_true",
+        help="Skip auto-building the pretrain dataset bundle when splits are missing.",
+    )
     return parser
 
 
@@ -47,6 +59,15 @@ def main() -> None:
     freeze_support()
     parser = _build_parser()
     args = parser.parse_args()
+
+    if _PIPELINE_IMPORT_ERROR is not None or CompactPretrainPipeline is None:
+        print("[run_pretrain] Failed to load the compact pretrain pipeline.")
+        print(f"[run_pretrain] Import error: {_PIPELINE_IMPORT_ERROR!r}")
+        print(
+            "[run_pretrain] This usually means the EXE was built without the full "
+            "numpy/cv2/dataset bundle. Rebuild with the updated PyInstaller spec."
+        )
+        raise SystemExit(1)
 
     output_dir = resolve_pretrain_data_root(args.data_root)
     cfg = CompactPretrainConfig(output_dir=output_dir)
@@ -76,18 +97,21 @@ def main() -> None:
     train_path = output_dir / "train" / "images"
     val_path = output_dir / "val" / "images"
     if not train_path.exists() or not val_path.exists():
-        print("[run_pretrain] Dataset split missing. Preparing bundle in place...")
-        pipeline.build_bundle(max_samples_per_source=10000, grayscale=True, reset=False)
-        image_count = count_prepared_images(output_dir)
-        profile = suggest_pretrain_profile(image_count=image_count, explicit_device=train_device)
-        if args.epochs is None:
-            train_epochs = profile.epochs
-        if args.batch is None:
-            train_batch = profile.batch
-        if args.imgsz is None:
-            train_imgsz = profile.image_size
-        if args.workers is None:
-            train_workers = profile.workers
+        if args.skip_bundle_prep:
+            print("[run_pretrain] Dataset split missing. Bundle prep skipped by flag.")
+        else:
+            print("[run_pretrain] Dataset split missing. Preparing bundle in place...")
+            pipeline.build_bundle(max_samples_per_source=10000, grayscale=True, reset=False)
+            image_count = count_prepared_images(output_dir)
+            profile = suggest_pretrain_profile(image_count=image_count, explicit_device=train_device)
+            if args.epochs is None:
+                train_epochs = profile.epochs
+            if args.batch is None:
+                train_batch = profile.batch
+            if args.imgsz is None:
+                train_imgsz = profile.image_size
+            if args.workers is None:
+                train_workers = profile.workers
 
     pipeline.prepare_dataset_yaml()
 
