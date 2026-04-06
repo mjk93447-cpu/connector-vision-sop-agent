@@ -1,0 +1,27 @@
+# Shared runtime/build dependencies without Torch variants.
+
+# Core Vision/ML
+ultralytics>=8.4.0
+opencv-python-headless==4.10.0.84
+pyyaml==6.0.2
+
+# GUI (Phase 1+)
+PyQt6>=6.7.0
+
+# Build
+pyinstaller==6.10.0
+
+# Local/runtime
+jsonschema>=4.0
+mss>=9.0
+Pillow==10.3.0
+numpy==1.26.4
+pyautogui==0.9.54
+requests>=2.32.0
+huggingface_hub>=0.21.0
+datasets>=2.19.0
+pytesseract>=0.3.10
+
+# OCR (optional, loaded lazily at runtime)
+winsdk>=1.0.0b9; platform_system == "Windows"
+easyocr>=1.7.0
