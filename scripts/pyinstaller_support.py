@@ -36,7 +36,6 @@ OPTIONAL_BUNDLE_EXCLUDES: tuple[str, ...] = (
     "jax",
     "jaxlib",
     "tensorboard",
-    "torch.testing._internal",
     "expecttest",
     "pytest",
 )

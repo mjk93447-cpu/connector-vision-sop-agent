@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from scripts.pyinstaller_support import (
     MAIN_BUNDLE_PACKAGES,
     OPTIONAL_BUNDLE_EXCLUDES,
@@ -21,7 +23,12 @@ def test_optional_bundle_excludes_cover_heavy_optional_packages() -> None:
     assert "tensorflow" in OPTIONAL_BUNDLE_EXCLUDES
     assert "jax" in OPTIONAL_BUNDLE_EXCLUDES
     assert "keras" in OPTIONAL_BUNDLE_EXCLUDES
-    assert "torch.testing._internal" in OPTIONAL_BUNDLE_EXCLUDES
+    assert "torch.testing._internal" not in OPTIONAL_BUNDLE_EXCLUDES
+
+
+def test_requirements_pin_numpy_1_26() -> None:
+    text = Path("requirements-common.txt").read_text(encoding="utf-8")
+    assert "numpy==1.26.4" in text
 
 
 def test_collect_package_bundle_merges_all_package_outputs(monkeypatch) -> None:

@@ -16,6 +16,7 @@ from src.pretrain_runtime import (  # noqa: E402
     resolve_pretrain_data_root,
     suggest_pretrain_profile,
 )
+from src.runtime_compat import ensure_numpy_compatibility  # noqa: E402
 
 _PIPELINE_IMPORT_ERROR: ImportError | None = None
 try:
@@ -64,6 +65,11 @@ def main() -> None:
     freeze_support()
     parser = _build_parser()
     args = parser.parse_args()
+
+    try:
+        ensure_numpy_compatibility()
+    except RuntimeError as exc:
+        raise SystemExit(f"[run_pretrain] {exc}") from exc
 
     if _PIPELINE_IMPORT_ERROR is not None or CompactPretrainPipeline is None:
         print("[run_pretrain] Failed to load the compact pretrain pipeline.")

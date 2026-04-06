@@ -28,6 +28,7 @@ from typing import Callable, Optional
 
 from src.config_loader import detect_local_accelerator, get_base_dir
 from src.model_artifacts import COCO_BASE_MODEL_NAME, resolve_model_artifact
+from src.runtime_compat import ensure_numpy_compatibility
 
 _DEFAULT_BASE_MODEL = COCO_BASE_MODEL_NAME
 _TARGET_WEIGHTS = get_base_dir() / "assets/models/yolo26x.pt"
@@ -169,6 +170,8 @@ class TrainingManager:
             SETTINGS.update({"sync": False, "api_key": ""})
         except Exception:  # noqa: BLE001
             pass  # ultralytics not installed — proceed; YOLO import will fail later
+
+        ensure_numpy_compatibility()
 
         from ultralytics import YOLO  # noqa: PLC0415 — heavy import, defer
 
