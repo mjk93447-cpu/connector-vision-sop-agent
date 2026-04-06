@@ -10,10 +10,17 @@ PACKAGE ARTIFACTS
      - launchers and config/model placeholders
   2. connector-agent-pretrain.zip
      - connector_pretrain.exe
-     - pretrain_data\ with the bundled pcb_inspection + pcb_component_detection + pcb_defect_detection + rf100_smd_components + rf100_deeppcb dataset
+     - no dataset bundle is included in GitHub artifacts
+     - use your local pretrain_data\ folder next to connector_pretrain.exe if you want to train
   3. connector-agent-llm.zip
      - ollama_models\blobs\
      - ollama_models\manifests\
+
+CANONICAL ENTRYPOINTS
+--------------------------------------------------
+  - Main app: src/main.py -> connector_vision_agent.exe
+  - Local pretrain: scripts/run_pretrain_local.py -> connector_pretrain.exe
+  - Legacy pretrain scripts are compatibility shims only
 
 ASSEMBLY
 --------------------------------------------------

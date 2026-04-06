@@ -11,3 +11,4 @@ def test_start_pretrain_bat_validates_blank_input() -> None:
     assert "if defined USER_EPOCHS" in content
     assert "if defined USER_BATCH" in content
     assert "PRETRAIN_ARGS" in content
+    assert "--skip-bundle-prep" in content

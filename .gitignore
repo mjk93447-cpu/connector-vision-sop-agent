@@ -1,10 +1,19 @@
 .worktrees/
+.claude/worktrees/
+legacy/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
 build/
 dist/
+dist-ci/
 .venv/
+connector_agent/
+connector_agent_app/
+connector_agent_pretrain/
+pretrain_data_test/
+*.zip
 
 # YOLO model files (not committed — downloaded/trained locally)
 yolov8*.pt

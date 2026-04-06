@@ -12,12 +12,28 @@ set "DEFAULT_BATCH=16"
 
 echo ================================================================
 echo  Connector Vision SOP Agent v4.4.0  [Local Pretrain]
-echo  Data : pretrain_data (pcb_inspection + pcb_component_detection + pcb_defect_detection + rf100_smd_components + rf100_deeppcb)
+echo  Data : local pretrain_data only
+echo  Note : GitHub artifact excludes the dataset
 echo  Model: yolo26x_local_pretrained.pt
 echo ================================================================
 echo.
 
 if exist "%~dp0connector_pretrain.exe" (
+    if not exist "%~dp0pretrain_data\train\images" (
+        echo [ERROR] pretrain_data\train\images not found.
+        echo         This GitHub pretrain artifact excludes the dataset.
+        echo         Merge your local pretrain_data folder next to this BAT,
+        echo         then run start_pretrain.bat again.
+        goto :END
+    )
+    if not exist "%~dp0pretrain_data\val\images" (
+        echo [ERROR] pretrain_data\val\images not found.
+        echo         This GitHub pretrain artifact excludes the dataset.
+        echo         Merge your local pretrain_data folder next to this BAT,
+        echo         then run start_pretrain.bat again.
+        goto :END
+    )
+
     set "EPOCHS=%DEFAULT_EPOCHS%"
     set "BATCH=%DEFAULT_BATCH%"
     set /p "USER_EPOCHS=Enter epochs [%DEFAULT_EPOCHS%]: "
@@ -34,6 +50,7 @@ if exist "%~dp0connector_pretrain.exe" (
     set "PRETRAIN_ARGS="
     if defined EPOCHS set "PRETRAIN_ARGS=!PRETRAIN_ARGS! --epochs !EPOCHS!"
     if defined BATCH set "PRETRAIN_ARGS=!PRETRAIN_ARGS! --batch !BATCH!"
+    set "PRETRAIN_ARGS=!PRETRAIN_ARGS! --skip-bundle-prep"
     if not "!PRETRAIN_ARGS!"=="" (
         echo [1/1] Launching local pretrain EXE with!PRETRAIN_ARGS!...
         "%~dp0connector_pretrain.exe" !PRETRAIN_ARGS!
@@ -46,6 +63,7 @@ if exist "%~dp0connector_pretrain.exe" (
     echo         Rebuild the local pretrain bundle or restore the EXE next to this BAT.
 )
 
+:END
 echo.
-echo Pretrain finished. Press any key to close.
+echo Launcher complete. Press any key to close.
 pause >nul

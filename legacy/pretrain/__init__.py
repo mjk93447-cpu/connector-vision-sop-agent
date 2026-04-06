@@ -1,0 +1,2 @@
+"""Legacy pretrain compatibility shims."""
+

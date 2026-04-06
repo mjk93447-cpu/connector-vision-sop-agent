@@ -65,7 +65,7 @@ A-3. CRITICAL WARNINGS
 
 A-4. FILES YOU WILL NEED
 --------------------------
-  Download these TWO artifact ZIPs from the latest GitHub Actions build
+  Download these artifacts from the latest GitHub Actions build
   (instructions in Part B):
 
     File 1: connector-agent-app.zip         (~500 MB)
@@ -73,10 +73,15 @@ A-4. FILES YOU WILL NEED
                        config.json, sop_steps.json, yolo26x.pt,
                        start_agent.bat, stop_ollama.bat, INSTALL_GUIDE.txt
 
-    File 2: connector-agent-llm.zip         (~2.5 GB)
+    File 2: connector-agent-pretrain.zip    (small, dataset excluded)
+             Contains: connector_pretrain.exe, config.json, yolo26x.pt,
+                        start_pretrain.bat, INSTALL_GUIDE.txt
+
+    File 3: connector-agent-llm.zip         (~2.5 GB)
              Contains: phi4-mini-reasoning AI model files (blobs + manifests)
 
-  TOTAL size after extraction: approximately 3.5 - 4 GB
+  TOTAL size after extraction: approximately 3.5 - 4 GB, plus any local
+  pretrain_data\ folder you decide to merge manually
 
 
 ================================================================================
@@ -103,16 +108,22 @@ B-2. DOWNLOAD THE ARTIFACTS
 -----------------------------
   5. Scroll DOWN to the bottom of the page.
 
-  6. You will see a section called "Artifacts" with two items listed:
+  6. You will see a section called "Artifacts" with three items listed:
 
        [connector-agent-app]           ~500 MB
+       [connector-agent-pretrain]      small
        [connector-agent-llm]           ~2500 MB
 
   7. Click on "connector-agent-app" to download.
      --> The browser will download "connector-agent-app.zip" (~500 MB)
      --> This may take 3-10 minutes depending on your internet speed.
 
-  8. Click on "connector-agent-llm" to download.
+  8. Click on "connector-agent-pretrain" to download.
+     --> The browser will download "connector-agent-pretrain.zip"
+     --> This artifact does NOT include the dataset; merge your local
+         pretrain_data\ folder separately if you need local training.
+
+  9. Click on "connector-agent-llm" to download.
      --> The browser will download "connector-agent-llm.zip" (~2.5 GB)
      --> This will take 15-30 minutes. Please wait patiently.
 
@@ -121,11 +132,12 @@ B-2. DOWNLOAD THE ARTIFACTS
 
 B-3. VERIFY DOWNLOADS
 ----------------------
-  9. After both downloads complete, check:
+  10. After all downloads complete, check:
      - "connector-agent-app.zip"   should be approximately 500 MB
+     - "connector-agent-pretrain.zip" should be small
      - "connector-agent-llm.zip"   should be approximately 2,500 MB
 
-  10. If either file is much smaller than expected, the download may have
+  11. If either file is much smaller than expected, the download may have
       failed. Delete and re-download the file.
 
 

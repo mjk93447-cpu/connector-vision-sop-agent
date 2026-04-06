@@ -1,4 +1,4 @@
 Drop the connector-agent-pretrain artifact contents here.
 
-This folder should contain the YOLO-ready pretrain_data tree used by
-connector_pretrain.exe. If you receive the dataset separately, extract it here.
+This folder is for your local YOLO-ready pretrain_data tree.
+The GitHub pretrain artifact does not include the dataset itself.

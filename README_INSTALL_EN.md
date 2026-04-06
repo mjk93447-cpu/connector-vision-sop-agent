@@ -4,6 +4,14 @@
 
 ---
 
+## Canonical Paths
+
+- Main agent: `src/main.py`
+- Local pretrain: `scripts/run_pretrain_local.py`
+- Active path map: `docs/ACTIVE_PATHS.md`
+
+Legacy pretrain scripts are compatibility-only and should not be used for new work.
+
 ## Table of Contents
 
 1. [System Requirements](#1-system-requirements)

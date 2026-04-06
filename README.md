@@ -18,6 +18,16 @@ consistently on an offline line PC.
 - `src/test_sop.py`: pytest suite for SOP/vision smoke tests
 - `assets/config.json`: line tuning template
 
+## Canonical Paths
+
+Use these first when exploring or extending the project:
+
+- `src/main.py` for the main agent
+- `scripts/run_pretrain_local.py` for local pretrain
+- `docs/ACTIVE_PATHS.md` for active vs legacy path guidance
+
+Legacy pretrain scripts are kept only as compatibility shims and should not be used for new work.
+
 ## Build (PyInstaller EXE)
 
 Offline EXE for the line PC can be produced with:
@@ -135,5 +145,4 @@ LLM 기반 SOP/비전 튜닝은 **항상 사람이 최종 승인**한다는 원�
    Step 12/12: apply ✓ (28.4s)
    ✅ SOP Complete!
    ```
-
 

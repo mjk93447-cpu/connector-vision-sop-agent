@@ -22,7 +22,7 @@ YOLO26x 프리트레인 파이프라인.
   pipeline.save_report(metrics)
 
 CLI:
-  python scripts/run_pretrain.py --source showui_desktop --max-samples 500 --epochs 20
+  python scripts/run_pretrain_local.py --dry-run
 
 지원 데이터 소스
 ---------------

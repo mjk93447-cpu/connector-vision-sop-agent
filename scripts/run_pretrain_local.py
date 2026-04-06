@@ -99,6 +99,16 @@ def main() -> None:
     if not train_path.exists() or not val_path.exists():
         if args.skip_bundle_prep:
             print("[run_pretrain] Dataset split missing. Bundle prep skipped by flag.")
+            if args.dry_run:
+                print(
+                    "[run_pretrain] Dry-run mode will continue without training, "
+                    "but real training requires a prepared pretrain_data folder."
+                )
+            else:
+                raise SystemExit(
+                    "[run_pretrain] Pretrain dataset is missing. Merge local pretrain_data "
+                    "next to the EXE, or run a manual dataset build on a dev machine."
+                )
         else:
             print("[run_pretrain] Dataset split missing. Preparing bundle in place...")
             pipeline.build_bundle(max_samples_per_source=10000, grayscale=True, reset=False)
