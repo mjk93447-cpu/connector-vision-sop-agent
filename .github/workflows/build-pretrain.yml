@@ -92,7 +92,7 @@ jobs:
 
       - name: Preflight CUDA/runtime smoke test
         shell: cmd
-        run: python scripts/preflight_cuda_pretrain.py --model assets/models/yolo26x.pt
+        run: python scripts/preflight_cuda_pretrain.py --model assets/models/yolo26x.pt --require-cuda-wheel
 
       - name: Build pretrain EXE with PyInstaller
         shell: cmd

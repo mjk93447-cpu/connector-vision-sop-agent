@@ -10,7 +10,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 import numpy as np
 
-from src.runtime_compat import ensure_numpy_compatibility
+from src.runtime_compat import ensure_numpy_compatibility, ensure_torch_cuda_wheel
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -25,6 +25,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--skip-model-load",
         action="store_true",
         help="Skip YOLO model loading and run only import / ABI smoke checks.",
+    )
+    parser.add_argument(
+        "--require-cuda-wheel",
+        action="store_true",
+        help="Fail unless the installed torch wheel reports CUDA support.",
     )
     return parser
 
@@ -95,6 +100,7 @@ def main() -> None:
     os.environ.setdefault("NEPTUNE_MODE", "offline")
 
     ensure_numpy_compatibility()
+    ensure_torch_cuda_wheel(require_cuda_wheel=args.require_cuda_wheel)
     _ensure_imports()
     _smoke_cuda()
 

@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import torchvision
 
-from src.runtime_compat import ensure_numpy_compatibility
+from src.runtime_compat import ensure_numpy_compatibility, ensure_torch_cuda_wheel
 from src.training.training_manager import TrainingManager
 
 
@@ -27,6 +27,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Base YOLO model path to validate. Defaults to assets/models/yolo26x.pt or yolo26x.pt.",
+    )
+    parser.add_argument(
+        "--require-cuda-wheel",
+        action="store_true",
+        help="Fail unless the installed torch wheel reports CUDA support.",
     )
     return parser
 
@@ -158,6 +163,7 @@ def main() -> None:
     os.environ.setdefault("NEPTUNE_MODE", "offline")
 
     ensure_numpy_compatibility()
+    ensure_torch_cuda_wheel(require_cuda_wheel=args.require_cuda_wheel)
     _import_smoke()
     _smoke_cuda_tensor()
     _smoke_training_manager(_resolve_model_path(args.model))

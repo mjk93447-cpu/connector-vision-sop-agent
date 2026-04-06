@@ -85,10 +85,19 @@ Write-Host "[preflight] running unit tests..."
 Invoke-Pytest -Tests $UnitTests -TimeoutSec 60
 
 Write-Host "[preflight] running CUDA/runtime smoke test..."
+$requireCudaWheel = $env:CUDA_WHEEL_REQUIRED -eq "1"
 if (Test-Path "assets\models\yolo26x.pt") {
-    & python scripts/preflight_cuda_pretrain.py --model assets/models/yolo26x.pt
+    $args = @("scripts/preflight_cuda_pretrain.py", "--model", "assets/models/yolo26x.pt")
+    if ($requireCudaWheel) {
+        $args += "--require-cuda-wheel"
+    }
+    & python @args
 } else {
-    & python scripts/preflight_cuda_pretrain.py --skip-model-load
+    $args = @("scripts/preflight_cuda_pretrain.py", "--skip-model-load")
+    if ($requireCudaWheel) {
+        $args += "--require-cuda-wheel"
+    }
+    & python @args
 }
 if ($LASTEXITCODE -ne 0) {
     throw "CUDA/runtime smoke test failed"
@@ -97,10 +106,18 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[preflight] running GUI CUDA fine-tuning smoke test..."
 $guiSmokeRan = $false
 if (Test-Path "assets\models\yolo26x.pt") {
-    & python scripts/preflight_cuda_app.py --model assets/models/yolo26x.pt
+    $args = @("scripts/preflight_cuda_app.py", "--model", "assets/models/yolo26x.pt")
+    if ($requireCudaWheel) {
+        $args += "--require-cuda-wheel"
+    }
+    & python @args
     $guiSmokeRan = $true
 } elseif (Test-Path "yolo26x.pt") {
-    & python scripts/preflight_cuda_app.py --model yolo26x.pt
+    $args = @("scripts/preflight_cuda_app.py", "--model", "yolo26x.pt")
+    if ($requireCudaWheel) {
+        $args += "--require-cuda-wheel"
+    }
+    & python @args
     $guiSmokeRan = $true
 } else {
     Write-Host "[preflight] skipping GUI CUDA smoke: no YOLO26x base model available yet."
