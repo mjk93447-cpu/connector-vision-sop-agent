@@ -53,6 +53,46 @@ Purpose:
 Purpose:
 - Validate pretrain launcher path without requiring dataset prep
 
+## 3.1) Smart Gate Decision Rules (Built-in)
+
+The gate now supports explicit stage/target selection:
+
+- `scripts/pipeline_quality_gate.ps1 -Stage dev-fast -Target all`
+- `scripts/pipeline_quality_gate.ps1 -Stage ci-smart -Target app`
+- `scripts/pipeline_quality_gate.ps1 -Stage ci-smart -Target pretrain`
+- `scripts/pipeline_quality_gate.ps1 -Stage ci-full -Target all`
+
+Decision table in `ci-smart`:
+
+1. Always run lightweight AST/runtime guards for the selected target.
+2. Run heavy smoke + guardrail tests only when target-relevant files changed.
+3. Treat dependency/spec/workflow changes as high risk and run target heavy checks.
+4. If no runtime-relevant files changed, emit no-op guard and skip heavy checks.
+
+Target path rules:
+
+- App-relevant:
+  - `src/main.py`
+  - `src/gui/**`
+  - `src/training/training_manager.py`
+  - `scripts/preflight_gui_runtime.py`
+  - `tests/unit/test_app_runtime_guardrails.py`
+
+- Pretrain-relevant:
+  - `src/training/compact_pretrain_pipeline.py`
+  - `src/pretrain_runtime.py`
+  - `scripts/run_pretrain_local.py`
+  - `scripts/preflight_pretrain_runtime.py`
+  - `tests/unit/test_compact_pretrain_pipeline.py`
+  - `tests/unit/test_pretrain_runtime_guardrails.py`
+
+- High-risk dependency/tooling triggers:
+  - `requirements*`
+  - `build_exe.spec`, `pretrain_exe.spec`
+  - `scripts/pyinstaller_support.py`
+  - `.github/workflows/**`
+  - `src/runtime_compat.py`
+
 ## 4) Automated Gate Runner
 
 Use:

@@ -44,6 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
+          fetch-depth: 2
 
       - name: Require CUDA wheel for app fine-tuning
         shell: pwsh
@@ -82,13 +83,9 @@ jobs:
             throw "Missing assets/models/yolo26x_pretrain.pt (legacy alias assets/models/yolo26x_pretrained.pt is also required for migration)"
           }
 
-      - name: Preflight tests
+      - name: Pipeline quality gate (app, smart)
         shell: pwsh
-        run: scripts\preflight_release.ps1 -IntegrationTests @()
-
-      - name: Pipeline quality gate (app)
-        shell: pwsh
-        run: scripts\pipeline_quality_gate.ps1 -Stage ci-prebuild
+        run: scripts\pipeline_quality_gate.ps1 -Stage ci-smart -Target app
 
       - name: Verify YOLO26x loads
         shell: cmd

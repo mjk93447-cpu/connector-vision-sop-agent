@@ -42,6 +42,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
+          fetch-depth: 2
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -62,23 +63,9 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip install --force-reinstall --no-cache-dir numpy==1.26.4
 
-      - name: Pretrain preflight tests
+      - name: Pipeline quality gate (pretrain, smart)
         shell: pwsh
-        run: |
-          python -m pytest `
-            tests/unit/test_compact_pretrain_pipeline.py `
-            tests/unit/test_config_loader.py `
-            -q --tb=short --no-header --timeout=120
-
-      - name: Validate compact pretrain script without dataset bundle
-        shell: pwsh
-        run: |
-          python scripts/run_pretrain_local.py --dry-run --skip-bundle-prep | Out-String -Stream
-          Write-Host "Pretrain launcher import and profile validation passed without preparing dataset."
-
-      - name: Pipeline quality gate (pretrain)
-        shell: pwsh
-        run: scripts\pipeline_quality_gate.ps1 -Stage ci-prebuild
+        run: scripts\pipeline_quality_gate.ps1 -Stage ci-smart -Target pretrain
 
       - name: Ensure YOLO26x base weights exist
         shell: pwsh
