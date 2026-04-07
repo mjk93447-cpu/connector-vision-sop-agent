@@ -10,7 +10,9 @@ param(
         "tests/unit/test_run_pretrain_local.py",
         "tests/unit/test_legacy_pretrain_entrypoints.py",
         "tests/unit/test_pyinstaller_support.py",
-        "tests/unit/test_start_pretrain_bat.py"
+        "tests/unit/test_start_pretrain_bat.py",
+        "tests/unit/test_app_runtime_guardrails.py",
+        "tests/unit/test_pretrain_runtime_guardrails.py"
     ),
     [string[]]$IntegrationTests = @(
         "tests/integration/test_no_yolo_sop_run.py"
@@ -130,6 +132,12 @@ Write-Host "[preflight] running GUI runtime guard checks..."
 & python scripts/preflight_gui_runtime.py
 if ($LASTEXITCODE -ne 0) {
     throw "GUI runtime guard checks failed"
+}
+
+Write-Host "[preflight] running pretrain runtime guard checks..."
+& python scripts/preflight_pretrain_runtime.py
+if ($LASTEXITCODE -ne 0) {
+    throw "Pretrain runtime guard checks failed"
 }
 
 if ((Test-Path "pretrain_data") -or (Test-Path "pretrain_data_test")) {

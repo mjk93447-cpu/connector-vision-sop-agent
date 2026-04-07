@@ -19,6 +19,9 @@ on:
       - "pretrain_exe.spec"
       - "scripts/pyinstaller_support.py"
       - "scripts/preflight_cuda_pretrain.py"
+      - "scripts/preflight_gui_runtime.py"
+      - "scripts/preflight_pretrain_runtime.py"
+      - "scripts/pipeline_quality_gate.ps1"
       - "requirements-common.txt"
       - "requirements-pretrain.txt"
       - "tests/unit/test_compact_pretrain_pipeline.py"
@@ -72,6 +75,10 @@ jobs:
         run: |
           python scripts/run_pretrain_local.py --dry-run --skip-bundle-prep | Out-String -Stream
           Write-Host "Pretrain launcher import and profile validation passed without preparing dataset."
+
+      - name: Pipeline quality gate (pretrain)
+        shell: pwsh
+        run: scripts\pipeline_quality_gate.ps1 -Stage ci-prebuild
 
       - name: Ensure YOLO26x base weights exist
         shell: pwsh
