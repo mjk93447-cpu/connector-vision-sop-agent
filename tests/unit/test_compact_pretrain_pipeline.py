@@ -52,6 +52,41 @@ class TestCompactPretrainPipeline:
         assert "train: train/images" in content
         assert "val: val/images" in content
 
+    def test_train_and_save_uses_generated_yaml(self, tmp_path: Path) -> None:
+        pipeline = CompactPretrainPipeline(
+            output_dir=tmp_path,
+            config=None,
+        )
+        pipeline.cfg.base_model = tmp_path / "base.pt"
+        pipeline.cfg.output_weights = tmp_path / "assets" / "models" / "yolo26x_local_pretrained.pt"
+        pipeline.cfg.base_model.parent.mkdir(parents=True, exist_ok=True)
+        pipeline.cfg.base_model.write_bytes(b"seed")
+        (tmp_path / "train" / "images").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "val" / "images").mkdir(parents=True, exist_ok=True)
+
+        class FakeYOLO:
+            def __init__(self, weights_path: str) -> None:
+                self.weights_path = weights_path
+                self.train_kwargs: dict[str, object] = {}
+
+            def train(self, **kwargs: object) -> SimpleNamespace:
+                self.train_kwargs = dict(kwargs)
+                data_path = Path(str(kwargs["data"]))
+                assert data_path.exists()
+                assert data_path.name == "pretrain_dataset.yaml"
+                save_dir = data_path.parent / "runs" / "exp"
+                weights_dir = save_dir / "weights"
+                weights_dir.mkdir(parents=True, exist_ok=True)
+                (weights_dir / "best.pt").write_bytes(b"best")
+                return SimpleNamespace(save_dir=save_dir)
+
+        with patch("ultralytics.YOLO", FakeYOLO):
+            result = pipeline.train_and_save(epochs=1, batch=1, imgsz=64, workers=1)
+
+        assert result == pipeline.cfg.output_weights
+        assert result.exists()
+        assert result.read_bytes() == b"best"
+
     def test_build_bundle_creates_split_dataset(self, tmp_path: Path) -> None:
         pipeline = CompactPretrainPipeline(output_dir=tmp_path)
 

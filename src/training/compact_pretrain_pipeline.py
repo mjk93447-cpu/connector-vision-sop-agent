@@ -332,6 +332,7 @@ class CompactPretrainPipeline:
             hw = detect_pretrain_hardware()
             workers = max(2, min(int(hw["physical_cores"] or 2), 8))
 
+        yaml_path = self.prepare_dataset_yaml()
         model = YOLO(str(model_path))
         results = model.train(
             data=str(yaml_path),
@@ -655,6 +656,7 @@ class CompactPretrainPipeline:
             if folder.exists():
                 shutil.rmtree(folder)
 
+    @staticmethod
     def _find_best_weights(results: object) -> Optional[Path]:
         save_dir = getattr(results, "save_dir", None)
         if save_dir is not None:
