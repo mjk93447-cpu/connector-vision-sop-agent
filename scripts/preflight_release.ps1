@@ -126,6 +126,12 @@ if ($guiSmokeRan -and $LASTEXITCODE -ne 0) {
     throw "GUI CUDA fine-tuning smoke test failed"
 }
 
+Write-Host "[preflight] running GUI runtime guard checks..."
+& python scripts/preflight_gui_runtime.py
+if ($LASTEXITCODE -ne 0) {
+    throw "GUI runtime guard checks failed"
+}
+
 if ((Test-Path "pretrain_data") -or (Test-Path "pretrain_data_test")) {
     Write-Host "[preflight] verifying pretrain launcher dry-run..."
     & python scripts/run_pretrain_local.py --dry-run
