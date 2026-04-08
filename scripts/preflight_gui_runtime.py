@@ -7,7 +7,11 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
-from src.model_artifacts import CLOUD_PRETRAIN_MODEL_NAME, COCO_BASE_MODEL_NAME
+from src.model_artifacts import (
+    CLOUD_PRETRAIN_MODEL_NAME,
+    COCO_BASE_MODEL_NAME,
+    LOCAL_PRETRAIN_MODEL_NAME,
+)
 
 APP_CRITICAL_FILES = (
     Path("src/main.py"),
@@ -72,11 +76,13 @@ def _smoke_imports_and_model_priority() -> None:
     model_paths = [path for _, path in options]
     if not model_paths:
         raise RuntimeError("Training panel base model options are empty.")
-    if not model_paths[0].endswith(f"/{CLOUD_PRETRAIN_MODEL_NAME}"):
+    if not model_paths[0].endswith(f"/{LOCAL_PRETRAIN_MODEL_NAME}"):
         raise RuntimeError(
-            "Training panel model priority is broken: cloud pretrain "
+            "Training panel model priority is broken: local pretrained "
             "must be the first option."
         )
+    if not any(path.endswith(f"/{CLOUD_PRETRAIN_MODEL_NAME}") for path in model_paths):
+        raise RuntimeError("Archived cloud pretrain option is missing from training panel.")
     if not any(path.endswith(f"/{COCO_BASE_MODEL_NAME}") for path in model_paths):
         raise RuntimeError("COCO base model option is missing from training panel.")
 

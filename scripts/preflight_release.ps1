@@ -73,10 +73,11 @@ function Test-RequiredFiles {
     }
 
     if (-not (Test-AnyPathExists @(
+        "assets\models\yolo26x_local_pretrained.pt",
         "assets\models\yolo26x_pretrain.pt",
         "assets\models\yolo26x_pretrained.pt"
     ))) {
-        throw "Required cloud pretrain checkpoint not found: assets\models\yolo26x_pretrain.pt (legacy alias assets\models\yolo26x_pretrained.pt)"
+        throw "Required fine-tune seed checkpoint not found: expected local pretrained or archived cloud pretrain under assets\\models\\"
     }
 }
 

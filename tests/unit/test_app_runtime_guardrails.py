@@ -3,7 +3,11 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from src.model_artifacts import CLOUD_PRETRAIN_MODEL_NAME, COCO_BASE_MODEL_NAME
+from src.model_artifacts import (
+    CLOUD_PRETRAIN_MODEL_NAME,
+    COCO_BASE_MODEL_NAME,
+    LOCAL_PRETRAIN_MODEL_NAME,
+)
 
 APP_CRITICAL_FILES = (
     Path("src/main.py"),
@@ -69,5 +73,6 @@ def test_training_panel_base_model_priority_is_preserved() -> None:
 
     model_paths = [path for _, path in _resolve_base_model_options()]
     assert model_paths
-    assert model_paths[0].endswith(f"/{CLOUD_PRETRAIN_MODEL_NAME}")
+    assert model_paths[0].endswith(f"/{LOCAL_PRETRAIN_MODEL_NAME}")
+    assert any(path.endswith(f"/{CLOUD_PRETRAIN_MODEL_NAME}") for path in model_paths)
     assert any(path.endswith(f"/{COCO_BASE_MODEL_NAME}") for path in model_paths)
