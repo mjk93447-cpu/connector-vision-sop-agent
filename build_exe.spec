@@ -15,7 +15,7 @@ bundle_datas, bundle_binaries, bundle_hiddenimports = collect_package_bundle(
 )
 
 a = Analysis(
-    ['src/main.py'],
+    ['src/gui_app.py'],
     pathex=['.'],
     binaries=bundle_binaries,
     datas=[
@@ -60,10 +60,13 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX on the current Windows workstation turns the already-large torch/cv
+    # bundle into a very slow final-packaging step. Keep the build uncompressed
+    # so QA can regenerate bundle candidates in a practical amount of time.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

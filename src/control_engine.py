@@ -138,6 +138,17 @@ class ControlEngine:
         return self._button_text_map.get(target_name)
 
     @staticmethod
+    def _normalize_key_name(key: str) -> str:
+        normalized = key.strip().lower()
+        alias_map = {
+            "return": "enter",
+            "esc": "escape",
+            "win": "winleft",
+            "windows": "winleft",
+        }
+        return alias_map.get(normalized, normalized)
+
+    @staticmethod
     def _normalize_target_name(target_name: str) -> List[str]:
         """Convert a snake_case target name into OCR search candidates.
 
@@ -349,17 +360,22 @@ class ControlEngine:
             )
 
     def press_key(self, key: str) -> ControlResult:
-        """Press a single keyboard key (e.g. ``'enter'``, ``'tab'``, ``'escape'``).
+        """Press a key or hotkey combo.
 
         Parameters
         ----------
         key:
-            pyautogui key name (see ``pyautogui.KEY_NAMES``).
+            pyautogui key name (e.g. ``'enter'``) or combo syntax such as
+            ``'winleft+i'`` / ``'ctrl+shift+s'``.
         """
         start = time.perf_counter()
         try:
             self._ensure_pyautogui_available()
-            pyautogui.press(key)
+            combo_parts = [self._normalize_key_name(part) for part in key.split("+") if part.strip()]
+            if len(combo_parts) > 1:
+                pyautogui.hotkey(*combo_parts)
+            else:
+                pyautogui.press(combo_parts[0] if combo_parts else self._normalize_key_name(key))
             duration = time.perf_counter() - start
             return ControlResult(success=True, coords=None, duration=duration)
         except Exception as exc:  # pragma: no cover - defensive guard.

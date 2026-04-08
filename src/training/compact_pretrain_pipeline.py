@@ -1,4 +1,9 @@
-"""Compact local pretrain pipeline for PCB / electronics line data."""
+"""Archived compact local pretrain pipeline for PCB / electronics line data.
+
+This module is retained for manual seed regeneration only. Active training
+work in the product should focus on Tab 7 fine-tuning from the completed
+``yolo26x_local_pretrained.pt`` checkpoint.
+"""
 
 from __future__ import annotations
 

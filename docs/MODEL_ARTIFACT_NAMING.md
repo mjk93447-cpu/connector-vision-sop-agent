@@ -1,28 +1,28 @@
 # Model Artifact Naming
 
-This repository uses three canonical model artifact names:
+This repository uses these canonical model files:
 
 - `assets/models/yolo26x.pt`
-  - COCO base model
-  - Used as the starting point when no cloud checkpoint is available
-- `assets/models/yolo26x_pretrain.pt`
-  - GitHub/cloud pretrain artifact result
-  - Preferred seed for Tab 7 fine-tuning
+  - base detector fallback
 - `assets/models/yolo26x_local_pretrained.pt`
-  - Result of local/offline pretrain on the GPU workstation
-  - Used when the cloud artifact build times out or local pretrain is needed
+  - active fine-tuning seed
+  - produced by the completed archived pretrain program
+- `assets/models/yolo26x_pretrain.pt`
+  - archived cloud pretrain checkpoint
+  - compatibility fallback only
 
 Legacy compatibility:
 
-- `assets/models/yolo26x_pretrained.pt` is accepted as a temporary alias for
-  `assets/models/yolo26x_pretrain.pt` during the migration window.
+- `assets/models/yolo26x_pretrained.pt` is tolerated only as an alias for the
+  archived cloud checkpoint during migration.
 
-Recommended flow:
+Recommended runtime order:
 
-1. Build or download `yolo26x_pretrain.pt` from GitHub Actions/cloud pretrain.
-2. Fine-tune line-specific data in Tab 7 starting from `yolo26x_pretrain.pt`.
-3. If cloud pretrain times out, perform local/offline pretrain and use
-   `yolo26x_local_pretrained.pt` as the output artifact.
-4. The production deployment model remains `assets/models/yolo26x.pt` after
-   the training workflow promotes the selected fine-tuned checkpoint.
+1. Fine-tuning starts from `yolo26x_local_pretrained.pt`.
+2. If that file is unavailable, use archived `yolo26x_pretrain.pt`.
+3. If no pretrained seed exists, fall back to `yolo26x.pt`.
 
+Deployment rule:
+
+- Standard app bundles ship `yolo26x.pt` and `yolo26x_local_pretrained.pt`.
+- Pretrain generation artifacts and datasets are not part of the active app path.

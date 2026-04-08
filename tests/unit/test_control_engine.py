@@ -549,6 +549,19 @@ class TestPressKey:
 
         mock_pag.press.assert_called_once_with("tab")
 
+    def test_press_key_hotkey_combo(self, engine: ControlEngine) -> None:
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            result = engine.press_key("winleft+i")
+
+        mock_pag.hotkey.assert_called_once_with("winleft", "i")
+        assert result.success is True
+
+    def test_press_key_return_alias_normalized(self, engine: ControlEngine) -> None:
+        with patch("src.control_engine.pyautogui") as mock_pag:
+            engine.press_key("Return")
+
+        mock_pag.press.assert_called_once_with("enter")
+
     def test_press_key_returns_failure_on_exception(
         self, engine: ControlEngine
     ) -> None:

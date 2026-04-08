@@ -1,4 +1,10 @@
 """
+Legacy/manual pretrain pipeline archive.
+
+The finished local pretrained checkpoint now exists and should be treated as a
+frozen seed artifact. This pipeline remains only for historical rebuilds and
+reference, not for ongoing product development.
+
 YOLO26x 프리트레인 파이프라인.
 
 공개 GUI/공장 데이터셋으로 YOLO26x를 프리트레인한 뒤,

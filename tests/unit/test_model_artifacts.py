@@ -10,6 +10,7 @@ from src.model_artifacts import (
     COCO_BASE_MODEL_NAME,
     LEGACY_CLOUD_PRETRAIN_MODEL_NAME,
     LOCAL_PRETRAIN_MODEL_NAME,
+    resolve_finetune_seed_model,
     resolve_model_artifact,
 )
 
@@ -71,3 +72,20 @@ def test_resolve_model_artifact_falls_back_to_legacy(
 
     assert resolved == legacy
 
+
+def test_resolve_finetune_seed_model_prefers_local_pretrained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        model_artifacts, "resolve_app_path", _fake_resolve_app_path(tmp_path)
+    )
+
+    local_seed = tmp_path / "assets/models/yolo26x_local_pretrained.pt"
+    local_seed.parent.mkdir(parents=True)
+    local_seed.write_text("local", encoding="utf-8")
+    archived_cloud = tmp_path / "assets/models/yolo26x_pretrain.pt"
+    archived_cloud.write_text("cloud", encoding="utf-8")
+
+    resolved = resolve_finetune_seed_model()
+
+    assert resolved == local_seed

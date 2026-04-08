@@ -1,12 +1,14 @@
-"""Runtime helpers for local pretrain execution.
+"""Legacy runtime helpers for archived local pretrain execution.
 
 This module centralizes:
 - dataset root discovery
 - hardware detection
 - automatic pretrain hyperparameter suggestions
 
-The goal is to keep the pretrain EXE and the build workflow aligned so that
-the same hardware-aware defaults are used everywhere.
+The goal is to keep the archived pretrain EXE and manual rebuild workflow
+aligned so that the same hardware-aware defaults are used everywhere. Active
+product work should use the resulting pretrained checkpoint as a fine-tuning
+seed rather than extending this path.
 """
 
 from __future__ import annotations

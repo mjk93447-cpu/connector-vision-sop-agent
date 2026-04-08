@@ -1,4 +1,4 @@
-"""Prompt-based local launcher for compact YOLO26x pretraining."""
+"""Archived local pretrain launcher kept for legacy/manual rebuilds only."""
 
 from __future__ import annotations
 
@@ -65,6 +65,11 @@ def main() -> None:
     freeze_support()
     parser = _build_parser()
     args = parser.parse_args()
+
+    print(
+        "[legacy-pretrain] Local pretrain is archived. "
+        "Use this entrypoint only for historical rebuilds of the pretrained seed."
+    )
 
     try:
         ensure_numpy_compatibility()

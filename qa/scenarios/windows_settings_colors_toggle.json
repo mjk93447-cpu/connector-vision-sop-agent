@@ -1,0 +1,93 @@
+{
+  "version": "1.0",
+  "title": "Windows Settings Colors Toggle",
+  "metadata": {
+    "purpose": "Exercise a reversible personalization change using OCR-first navigation plus keyboard confirmation.",
+    "risk_level": "medium",
+    "expected_os": "Windows 10/11"
+  },
+  "steps": [
+    {
+      "id": "open_settings",
+      "name": "Open Settings",
+      "type": "press_key",
+      "key": "winleft+i",
+      "enabled": true
+    },
+    {
+      "id": "wait_settings",
+      "name": "Wait Settings",
+      "type": "wait_ms",
+      "ms": 2500,
+      "enabled": true
+    },
+    {
+      "id": "open_personalization",
+      "name": "Open Personalization",
+      "type": "click",
+      "target": "personalization_nav",
+      "button_text": "Personalization",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_personalization",
+      "name": "Wait Personalization",
+      "type": "wait_ms",
+      "ms": 1500,
+      "enabled": true
+    },
+    {
+      "id": "open_colors",
+      "name": "Open Colors",
+      "type": "click",
+      "target": "colors_nav",
+      "button_text": "Colors",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_colors",
+      "name": "Wait Colors",
+      "type": "wait_ms",
+      "ms": 1500,
+      "enabled": true
+    },
+    {
+      "id": "focus_color_dropdown",
+      "name": "Focus Color Dropdown",
+      "type": "click",
+      "target": "choose_color_dropdown",
+      "button_text": "Choose your color",
+      "enabled": true
+    },
+    {
+      "id": "wait_dropdown",
+      "name": "Wait Dropdown",
+      "type": "wait_ms",
+      "ms": 500,
+      "enabled": true
+    },
+    {
+      "id": "move_to_next_color_mode",
+      "name": "Move To Next Color Mode",
+      "type": "press_key",
+      "key": "down",
+      "enabled": true
+    },
+    {
+      "id": "apply_next_color_mode",
+      "name": "Apply Next Color Mode",
+      "type": "press_key",
+      "key": "enter",
+      "enabled": true
+    },
+    {
+      "id": "wait_color_apply",
+      "name": "Wait Color Apply",
+      "type": "wait_ms",
+      "ms": 1500,
+      "enabled": true
+    }
+  ]
+}

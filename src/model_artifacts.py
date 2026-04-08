@@ -1,8 +1,8 @@
 """Canonical model artifact names and resolution helpers.
 
-This module keeps the model naming rules in one place so the GUI, training
-pipeline, build scripts, and tests all agree on the same canonical filenames
-while still tolerating the legacy pretrain artifact name during migration.
+Fine-tuning is the active training path. Pretrain generation is archived for
+legacy/manual rebuilds only, but the resulting checkpoints are still valid
+seed models for Tab 7.
 """
 
 from __future__ import annotations
@@ -73,3 +73,21 @@ def resolve_local_pretrained_model() -> Path:
     """Resolve the offline local-pretrain output path."""
 
     return resolve_model_artifact(LOCAL_PRETRAIN_MODEL_NAME)
+
+
+def resolve_finetune_seed_model() -> Path:
+    """Resolve the preferred seed model for active fine-tuning work.
+
+    Preference order:
+    1. ``yolo26x_local_pretrained.pt``: completed offline/local pretrain result
+    2. ``yolo26x_pretrain.pt``: archived cloud pretrain checkpoint
+    3. ``yolo26x_pretrained.pt``: legacy alias during migration
+    4. ``yolo26x.pt``: plain COCO fallback
+    """
+
+    return resolve_model_artifact(
+        LOCAL_PRETRAIN_MODEL_NAME,
+        CLOUD_PRETRAIN_MODEL_NAME,
+        LEGACY_CLOUD_PRETRAIN_MODEL_NAME,
+        COCO_BASE_MODEL_NAME,
+    )

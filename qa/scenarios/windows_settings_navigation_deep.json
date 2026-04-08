@@ -1,0 +1,121 @@
+{
+  "version": "1.0",
+  "title": "Windows Settings Deep Navigation",
+  "metadata": {
+    "purpose": "Verify multi-page navigation continuity across common Windows Settings flows without destructive display changes.",
+    "risk_level": "low",
+    "expected_os": "Windows 10/11"
+  },
+  "steps": [
+    {
+      "id": "open_settings",
+      "name": "Open Settings",
+      "type": "press_key",
+      "key": "winleft+i",
+      "enabled": true
+    },
+    {
+      "id": "wait_settings",
+      "name": "Wait Settings",
+      "type": "wait_ms",
+      "ms": 2500,
+      "enabled": true
+    },
+    {
+      "id": "open_personalization",
+      "name": "Open Personalization",
+      "type": "click",
+      "target": "personalization_nav",
+      "button_text": "Personalization",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_personalization",
+      "name": "Wait Personalization",
+      "type": "wait_ms",
+      "ms": 1200,
+      "enabled": true
+    },
+    {
+      "id": "open_colors",
+      "name": "Open Colors",
+      "type": "click",
+      "target": "colors_nav",
+      "button_text": "Colors",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_colors",
+      "name": "Wait Colors",
+      "type": "wait_ms",
+      "ms": 1000,
+      "enabled": true
+    },
+    {
+      "id": "open_background",
+      "name": "Open Background",
+      "type": "click",
+      "target": "background_nav",
+      "button_text": "Background",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_background",
+      "name": "Wait Background",
+      "type": "wait_ms",
+      "ms": 1000,
+      "enabled": true
+    },
+    {
+      "id": "open_home",
+      "name": "Open Home",
+      "type": "click",
+      "target": "home_nav",
+      "button_text": "Home",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_home",
+      "name": "Wait Home",
+      "type": "wait_ms",
+      "ms": 1200,
+      "enabled": true
+    },
+    {
+      "id": "open_system",
+      "name": "Open System",
+      "type": "click",
+      "target": "system_nav",
+      "button_text": "System",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_system",
+      "name": "Wait System",
+      "type": "wait_ms",
+      "ms": 1200,
+      "enabled": true
+    },
+    {
+      "id": "open_display",
+      "name": "Open Display",
+      "type": "click",
+      "target": "display_nav",
+      "button_text": "Display",
+      "roi": [1180, 180, 600, 780],
+      "enabled": true
+    },
+    {
+      "id": "wait_display",
+      "name": "Wait Display",
+      "type": "wait_ms",
+      "ms": 1200,
+      "enabled": true
+    }
+  ]
+}

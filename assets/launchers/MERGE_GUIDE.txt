@@ -1,5 +1,5 @@
 ================================================================
-Connector Vision SOP Agent v4.4.0 - Portable Bundle Guide
+Connector Vision SOP Agent v4.5.0 - Portable Bundle Guide
 ================================================================
 
 DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
