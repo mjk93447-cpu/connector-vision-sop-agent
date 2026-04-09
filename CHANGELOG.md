@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.6.0] - 2026-04-09
+
+### Fixed
+
+- SOP runtime now respects `vision.model_path` from `assets/config.json` in
+  both GUI and console runtime builders.
+- Added runtime `reload_model()` support to `VisionEngine` so Training tab
+  hot-reload can actually refresh YOLO weights without restarting the app.
+
+### Changed
+
+- Bumped runtime/package version markers from `4.5.0` to `4.6.0`.
+- Updated the app build workflow to include `ollama.exe` and a root-level
+  `config.json` in the app artifact for one-folder portable deployments.
+
 ## [4.5.0] - 2026-04-08
 
 ### Changed

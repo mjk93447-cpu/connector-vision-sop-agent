@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Connector Vision SOP Agent v4.5.0 [Local Pretrain]
+title Connector Vision SOP Agent v4.6.0 [Local Pretrain]
 setlocal EnableExtensions EnableDelayedExpansion
 
 set OLLAMA_MODELS=%~dp0ollama_models
@@ -11,7 +11,7 @@ set "DEFAULT_EPOCHS=40"
 set "DEFAULT_BATCH=16"
 
 echo ================================================================
-echo  Connector Vision SOP Agent v4.5.0  [Local Pretrain]
+echo  Connector Vision SOP Agent v4.6.0  [Local Pretrain]
 echo  Data : local pretrain_data only
 echo  Note : GitHub artifact excludes the dataset
 echo  Model: yolo26x_local_pretrained.pt

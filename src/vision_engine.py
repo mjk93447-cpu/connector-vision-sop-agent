@@ -106,6 +106,28 @@ class VisionAgent:
         except Exception:
             return None
 
+    def reload_model(self, model_path: str | None = None) -> bool:
+        """Reload YOLO weights at runtime.
+
+        Parameters
+        ----------
+        model_path:
+            Optional explicit path. When omitted, reloads from the currently
+            configured ``self.model_path``.
+
+        Returns
+        -------
+        bool
+            ``True`` when a model instance was loaded successfully,
+            otherwise ``False``.
+        """
+
+        if model_path is not None:
+            self.model_path = self._resolve_runtime_path(model_path)
+
+        self.model = self._load_model(self.model_path)
+        return self.model is not None
+
     def capture_screen(
         self, region: tuple[int, int, int, int] | None = None
     ) -> np.ndarray:
@@ -341,3 +363,9 @@ class VisionEngine(VisionAgent):
             confidence_threshold=self.config.confidence_threshold,
             ocr_psm=self.config.ocr_psm,
         )
+
+    def reload_model(self, model_path: str | None = None) -> bool:
+        """Reload model using explicit path, config path, or current path."""
+
+        effective_path = model_path or self.config.model_path
+        return super().reload_model(effective_path)

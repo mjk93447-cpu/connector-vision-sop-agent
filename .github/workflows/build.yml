@@ -99,6 +99,16 @@ jobs:
             throw "EXE build failed - file not found"
           }
 
+      - name: Download Ollama binary
+        shell: pwsh
+        run: |
+          $uri = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
+          Invoke-WebRequest -Uri $uri -OutFile ollama.zip -UseBasicParsing
+          Expand-Archive ollama.zip -DestinationPath ollama_bin -Force
+          if (-not (Test-Path "ollama_bin\ollama.exe")) {
+            throw "ollama.exe not found in downloaded archive"
+          }
+
       - name: Assemble app bundle
         shell: pwsh
         run: |
@@ -111,6 +121,8 @@ jobs:
           New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
 
           Copy-Item "dist\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
+          Copy-Item "ollama_bin\ollama.exe" "$pkg\ollama.exe"
+          Copy-Item "assets\config.json" "$pkg\config.json"
           Copy-Item "assets\config.json" "$pkg\assets\config.json"
           Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json"
           Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"

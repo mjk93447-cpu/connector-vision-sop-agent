@@ -47,6 +47,12 @@ def _resolve_ocr_psm(config: dict) -> int:
     return int(config.get("vision", {}).get("ocr_psm", 7))
 
 
+def _resolve_model_path(config: dict) -> str:
+    """Read YOLO model path from config. Defaults to packaged baseline."""
+
+    return str(config.get("vision", {}).get("model_path", "assets/models/yolo26x.pt"))
+
+
 def _resolve_retries(config: dict) -> int:
     """Read retry count from config or fall back to the default."""
 
@@ -62,6 +68,7 @@ def _build_services(speed: SpeedPreset = "normal") -> tuple[VisionEngine, Contro
     config = load_config()
     vision = VisionEngine(
         DetectionConfig(
+            model_path=_resolve_model_path(config),
             confidence_threshold=_resolve_confidence_threshold(config),
             ocr_psm=_resolve_ocr_psm(config),
         )
@@ -358,4 +365,3 @@ if __name__ == "__main__":
         run_console()
     except KeyboardInterrupt:
         print("\nExiting Connector Vision SOP Agent.")
-

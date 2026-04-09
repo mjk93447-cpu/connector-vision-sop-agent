@@ -41,6 +41,10 @@ def _resolve_ocr_psm(config: dict[str, Any]) -> int:
     return int(config.get("vision", {}).get("ocr_psm", 7))
 
 
+def _resolve_model_path(config: dict[str, Any]) -> str:
+    return str(config.get("vision", {}).get("model_path", "assets/models/yolo26x.pt"))
+
+
 def _resolve_line_id(config: dict[str, Any]) -> str:
     return str(config.get("line_id", "LINE-UNKNOWN"))
 
@@ -51,6 +55,7 @@ def _build_runtime(config: dict[str, Any]) -> dict[str, Any]:
 
     vision = VisionEngine(
         DetectionConfig(
+            model_path=_resolve_model_path(config),
             confidence_threshold=_resolve_confidence_threshold(config),
             ocr_psm=_resolve_ocr_psm(config),
         )
