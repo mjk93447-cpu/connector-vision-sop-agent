@@ -126,7 +126,11 @@ function New-StepSet {
 
     if ($appChanged -and ($CurrentTarget -eq "app" -or $CurrentTarget -eq "all")) {
         $smokeArgs = @("scripts/preflight_cuda_app.py")
-        if (Test-Path "assets/models/yolo26x.pt") {
+        if (Test-Path "assets/models/yolo26x_local_pretrained.pt") {
+            $smokeArgs += @("--model", "assets/models/yolo26x_local_pretrained.pt")
+        } elseif (Test-Path "assets/models/yolo26x_pretrained.pt") {
+            $smokeArgs += @("--model", "assets/models/yolo26x_pretrained.pt")
+        } elseif (Test-Path "assets/models/yolo26x.pt") {
             $smokeArgs += @("--model", "assets/models/yolo26x.pt")
         } else {
             $smokeArgs += @("--model", "yolo26x.pt")

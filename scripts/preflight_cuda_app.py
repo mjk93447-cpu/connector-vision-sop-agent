@@ -16,6 +16,7 @@ import numpy as np
 import torch
 import torchvision
 
+from src.model_artifacts import resolve_runtime_model
 from src.runtime_compat import ensure_numpy_compatibility, ensure_torch_cuda_wheel
 from src.training.training_manager import TrainingManager
 
@@ -26,7 +27,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         type=str,
         default=None,
-        help="Base YOLO model path to validate. Defaults to assets/models/yolo26x.pt or yolo26x.pt.",
+        help=(
+            "Base YOLO model path to validate. Defaults to the active runtime "
+            "slot used by the 5.0.0 app bundle."
+        ),
     )
     parser.add_argument(
         "--require-cuda-wheel",
@@ -39,11 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _resolve_model_path(model_arg: str | None) -> Path:
     if model_arg is not None:
         return Path(model_arg).expanduser()
-
-    candidate = Path("assets/models/yolo26x.pt")
-    if candidate.exists():
-        return candidate
-    return Path("yolo26x.pt")
+    return resolve_runtime_model("assets/models/yolo26x_local_pretrained.pt")
 
 
 def _write_dummy_dataset(root: Path) -> Path:
