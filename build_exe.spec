@@ -20,6 +20,7 @@ a = Analysis(
     binaries=bundle_binaries,
     datas=[
         ('assets/config.json', 'assets'),
+        ('assets/sop_steps.json', 'assets'),
         # Package models directory (may only contain placeholders in git).
         ('assets/models', 'assets/models'),
     ] + bundle_datas,
@@ -52,9 +53,6 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
     name='connector_vision_agent',
     debug=False,
@@ -67,10 +65,22 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
+    exclude_binaries=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='connector_vision_agent',
 )

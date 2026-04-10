@@ -19,6 +19,7 @@ from src.config_audit import ConfigAuditLog
 from src.config_loader import load_config, resolve_app_path
 from src.control_engine import ControlEngine
 from src.gui.main_window import MainWindow
+from src.model_artifacts import resolve_runtime_model
 from src.ocr_engine import OCREngine
 from src.sop_executor import SopExecutor
 from src.vision_engine import DetectionConfig, VisionEngine
@@ -41,6 +42,11 @@ def _resolve_ocr_psm(config: dict[str, Any]) -> int:
     return int(config.get("vision", {}).get("ocr_psm", 7))
 
 
+def _resolve_runtime_model_path(config: dict[str, Any]) -> Path:
+    configured = config.get("vision", {}).get("model_path")
+    return resolve_runtime_model(configured)
+
+
 def _resolve_line_id(config: dict[str, Any]) -> str:
     return str(config.get("line_id", "LINE-UNKNOWN"))
 
@@ -51,6 +57,7 @@ def _build_runtime(config: dict[str, Any]) -> dict[str, Any]:
 
     vision = VisionEngine(
         DetectionConfig(
+            model_path=str(_resolve_runtime_model_path(config)),
             confidence_threshold=_resolve_confidence_threshold(config),
             ocr_psm=_resolve_ocr_psm(config),
         )

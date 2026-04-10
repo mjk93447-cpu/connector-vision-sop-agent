@@ -2,6 +2,11 @@
 
 Use this file as the canonical map for future maintenance and agent exploration.
 
+## Shared agent entrypoint
+
+- `docs/AI_AGENT_GUIDE.md`: common workflow rules for Claude, Cursor Codex
+  sidebar, and ChatGPT 5.4 medium
+
 ## Active entrypoints
 
 - `src/gui_app.py`: canonical GUI application entrypoint for the packaged app
@@ -31,6 +36,14 @@ These paths are legacy/manual only and must not be used for new product work:
 - `.github/workflows/build-pretrain.yml`
 - `pretrain_exe.spec`
 - `requirements-pretrain.txt`
+
+Agent boundary:
+
+- If the user request is about the shipping app, fine-tuning, SOP Editor, SOP Run,
+  GUI QA, or release engineering, agents must stay out of the archived pretrain
+  paths unless the user explicitly asks for historical pretrain maintenance.
+- `.claudeignore` intentionally hides the archived pretrain tree and related tests
+  from default agent exploration so they are not edited by accident.
 
 ## Artifact policy
 

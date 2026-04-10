@@ -1,6 +1,6 @@
 # Connector Vision SOP Agent Installation Guide
 
-Version 4.5.0
+Version 5.0.0
 
 ## Canonical paths
 
@@ -8,15 +8,20 @@ Version 4.5.0
 - Packaged launcher: `assets/launchers/start_agent.bat`
 - Active path map: `docs/ACTIVE_PATHS.md`
 - Model naming: `docs/MODEL_ARTIFACT_NAMING.md`
-- 4.5.0 focus: `docs/V4_5_0_FOCUS.md`
+- 5.0.0 focus: `docs/V5_0_0_FOCUS.md`
+- Shared AI agent workflow: `docs/AI_AGENT_GUIDE.md`
 
 ## Important policy
 
 - The packaged app is GUI-first.
 - Fine-tuning is the active training workflow.
 - `yolo26x_local_pretrained.pt` is the preferred seed model.
+- `runs/detect/train/weights/best.pt` is promoted into the active runtime slot
+  after fine-tuning completes.
 - Pretrain generation scripts and datasets are archived and not part of normal
   line deployment.
+- Claude-specific guidance has been generalized so the same operational rules
+  also work in Cursor Codex sidebar and ChatGPT 5.4 medium sessions.
 
 ## Bundle contents
 

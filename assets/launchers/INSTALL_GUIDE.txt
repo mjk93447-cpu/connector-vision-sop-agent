@@ -1,67 +1,68 @@
 ================================================================
-Connector Vision SOP Agent v4.5.0 - Split Deployment Package
+Connector Vision SOP Agent v5.0.0 - App + CUDA Overlay
  INSTALL GUIDE
 ================================================================
 
 PACKAGE ARTIFACTS
 --------------------------------------------------
-  1. connector-agent-app.zip
+  1. connector-agent-app-core.zip
      - connector_vision_agent.exe
-     - launchers and config/model placeholders
-  2. connector-agent-pretrain.zip
-     - connector_pretrain.exe
-     - no dataset bundle is included in GitHub artifacts
-     - use your local pretrain_data\ folder next to connector_pretrain.exe if you want to train
-  3. connector-agent-llm.zip
-     - ollama_models\blobs\
-     - ollama_models\manifests\
+     - launchers, config, SOP steps, docs
+     - lightweight runtime pieces that do not include torch CUDA payloads
+  2. connector-agent-cuda-runtime.zip
+     - torch / torchvision / nvidia runtime folders
+     - CUDA-related DLLs required by the packaged app and local training flows
+
+OPTIONAL MANUAL ARTIFACTS
+--------------------------------------------------
+  - connector-agent-pretrain.zip
+  - connector-agent-llm.zip
 
 CANONICAL ENTRYPOINTS
 --------------------------------------------------
-  - Main app: src/main.py -> connector_vision_agent.exe
-  - Local pretrain: scripts/run_pretrain_local.py -> connector_pretrain.exe
-  - Legacy pretrain scripts are compatibility shims only
+  - Main app: src/gui_app.py -> connector_vision_agent.exe
+  - Training tab fine-tuning promotes the latest runs\detect\train\weights\best.pt
+    into assets\models\yolo26x_local_pretrained.pt automatically
+  - Local pretrain prefers CUDA first on NVIDIA PCs and now fails loudly when
+    a CUDA wheel is missing instead of silently dropping to CPU
   - Model naming reference: docs/MODEL_ARTIFACT_NAMING.md
 
 ASSEMBLY
 --------------------------------------------------
-  1. Extract connector-agent-app.zip into the final deployment folder.
-  2. Extract connector-agent-pretrain.zip into the same folder.
-  3. Extract connector-agent-llm.zip into ollama_models\.
-  4. Replace PLACE_* txt files with the real artifact contents.
+  1. Extract connector-agent-app-core.zip into the final deployment folder.
+  2. Extract connector-agent-cuda-runtime.zip into the same folder.
+  3. Keep the extracted folder structure unchanged.
+  4. Optional: merge connector-agent-pretrain.zip and connector-agent-llm.zip
+     only when those offline features are needed on the target PC.
 
 RUN
 --------------------------------------------------
   - Double-click start_agent.bat to launch the main SOP agent.
-  - Double-click start_pretrain.bat after the pretrain artifact is merged.
-  - Keep ollama_models\ separate if you only want to refresh the LLM blobs.
+  - If ollama.exe is absent, the launcher continues in non-LLM mode.
 
 FINAL FOLDER STRUCTURE
 --------------------------------------------------
   connector_agent\
   +-- connector_vision_agent.exe
-  +-- connector_pretrain.exe
+  +-- _internal\
+  |   +-- torch\
+  |   +-- torchvision\
+  |   +-- nvidia\
   +-- start_agent.bat
-  +-- start_pretrain.bat
   +-- stop_ollama.bat
   +-- assets\
   |   +-- config.json
   |   +-- sop_steps.json
   |   +-- models\
-  |       +-- yolo26x.pt
-  |       +-- yolo26x_pretrain.pt
   |       +-- yolo26x_local_pretrained.pt
-  +-- pretrain_data\
-  +-- ollama_models\
-  +-- MERGE_GUIDE.txt
   +-- PLACE_APP_HERE.txt
-  +-- PLACE_PRETRAIN_DATA_HERE.txt
-  +-- PLACE_LLM_HERE.txt
+  +-- PLACE_CUDA_RUNTIME_HERE.txt   <- only remains if CUDA overlay was not merged
+  +-- README.md
+  +-- README_INSTALL_EN.md
 
 NOTES
 --------------------------------------------------
-  - The app bundle is intentionally lean and does not ship the LLM blobs.
-  - The pretrain bundle is a separate temporary artifact and can be refreshed
-    independently of the main app pack.
-  - The LLM bundle only needs rebuilding when OCR/LLM behavior changes.
+  - The packaged runtime model slot is assets\models\yolo26x_local_pretrained.pt.
+  - The core artifact alone is not a runnable GPU package until the CUDA overlay
+    is merged into the same folder.
 ================================================================

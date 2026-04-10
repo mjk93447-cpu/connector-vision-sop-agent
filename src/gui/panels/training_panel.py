@@ -71,13 +71,14 @@ except ImportError:
     pyqtSignal = object  # type: ignore[assignment]
 
 from src.class_registry import ClassRegistry
-from src.config_loader import suggest_training_profile
+from src.config_loader import detect_local_accelerator, suggest_training_profile
 from src.model_artifacts import (
     CLOUD_PRETRAIN_MODEL_NAME,
     COCO_BASE_MODEL_NAME,
     LOCAL_PRETRAIN_MODEL_NAME,
     resolve_finetune_seed_model,
     resolve_model_artifact,
+    resolve_runtime_model,
 )
 from src.training.annotation_queue import AnnotationQueue
 from src.training.dataset_manager import OLED_CLASSES, DatasetManager
@@ -544,7 +545,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
         # Auto-reload the new model into VisionEngine (no restart needed)
         if self._vision_engine is not None:
             try:
-                ok = self._vision_engine.reload_model()
+                ok = self._vision_engine.reload_model(weights_path)
                 if ok:
                     self._log("✅ New model loaded — no restart required")
                 else:
@@ -1290,6 +1291,16 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             self._log("  Classes: all images (no class filter)")
         self._log(f"  Dataset: {yaml_path}")
         self._log(f"  Base model: {base_model}")
+        accel = detect_local_accelerator()
+        if accel.get("gpu_present"):
+            self._log(
+                "  Accelerator: "
+                f"{accel.get('name') or 'NVIDIA GPU'} | "
+                f"cuda_usable={bool(accel.get('cuda_usable'))} | "
+                "policy=prefer CUDA first"
+            )
+        else:
+            self._log("  Accelerator: CPU-only environment")
         self._progress.setValue(0)
         self._progress.setMaximum(epochs)
         self._lbl_epoch_progress.setText("Epoch --/--")
@@ -1329,7 +1340,7 @@ class TrainingPanel(QWidget):  # type: ignore[misc]
             QMessageBox.warning(self, "Reload Failed", "VisionEngine not available.")
             return
         try:
-            ok = self._vision_engine.reload_model()
+            ok = self._vision_engine.reload_model(str(resolve_runtime_model()))
             if ok:
                 self._log("✅ Model reloaded successfully")
                 QMessageBox.information(

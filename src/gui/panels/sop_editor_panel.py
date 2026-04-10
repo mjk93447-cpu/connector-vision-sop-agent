@@ -969,7 +969,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
             artifact = dict(base)
         else:
             artifact = {}
-        artifact["version"] = artifact.get("version", "4.5.0")
+        artifact["version"] = artifact.get("version", "5.0.0")
         artifact["title"] = artifact.get("title", self._sop_path.stem)
         artifact["source_path"] = artifact.get("source_path", str(self._sop_path))
         artifact["source_type"] = artifact.get("source_type", "json")
@@ -1092,7 +1092,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
             return
         try:
             data = self._build_export_artifact()
-            data["version"] = "4.5.0"
+            data["version"] = "5.0.0"
             self._sop_path.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
             )

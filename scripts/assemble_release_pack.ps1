@@ -2,6 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$AppRoot,
 
+    [string]$CudaRuntimeRoot = "",
+
     [string]$PretrainRoot = "",
 
     [string]$OutputRoot = "connector_agent_pack",
@@ -76,6 +78,20 @@ New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 
 Copy-Tree -Source $AppRoot -Destination $OutputRoot
 
+if ($CudaRuntimeRoot -and (Test-Path $CudaRuntimeRoot)) {
+    Copy-Tree -Source $CudaRuntimeRoot -Destination $OutputRoot
+} else {
+    New-TextFile -Path (Join-Path $OutputRoot "PLACE_CUDA_RUNTIME_HERE.txt") -Content @"
+Drop the connector-agent-cuda-runtime artifact contents here:
+  - _internal\torch\
+  - _internal\torchvision\
+  - _internal\nvidia\
+  - CUDA-related DLLs listed in cuda_runtime_manifest.json
+
+Extract the CUDA runtime artifact into this same root after the app core bundle.
+"@
+}
+
 if ($PretrainRoot -and (Test-Path $PretrainRoot)) {
     $pretrainExe = Join-Path $PretrainRoot "connector_pretrain.exe"
     if (Test-Path $pretrainExe) {
@@ -136,17 +152,20 @@ New-TextFile -Path (Join-Path $OutputRoot "MERGE_GUIDE.txt") -Content @"
 Connector Vision SOP Agent 4.5.0 Deployment Pack
 
 Contents:
-  - connector-agent-app.zip: main app EXE + launchers + config/models
+  - connector-agent-app-core.zip: main app EXE + launchers + config/models
+  - connector-agent-cuda-runtime.zip: torch / torchvision / CUDA overlay
   - connector-agent-pretrain.zip: connector_pretrain.exe + optional pretrain_data tree
   - connector-agent-llm.zip: Ollama model blobs/manifests
 
 If you only received part of the artifacts:
-  1. Copy the app bundle into this folder first.
- 2. Copy the pretrain bundle into the same root so connector_pretrain.exe
+  1. Copy the app core bundle into this folder first.
+  2. Copy the CUDA runtime bundle into this same root so the packaged app regains
+     _internal\torch\ and related DLLs.
+  3. Copy the pretrain bundle into the same root so connector_pretrain.exe
      and any local pretrain_data\ folder sit next to the main EXE.
-  3. Copy the LLM bundle contents into ollama_models\.
+  4. Copy the LLM bundle contents into ollama_models\.
 
-Look for PLACE_PRETRAIN_DATA_HERE.txt and PLACE_LLM_HERE.txt for drop locations.
+Look for PLACE_CUDA_RUNTIME_HERE.txt, PLACE_PRETRAIN_DATA_HERE.txt, and PLACE_LLM_HERE.txt for drop locations.
 "@
 
 New-TextFile -Path (Join-Path $OutputRoot "PLACE_APP_HERE.txt") -Content @"

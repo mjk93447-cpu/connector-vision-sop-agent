@@ -1,19 +1,25 @@
 ================================================================
-Connector Vision SOP Agent v4.5.0 - Portable Bundle Guide
+Connector Vision SOP Agent v5.0.0 - Portable Bundle Guide
 ================================================================
 
 DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
-  1. connector-agent-app.zip         app EXE + launchers + config/models
-  2. connector-agent-pretrain.zip    local pretrain EXE + dataset
-  3. connector-agent-llm.zip         IBM Granite Vision 3.2-2b blobs
+  1. connector-agent-app-core.zip      app EXE + launchers + config/models
+  2. connector-agent-cuda-runtime.zip  torch / torchvision / CUDA overlay
+
+OPTIONAL DOWNLOADS:
+  3. connector-agent-pretrain.zip      local pretrain EXE + dataset helper
+  4. connector-agent-llm.zip           IBM Granite Vision 3.2-2b blobs
 
 ASSEMBLY STEPS:
   1. Create folder: C:\tools\connector_agent\
-  2. Extract connector-agent-app.zip
+  2. Extract connector-agent-app-core.zip
      -> all files go into C:\tools\connector_agent\
-  3. Extract connector-agent-pretrain.zip
-     -> all files go into C:\tools\connector_agent\pretrain_data\ and the EXE
-  4. Extract connector-agent-llm.zip
+  3. Extract connector-agent-cuda-runtime.zip
+     -> overlay the same root folder so _internal\torch\ and CUDA DLLs land
+        in their original relative paths
+  4. Optional: extract connector-agent-pretrain.zip
+     -> add connector_pretrain.exe and any local pretrain_data\ files
+  5. Optional: extract connector-agent-llm.zip
      -> all files go into C:\tools\connector_agent\ollama_models\
         (blobs\ and manifests\ must be directly inside ollama_models\)
 
@@ -22,6 +28,10 @@ FINAL FOLDER STRUCTURE:
   +-- connector_vision_agent.exe   <- SOP agent (YOLO26x + PyQt6 GUI embedded)
   +-- start_agent.bat              <- DOUBLE-CLICK TO RUN (GUI mode)
   +-- connector_pretrain.exe       <- Local pretrain runner (epochs/batch only)
+  +-- _internal\
+  |   +-- torch\                   <- from connector-agent-cuda-runtime zip
+  |   +-- torchvision\             <- from connector-agent-cuda-runtime zip
+  |   +-- nvidia\                  <- from connector-agent-cuda-runtime zip (when present)
   +-- assets\
   |   +-- config.json              <- settings (editable)
   |   +-- sop_steps.json           <- 40-step atomic SOP definition (editable)
@@ -37,14 +47,16 @@ FINAL FOLDER STRUCTURE:
       +-- blobs\sha256-...         <- from connector-agent-llm zip
       +-- manifests\...            <- from connector-agent-llm zip
   +-- PLACE_APP_HERE.txt           <- root deployment note
+  +-- PLACE_CUDA_RUNTIME_HERE.txt  <- remove/ignore after CUDA overlay merge
   +-- pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt
   +-- ollama_models\PLACE_LLM_HERE.txt
 
 MERGE ORDER:
-  1. Extract connector-agent-app.zip into the root folder.
-  2. Extract connector-agent-pretrain.zip into the same root folder.
-  3. Extract connector-agent-llm.zip into ollama_models\.
-  4. Verify the placeholder txt files were replaced by real content.
+  1. Extract connector-agent-app-core.zip into the root folder.
+  2. Extract connector-agent-cuda-runtime.zip into the same root folder.
+  3. Optional: extract connector-agent-pretrain.zip into the same root folder.
+  4. Optional: extract connector-agent-llm.zip into ollama_models\.
+  5. Verify the placeholder txt files were replaced by real content.
 
 HOW TO RUN:
   Double-click start_agent.bat
@@ -60,7 +72,7 @@ HOW TO RUN:
 
   Double-click start_pretrain.bat
   -> Starts local YOLO26x pretraining on your local pretrain_data\ folder
-  -> Uses the local GPU when available
+  -> Requires the merged CUDA runtime on NVIDIA PCs and prefers GPU first
   -> Produces assets\models\yolo26x_local_pretrained.pt
 
 CANONICAL PATHS

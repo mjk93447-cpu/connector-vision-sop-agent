@@ -17,6 +17,8 @@ import numpy as np
 import pytesseract
 from ultralytics import YOLO
 
+from src.model_artifacts import LOCAL_PRETRAIN_MODEL_NAME
+
 try:
     import pyautogui
 except Exception as exc:  # pragma: no cover - depends on display availability.
@@ -43,7 +45,7 @@ DEFAULT_MOLD_ROI = ((100, 200), (800, 350))
 @dataclass
 class DetectionConfig:
     """Runtime thresholds for object detection and OCR-assisted UI lookup."""
-    model_path: str = "assets/models/yolo26x.pt"
+    model_path: str = f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}"
 
     confidence_threshold: float = 0.6
     ocr_psm: int = 7
@@ -67,7 +69,7 @@ class VisionAgent:
         confidence_threshold: float = 0.6,
         ocr_psm: int = 7,
     ) -> None:
-        resolved_model_path = model_path or "assets/models/yolo26x.pt"
+        resolved_model_path = model_path or f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}"
         self.model_path = self._resolve_runtime_path(resolved_model_path)
         self.confidence_threshold = confidence_threshold
         self.ocr_psm = ocr_psm
@@ -91,9 +93,9 @@ class VisionAgent:
         Load YOLO weights when available without breaking scaffold runs.
 
         Priority:
-        1. Use a local .pt file if it exists (offline line PC, assets/models/yolo26x.pt).
+        1. Use a local .pt file if it exists (offline line PC, preferred local fine-tuned weights).
         2. If the local file is missing, fall back to the Ultralytics hub name
-           (e.g. 'yolo26x.pt') so that CI or online dev machines can auto-download.
+           (e.g. 'yolo26x_local_pretrained.pt') so that CI or online dev machines can auto-download.
         """
 
         if os.path.exists(model_path):
@@ -105,6 +107,28 @@ class VisionAgent:
             return YOLO(name)
         except Exception:
             return None
+
+    def reload_model(self, model_path: str | None = None) -> bool:
+        """Reload YOLO weights into the live engine.
+
+        Returns ``True`` only when a new model object was loaded successfully.
+        If loading fails, the current in-memory model is left untouched.
+        """
+
+        requested_path = model_path or self.model_path
+        resolved_path = self._resolve_runtime_path(requested_path)
+        new_model = self._load_model(resolved_path)
+        if new_model is None:
+            return False
+
+        self.model_path = resolved_path
+        self.model = new_model
+        if hasattr(self, "config") and getattr(self, "config", None) is not None:
+            try:
+                self.config.model_path = resolved_path  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        return True
 
     def capture_screen(
         self, region: tuple[int, int, int, int] | None = None

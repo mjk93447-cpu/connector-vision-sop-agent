@@ -1,4 +1,4 @@
-name: Build Connector Vision App Pack
+name: Build Connector Vision App + CUDA Overlay
 
 on:
   push:
@@ -15,17 +15,14 @@ on:
       - "assets/models/*.pt"
       - "build_exe.spec"
       - "scripts/pyinstaller_support.py"
+      - "scripts/split_cuda_runtime.py"
       - "scripts/preflight_cuda_app.py"
-      - "scripts/preflight_cuda_pretrain.py"
       - "scripts/preflight_gui_runtime.py"
-      - "scripts/preflight_pretrain_runtime.py"
       - "scripts/pipeline_quality_gate.ps1"
+      - "scripts/assemble_release_pack.ps1"
       - "src/model_artifacts.py"
       - "requirements-common.txt"
-      - "requirements.txt"
       - "requirements-dev.txt"
-      - "scripts/preflight_release.ps1"
-      - "scripts/assemble_release_pack.ps1"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
@@ -46,10 +43,6 @@ jobs:
           lfs: true
           fetch-depth: 2
 
-      - name: Require CUDA wheel for app fine-tuning
-        shell: pwsh
-        run: Add-Content -Path $env:GITHUB_ENV -Value "CUDA_WHEEL_REQUIRED=1"
-
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -67,68 +60,68 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip install --force-reinstall --no-cache-dir numpy==1.26.4
 
-      - name: Ensure YOLO26x base weights exist
+      - name: Materialize runtime YOLO checkpoint
         shell: pwsh
         run: |
-          if (-not (Test-Path "assets\models\yolo26x.pt")) {
-            python -c "from ultralytics import YOLO; import shutil, pathlib; m=YOLO('yolo26x.pt'); src=pathlib.Path(getattr(m,'ckpt_path','yolo26x.pt')); src=pathlib.Path('yolo26x.pt') if not src.exists() else src; pathlib.Path('assets/models').mkdir(parents=True, exist_ok=True); shutil.copy2(str(src), 'assets/models/yolo26x.pt')"
-          }
-          if (Test-Path "assets\models\yolo26x_local_pretrained.pt") {
-            Write-Host "Local pretrained fine-tune seed is present."
-          }
-          else {
-            throw "Missing assets/models/yolo26x_local_pretrained.pt"
-          }
+          python -c "from pathlib import Path; import shutil; from src.model_artifacts import resolve_local_pretrained_model, resolve_runtime_model; runtime=resolve_runtime_model('assets/models/yolo26x_local_pretrained.pt'); target=resolve_local_pretrained_model(); target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(str(runtime), str(target)) if Path(runtime) != target else None; print(f'Runtime model: {runtime}'); print(f'Local slot: {target}')"
 
       - name: Pipeline quality gate (app, smart)
         shell: pwsh
         run: scripts\pipeline_quality_gate.ps1 -Stage ci-smart -Target app
 
-      - name: Verify YOLO26x loads
+      - name: Preflight CUDA app runtime
         shell: cmd
-        run: python -c "from ultralytics import YOLO; m=YOLO('assets/models/yolo26x.pt'); print('YOLO26x classes:', len(m.names))"
+        run: python scripts/preflight_cuda_app.py --model assets/models/yolo26x_local_pretrained.pt --require-cuda-wheel
 
-      - name: Build EXE with PyInstaller
+      - name: Verify runtime YOLO loads
         shell: cmd
-        run: pyinstaller build_exe.spec --distpath dist --clean
+        run: python -c "from src.model_artifacts import resolve_runtime_model; from ultralytics import YOLO; p=resolve_runtime_model('assets/models/yolo26x_local_pretrained.pt'); m=YOLO(str(p)); print('Runtime model:', p); print('YOLO classes:', len(m.names))"
 
-      - name: Verify EXE built
+      - name: Build app directory with PyInstaller
+        shell: cmd
+        run: pyinstaller build_exe.spec --distpath dist --workpath build-app --clean
+
+      - name: Verify app directory built
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist\connector_vision_agent.exe")) {
-            throw "EXE build failed - file not found"
+          if (-not (Test-Path "dist\connector_vision_agent\connector_vision_agent.exe")) {
+            throw "App build failed - EXE not found inside dist\\connector_vision_agent"
           }
 
-      - name: Assemble app bundle
+      - name: Assemble full app folder
         shell: pwsh
         run: |
-          $pkg = "connector_agent_app"
+          $pkg = "connector_agent_app_full"
           if (Test-Path $pkg) {
             Remove-Item -LiteralPath $pkg -Recurse -Force
           }
 
-          New-Item -ItemType Directory -Path "$pkg\assets\models" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$pkg\ollama_models" -Force | Out-Null
-
-          Copy-Item "dist\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe"
-          Copy-Item "assets\config.json" "$pkg\assets\config.json"
-          Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json"
-          Copy-Item "assets\models\yolo26x.pt" "$pkg\assets\models\yolo26x.pt"
-          Copy-Item "assets\models\yolo26x_local_pretrained.pt" "$pkg\assets\models\yolo26x_local_pretrained.pt"
+          New-Item -ItemType Directory -Path $pkg -Force | Out-Null
+          Copy-Item "dist\connector_vision_agent\*" "$pkg\" -Recurse -Force
           Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
           Copy-Item "assets\launchers\PLACE_APP_HERE.txt" "$pkg\PLACE_APP_HERE.txt"
-          Copy-Item "assets\launchers\PLACE_LLM_HERE.txt" "$pkg\ollama_models\PLACE_LLM_HERE.txt"
           if (Test-Path "README_INSTALL_EN.md") { Copy-Item "README_INSTALL_EN.md" "$pkg\README_INSTALL_EN.md" }
           if (Test-Path "README.md") { Copy-Item "README.md" "$pkg\README.md" }
 
-      - name: Upload app bundle artifact
+      - name: Split CUDA overlay artifact
+        shell: cmd
+        run: python scripts/split_cuda_runtime.py --source connector_agent_app_full --core-out connector_agent_app_core --cuda-out connector_agent_cuda_runtime --manifest connector_agent_cuda_runtime/cuda_runtime_manifest.json
+
+      - name: Upload app core artifact
         uses: actions/upload-artifact@v4
         with:
-          name: connector-agent-app
-          path: connector_agent_app/
+          name: connector-agent-app-core
+          path: connector_agent_app_core/
+          retention-days: 90
+
+      - name: Upload CUDA runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: connector-agent-cuda-runtime
+          path: connector_agent_cuda_runtime/
           retention-days: 90
 
       - name: Create GitHub Release
@@ -136,8 +129,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            connector_agent_app/connector_vision_agent.exe
-            connector_agent_app/INSTALL_GUIDE.txt
-            connector_agent_app/MERGE_GUIDE.txt
+            connector_agent_app_core/INSTALL_GUIDE.txt
+            connector_agent_app_core/MERGE_GUIDE.txt
+            connector_agent_cuda_runtime/cuda_runtime_manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

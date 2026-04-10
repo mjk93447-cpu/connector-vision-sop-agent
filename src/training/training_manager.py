@@ -2,19 +2,19 @@
 YOLO fine-tuning manager for OLED line PC.
 
 Wraps ultralytics YOLO.train() and saves the best weights to
-``assets/models/yolo26x.pt`` upon completion.
+``assets/models/yolo26x_local_pretrained.pt`` upon completion.
 
 Usage
 -----
   tm = TrainingManager()
   output_path = tm.train(
       dataset_yaml="training_data/dataset.yaml",
-      base_model="yolo26x.pt",     # or "assets/models/yolo26x.pt"
+      base_model="yolo26x_local_pretrained.pt",
       epochs=10,
       image_size=640,
       progress_cb=lambda epoch, total: print(f"{epoch}/{total}"),
   )
-  # output_path == "assets/models/yolo26x.pt"
+  # output_path == "assets/models/yolo26x_local_pretrained.pt"
 """
 
 from __future__ import annotations
@@ -27,11 +27,18 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.config_loader import detect_local_accelerator, get_base_dir
-from src.model_artifacts import COCO_BASE_MODEL_NAME, resolve_model_artifact
-from src.runtime_compat import ensure_numpy_compatibility
+from src.model_artifacts import (
+    LOCAL_PRETRAIN_MODEL_NAME,
+    is_viable_model_artifact,
+    promote_latest_finetune_checkpoint,
+    resolve_finetune_seed_model,
+    resolve_model_artifact,
+    resolve_runtime_model,
+)
+from src.runtime_compat import ensure_numpy_compatibility, ensure_torch_cuda_wheel
 
-_DEFAULT_BASE_MODEL = COCO_BASE_MODEL_NAME
-_TARGET_WEIGHTS = get_base_dir() / "assets/models/yolo26x.pt"
+_DEFAULT_BASE_MODEL = LOCAL_PRETRAIN_MODEL_NAME
+_TARGET_WEIGHTS = get_base_dir() / f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}"
 
 
 class _TeeWriter:
@@ -142,7 +149,7 @@ class TrainingManager:
 
         Returns
         -------
-        Path to the saved weights file (``assets/models/yolo26x.pt``).
+        Path to the saved weights file (active runtime model path).
 
         Raises
         ------
@@ -194,12 +201,19 @@ class TrainingManager:
                 f"Dataset config: {dataset_yaml}"
             )
 
-        # Determine starting weights: prefer existing custom model if present,
-        # then caller-supplied base_model override, then self.base_model default.
-        if self.target_weights.exists():
+        # Determine starting weights.
+        # Priority:
+        # 1. explicit UI/base_model override
+        # 2. existing target weights (resume fine-tuning)
+        # 3. default fine-tune seed chain
+        if base_model:
+            start_weights = resolve_model_artifact(base_model)
+        elif is_viable_model_artifact(self.target_weights):
             start_weights = self.target_weights
         else:
-            start_weights = resolve_model_artifact(base_model or self.base_model)
+            start_weights = resolve_runtime_model(
+                self.base_model or resolve_finetune_seed_model()
+            )
 
         # ------------------------------------------------------------------ #
         # Clean stale ultralytics label-cache files.                        #
@@ -218,12 +232,13 @@ class TrainingManager:
         if not Path(start_weights).exists():
             raise FileNotFoundError(
                 f"Model file not found: {start_weights}\n"
-                "Place yolo26x.pt, yolo26x_pretrain.pt, or yolo26x_local_pretrained.pt "
+                "Place yolo26x_local_pretrained.pt, yolo26x_pretrain.pt, or yolo26x.pt "
                 "in assets/models/ before training."
             )
 
+        accelerator = self._resolve_accelerator()
         model = YOLO(str(start_weights))
-        device = self._resolve_device()
+        device = self._resolve_device(accelerator)
 
         # Patch the on_train_epoch_end callback to forward progress.
         if progress_cb is not None:
@@ -317,6 +332,7 @@ class TrainingManager:
         if best_pt and best_pt.exists():
             self.target_weights.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(best_pt, self.target_weights)
+        promote_latest_finetune_checkpoint(force=True)
 
         return self.target_weights
 
@@ -534,8 +550,24 @@ class TrainingManager:
         return None
 
     @staticmethod
-    def _resolve_device() -> object:
-        """Use CUDA when available, otherwise fall back to CPU."""
+    def _resolve_accelerator() -> dict:
+        """Prefer CUDA on NVIDIA PCs and fail loudly when it is unavailable."""
 
         accelerator = detect_local_accelerator()
+        if accelerator.get("gpu_present"):
+            ensure_torch_cuda_wheel(require_cuda_wheel=True)
+            if not accelerator.get("cuda_usable"):
+                raise RuntimeError(
+                    "NVIDIA GPU detected but torch CUDA is not usable. "
+                    "Merge the CUDA runtime artifact and verify the driver before "
+                    "starting YOLO26x fine-tuning."
+                )
+        return accelerator
+
+    @staticmethod
+    def _resolve_device(accelerator: Optional[dict] = None) -> object:
+        """Use CUDA when available, otherwise fall back to CPU."""
+
+        if accelerator is None:
+            accelerator = TrainingManager._resolve_accelerator()
         return accelerator["device"]

@@ -1,5 +1,29 @@
 # Changelog
 
+## [5.0.0] - 2026-04-10
+
+### Changed
+
+- Promoted the product baseline from `4.5.0` to `5.0.0`.
+- Reframed the shipping package as a GUI app plus CUDA overlay release path.
+- Standardized fine-tuning so the active runtime slot is
+  `assets/models/yolo26x_local_pretrained.pt`.
+- Expanded agent workflow documentation so the same guidance works for Claude,
+  Cursor Codex sidebar, and ChatGPT 5.4 medium.
+
+### Fixed
+
+- Added automatic promotion of `runs/detect/train/weights/best.pt` into the
+  active local pretrained runtime slot after fine-tuning.
+- Tightened GPU-first handling for fine-tuning and related offline runtime
+  paths so NVIDIA-capable PCs do not silently drift into the wrong path.
+
+### Docs
+
+- Added `docs/V5_0_0_FOCUS.md` for the new release focus.
+- Added `docs/AI_AGENT_GUIDE.md` for cross-agent development workflow.
+- Updated deployment, install, and QA documents for the `5.0.0` release.
+
 ## [4.5.0] - 2026-04-08
 
 ### Changed

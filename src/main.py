@@ -23,6 +23,7 @@ import json
 from src.config_loader import load_config
 from src.control_engine import ControlEngine
 from src.log_manager import LogManager
+from src.model_artifacts import resolve_runtime_model
 from src.sop_advisor import (
     apply_config_patch,
     summarize_failures,
@@ -47,6 +48,13 @@ def _resolve_ocr_psm(config: dict) -> int:
     return int(config.get("vision", {}).get("ocr_psm", 7))
 
 
+def _resolve_runtime_model_path(config: dict) -> str:
+    """Resolve the live SOP detection model path with migration-aware fallback."""
+
+    configured = config.get("vision", {}).get("model_path")
+    return str(resolve_runtime_model(configured))
+
+
 def _resolve_retries(config: dict) -> int:
     """Read retry count from config or fall back to the default."""
 
@@ -62,6 +70,7 @@ def _build_services(speed: SpeedPreset = "normal") -> tuple[VisionEngine, Contro
     config = load_config()
     vision = VisionEngine(
         DetectionConfig(
+            model_path=_resolve_runtime_model_path(config),
             confidence_threshold=_resolve_confidence_threshold(config),
             ocr_psm=_resolve_ocr_psm(config),
         )
@@ -358,4 +367,3 @@ if __name__ == "__main__":
         run_console()
     except KeyboardInterrupt:
         print("\nExiting Connector Vision SOP Agent.")
-

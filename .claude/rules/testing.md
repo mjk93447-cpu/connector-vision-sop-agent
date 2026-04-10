@@ -1,17 +1,31 @@
-# 테스트 규칙 (tests/ 작업 시 참조)
+# Testing Rules
 
-## 커맨드
+These rules describe the repository test policy for any coding agent.
+
+## Default command
+
 ```bash
-bash run_tests.sh          # 테스트 + 커버리지 (커밋 전 필수)
+bash run_tests.sh
 ```
 
-## 현황 (2026-03-19)
-- 453 pass, 커버리지 92%
-- 주요 테스트 파일: tests/unit/ 아래 13개 모듈
+Use the repository's normal test runner when you need broad validation.
 
-## 커버리지 제외 (.coveragerc)
-- main.py, control_engine.py, sop_executor.py, test_sop.py
+## Active-path preference
 
-## 신규 기능 규칙
-- 새 SOP 단계 추가 → 대응 테스트 필수
-- YOLO/화면 의존 테스트 → monkeypatch/mock으로 헤드리스 환경 지원
+- For fast iteration, prioritize tests that exercise the active app surface:
+  GUI runtime, model promotion, SOP execution, and training integration.
+- Keep archived pretrain tests out of normal app-release validation unless the
+  task explicitly targets legacy pretrain maintenance.
+
+## Shared agent interpretation
+
+- Claude, Cursor Codex sidebar, and ChatGPT 5.4 medium should all prefer
+  targeted tests first, then broader suites once the active path is stable.
+- Do not let a helper model redefine the test scope; the repository rules do.
+
+## New feature expectation
+
+- Changes to SOP execution, GUI behavior, or training/model routing should ship
+  with targeted validation.
+- Vision and OCR tests should keep using mocks or monkeypatching where the
+  existing suite already follows that pattern.

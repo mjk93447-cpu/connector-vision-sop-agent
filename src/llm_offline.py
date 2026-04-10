@@ -158,7 +158,7 @@ class OfflineLLM:
         }
 
         if has_gpu:
-            options["num_gpu"] = 99  # 모든 레이어 GPU 오프로딩
+            options["num_gpu"] = max(0, int(self.cfg.gpu_layers or 0)) or 99
             options["num_thread"] = max(1, cpu_count // 4)
         else:
             options["num_gpu"] = 0
@@ -695,7 +695,7 @@ class OfflineLLM:
             "class_names": class_names,
             "document_text": document_text,
             "output_schema": {
-                "version": "4.5.0",
+                "version": "5.0.0",
                 "title": "string",
                 "source_path": "string",
                 "source_type": "pdf|txt",
@@ -746,7 +746,7 @@ class OfflineLLM:
         except Exception:
             pass
         return {
-            "version": "4.5.0",
+            "version": "5.0.0",
             "title": source_path or "Imported SOP",
             "source_path": source_path,
             "source_type": source_type,

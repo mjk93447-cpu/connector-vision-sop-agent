@@ -1,6 +1,6 @@
 # connector-vision-sop-agent
 
-Connector Vision SOP Agent for offline OLED line operation.
+Connector Vision SOP Agent 5.0.0 for offline OLED line operation.
 
 ## Canonical paths
 
@@ -11,15 +11,27 @@ Connector Vision SOP Agent for offline OLED line operation.
 - `src/gui/panels/sop_panel.py`: active SOP Run flow
 - `docs/ACTIVE_PATHS.md`: active vs archived path map
 - `docs/MODEL_ARTIFACT_NAMING.md`: model naming rules
-- `docs/V4_5_0_FOCUS.md`: 4.5.0 development focus
+- `docs/V5_0_0_FOCUS.md`: 5.0.0 release focus
+- `docs/AI_AGENT_GUIDE.md`: shared workflow guidance for Claude, Cursor Codex sidebar, and ChatGPT 5.4 medium
 
 ## Current product direction
 
 Pretraining is complete. `assets/models/yolo26x_local_pretrained.pt` is the
-active seed for Tab 7 fine-tuning.
+active seed for Tab 7 fine-tuning, and `runs/detect/train/weights/best.pt`
+is promoted back into that runtime slot after fine-tuning.
 
 Archived pretrain code and dataset-prep paths remain in the repository only
-for historical/manual rebuilds. Do not use them for new feature work.
+for historical/manual rebuilds. Do not use them for new feature work, SOP
+development, release engineering, or standard line deployment.
+
+## Release highlights
+
+- `5.0.0` standardizes the shipping app around the PyQt6 GUI bundle.
+- Fine-tuning, SOP Editor, and SOP Run are the active product surfaces.
+- CUDA runtime is packaged as a split overlay for faster app assembly while
+  keeping NVIDIA acceleration available in offline deployments.
+- Agent workflow guidance now covers Claude, Cursor Codex sidebar, and
+  ChatGPT 5.4 medium instead of a Claude-only operating model.
 
 ## Build
 

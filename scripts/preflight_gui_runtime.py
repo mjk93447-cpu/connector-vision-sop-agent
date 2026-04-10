@@ -11,7 +11,10 @@ from src.model_artifacts import (
     CLOUD_PRETRAIN_MODEL_NAME,
     COCO_BASE_MODEL_NAME,
     LOCAL_PRETRAIN_MODEL_NAME,
+    is_viable_model_artifact,
+    resolve_runtime_model,
 )
+from src.config_loader import load_config
 
 APP_CRITICAL_FILES = (
     Path("src/main.py"),
@@ -100,6 +103,13 @@ def main() -> None:
         )
 
     _smoke_imports_and_model_priority()
+    config = load_config()
+    runtime_model = resolve_runtime_model(config.get("vision", {}).get("model_path"))
+    if not is_viable_model_artifact(runtime_model):
+        raise RuntimeError(
+            "GUI runtime model is missing or invalid: "
+            f"{runtime_model}. Expected a real YOLO checkpoint, not a placeholder."
+        )
     print("[preflight_gui] GUI runtime guard checks passed")
 
 
