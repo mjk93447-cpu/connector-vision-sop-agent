@@ -29,6 +29,8 @@ development, release engineering, or standard line deployment.
 - `5.1.0` standardizes the shipping app around the PyQt6 GUI bundle.
 - Fine-tuning, SOP Editor, and SOP Run are the active product surfaces.
 - Shipping artifacts are `cpu` and `gpu` full packs with shared app code.
+- The packaged runtime is embedded into `connector_vision_agent.exe` instead of
+  being deployed as an external `_internal` runtime folder.
 - The CPU pack runs anywhere and stays CPU-only.
 - The GPU pack prefers CUDA on NVIDIA PCs and falls back to CPU on CPU-only PCs.
 - Archived pretrain code is now physically isolated under `legacy/pretrain/`.

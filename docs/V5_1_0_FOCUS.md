@@ -18,6 +18,8 @@ from day-to-day product work.
 - `connector-agent-app-gpu` is the CUDA-preferred full pack.
 - Both packs share the same application code and feature set.
 - The runtime difference is limited to the packaged torch stack.
+- The runtime is embedded into the EXE instead of being deployed as a separate
+  `_internal` runtime folder.
 
 ## Engineering priorities
 

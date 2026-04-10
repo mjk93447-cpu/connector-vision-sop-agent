@@ -40,6 +40,10 @@ Both full packs include:
 - `assets/models/yolo26x.pt`
 - `assets/models/yolo26x_local_pretrained.pt`
 
+The Python runtime and packaged dependencies are embedded into
+`connector_vision_agent.exe`, so deployment no longer depends on an external
+`_internal` runtime folder.
+
 ## First launch
 
 1. Copy the extracted app bundle to the target Windows PC.

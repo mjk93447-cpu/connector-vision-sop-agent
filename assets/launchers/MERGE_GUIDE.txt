@@ -29,12 +29,8 @@ INSTALL STEPS
 
 FINAL FOLDER STRUCTURE
   connector_agent\
-  +-- connector_vision_agent.exe   <- SOP agent with PyQt6 GUI
+  +-- connector_vision_agent.exe   <- SOP agent with bundled runtime
   +-- start_agent.bat              <- DOUBLE-CLICK TO RUN
-  +-- _internal\
-  |   +-- torch\
-  |   +-- torchvision\
-  |   +-- nvidia\                  <- GPU pack only
   +-- runtime_flavor.txt
   +-- assets\
   |   +-- config.json
@@ -59,6 +55,8 @@ FEATURE PARITY
   - LLM flow
 
   The only intended runtime difference is torch acceleration behavior.
+  The runtime itself is embedded into the EXE instead of shipping as a
+  separate `_internal` folder.
 
 HOW TO RUN
   Double-click start_agent.bat

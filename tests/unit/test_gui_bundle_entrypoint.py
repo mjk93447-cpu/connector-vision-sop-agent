@@ -7,6 +7,8 @@ def test_build_exe_spec_targets_gui_entrypoint() -> None:
     content = Path("build_exe.spec").read_text(encoding="utf-8")
     assert "src/gui_app.py" in content
     assert "console=False" in content
+    assert "exclude_binaries=False" in content
+    assert "COLLECT(" not in content
 
 
 def test_packaged_launcher_marks_gui_runtime() -> None:

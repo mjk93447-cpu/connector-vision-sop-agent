@@ -7,11 +7,13 @@ PACKAGE ARTIFACTS
 --------------------------------------------------
   1. connector-agent-app-cpu.zip
      - complete Windows app bundle
+     - single-file EXE runtime bundle
      - runs on CPU-only PCs without any extra runtime merge
      - also runs on GPU PCs, but uses CPU only
 
   2. connector-agent-app-gpu.zip
      - complete Windows app bundle
+     - single-file EXE runtime bundle
      - prefers CUDA on NVIDIA PCs
      - still runs on CPU-only PCs by falling back to CPU
 
@@ -61,10 +63,6 @@ FINAL FOLDER STRUCTURE
 --------------------------------------------------
   connector_agent\
   +-- connector_vision_agent.exe
-  +-- _internal\
-  |   +-- torch\
-  |   +-- torchvision\
-  |   +-- nvidia\              <- GPU pack only
   +-- start_agent.bat
   +-- stop_ollama.bat
   +-- runtime_flavor.txt
@@ -79,6 +77,8 @@ FINAL FOLDER STRUCTURE
 
 RUNTIME BEHAVIOR
 --------------------------------------------------
+  - The Python runtime, torch stack, and packaged dependencies are embedded
+    into connector_vision_agent.exe.
   - CPU pack on CPU-only PC: normal operation
   - CPU pack on GPU PC: normal operation, CPU only
   - GPU pack on GPU PC: CUDA preferred

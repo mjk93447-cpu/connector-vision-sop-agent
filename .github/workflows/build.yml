@@ -96,15 +96,15 @@ jobs:
         shell: cmd
         run: python -c "from src.model_artifacts import resolve_runtime_model; from ultralytics import YOLO; p=resolve_runtime_model('assets/models/yolo26x_local_pretrained.pt'); m=YOLO(str(p)); print('Runtime model:', p); print('YOLO classes:', len(m.names))"
 
-      - name: Build app directory with PyInstaller
+      - name: Build onefile app EXE with PyInstaller
         shell: cmd
         run: pyinstaller build_exe.spec --distpath dist --workpath build-app --clean
 
-      - name: Verify app directory built
+      - name: Verify app EXE built
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist\connector_vision_agent\connector_vision_agent.exe")) {
-            throw "App build failed - EXE not found inside dist\\connector_vision_agent"
+          if (-not (Test-Path "dist\connector_vision_agent.exe")) {
+            throw "App build failed - EXE not found at dist\\connector_vision_agent.exe"
           }
 
       - name: Assemble full app folder
@@ -116,12 +116,16 @@ jobs:
           }
 
           New-Item -ItemType Directory -Path $pkg -Force | Out-Null
-          Copy-Item "dist\connector_vision_agent\*" "$pkg\" -Recurse -Force
+          Copy-Item "dist\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe" -Force
           Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
           Copy-Item "assets\launchers\PLACE_APP_HERE.txt" "$pkg\PLACE_APP_HERE.txt"
+          New-Item -ItemType Directory -Path "$pkg\assets" -Force | Out-Null
+          Copy-Item "assets\config.json" "$pkg\assets\config.json" -Force
+          Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json" -Force
+          Copy-Item "assets\models" "$pkg\assets\models" -Recurse -Force
           Set-Content -LiteralPath "$pkg\runtime_flavor.txt" -Value "${{ matrix.runtime_flavor }}" -Encoding UTF8
           if (Test-Path "README_INSTALL_EN.md") { Copy-Item "README_INSTALL_EN.md" "$pkg\README_INSTALL_EN.md" }
           if (Test-Path "README.md") { Copy-Item "README.md" "$pkg\README.md" }
