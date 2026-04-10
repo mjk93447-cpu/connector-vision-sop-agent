@@ -1,6 +1,6 @@
 # Connector Vision SOP Agent Installation Guide
 
-Version 5.0.0
+Version 5.1.0
 
 ## Canonical paths
 
@@ -8,7 +8,7 @@ Version 5.0.0
 - Packaged launcher: `assets/launchers/start_agent.bat`
 - Active path map: `docs/ACTIVE_PATHS.md`
 - Model naming: `docs/MODEL_ARTIFACT_NAMING.md`
-- 5.0.0 focus: `docs/V5_0_0_FOCUS.md`
+- 5.1.0 focus: `docs/V5_1_0_FOCUS.md`
 - Shared AI agent workflow: `docs/AI_AGENT_GUIDE.md`
 
 ## Important policy
@@ -25,7 +25,12 @@ Version 5.0.0
 
 ## Bundle contents
 
-The standard app bundle should contain:
+The standard app bundle should be either:
+
+- `connector-agent-app-cpu`
+- `connector-agent-app-gpu`
+
+Both full packs include:
 
 - `connector_vision_agent.exe`
 - `start_agent.bat`
@@ -62,10 +67,4 @@ The standard app bundle should contain:
 Do not use these for new work unless you are intentionally rebuilding the
 historical pretrain seed:
 
-- `scripts/run_pretrain_local.py`
-- `scripts/run_pretrain.py`
-- `scripts/run_pretrain_compact.py`
-- `scripts/prepare_pretrain_data.py`
-- `src/pretrain_runtime.py`
-- `src/training/compact_pretrain_pipeline.py`
-- `src/training/pretrain_pipeline.py`
+- `legacy/pretrain/`

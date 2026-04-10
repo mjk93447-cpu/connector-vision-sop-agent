@@ -48,6 +48,7 @@ def test_run_pretrain_local_dry_run_skips_training(
             "ram_gb": 128.0,
         },
     )
+    monkeypatch.setattr(run_pretrain_local, "detect_runtime_flavor", lambda: "cpu")
 
     train_mock = Mock(return_value=Path("unused.pt"))
     monkeypatch.setattr(
@@ -120,6 +121,7 @@ def test_run_pretrain_local_skip_bundle_prep_does_not_build_dataset(
             "ram_gb": 128.0,
         },
     )
+    monkeypatch.setattr(run_pretrain_local, "detect_runtime_flavor", lambda: "cpu")
 
     build_mock = Mock()
     train_mock = Mock(return_value=Path("unused.pt"))
@@ -174,6 +176,7 @@ def test_run_pretrain_local_requires_explicit_bundle_prep_for_real_run(
             "ram_gb": 128.0,
         },
     )
+    monkeypatch.setattr(run_pretrain_local, "detect_runtime_flavor", lambda: "cpu")
 
     build_mock = Mock()
     train_mock = Mock(return_value=Path("unused.pt"))
@@ -230,6 +233,7 @@ def test_run_pretrain_local_allows_bundle_prep_on_explicit_request(
             "ram_gb": 128.0,
         },
     )
+    monkeypatch.setattr(run_pretrain_local, "detect_runtime_flavor", lambda: "cpu")
 
     build_mock = Mock()
     train_mock = Mock(return_value=Path("unused.pt"))
@@ -245,3 +249,146 @@ def test_run_pretrain_local_allows_bundle_prep_on_explicit_request(
 
     build_mock.assert_called_once()
     train_mock.assert_not_called()
+
+
+def test_run_pretrain_local_gpu_runtime_requires_cuda_wheel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "pretrain_data"
+    (data_root / "train" / "images").mkdir(parents=True, exist_ok=True)
+    (data_root / "val" / "images").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "resolve_pretrain_data_root",
+        lambda explicit_root=None: data_root,
+    )
+    monkeypatch.setattr(run_pretrain_local, "count_prepared_images", lambda root: 64)
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "suggest_pretrain_profile",
+        lambda image_count=None, explicit_device=None: SimpleNamespace(
+            device="cpu",
+            epochs=6,
+            batch=8,
+            image_size=320,
+            workers=4,
+        ),
+    )
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "detect_pretrain_hardware",
+        lambda: {
+            "device": "cpu",
+            "name": "NVIDIA RTX",
+            "memory_gb": 16.0,
+            "gpu_present": True,
+            "cuda_usable": False,
+            "logical_cores": 16,
+            "physical_cores": 8,
+            "ram_gb": 64.0,
+        },
+    )
+    monkeypatch.setattr(run_pretrain_local, "detect_runtime_flavor", lambda: "gpu")
+    ensure_cuda_mock = Mock(side_effect=RuntimeError("missing CUDA-enabled torch wheel"))
+    monkeypatch.setattr(run_pretrain_local, "ensure_torch_cuda_wheel", ensure_cuda_mock)
+    monkeypatch.setattr(sys, "argv", ["run_pretrain_local.py", "--dry-run"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_pretrain_local.main()
+
+    ensure_cuda_mock.assert_called_once_with(require_cuda_wheel=True)
+    assert "CUDA-enabled torch wheel" in str(exc_info.value)
+
+
+def test_run_pretrain_local_explicit_cpu_skips_cuda_wheel_requirement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "pretrain_data"
+    (data_root / "train" / "images").mkdir(parents=True, exist_ok=True)
+    (data_root / "val" / "images").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "resolve_pretrain_data_root",
+        lambda explicit_root=None: data_root,
+    )
+    monkeypatch.setattr(run_pretrain_local, "count_prepared_images", lambda root: 64)
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "suggest_pretrain_profile",
+        lambda image_count=None, explicit_device=None: SimpleNamespace(
+            device="cpu",
+            epochs=6,
+            batch=8,
+            image_size=320,
+            workers=4,
+        ),
+    )
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "detect_pretrain_hardware",
+        lambda: {
+            "device": "cpu",
+            "name": "NVIDIA RTX",
+            "memory_gb": 16.0,
+            "gpu_present": True,
+            "cuda_usable": False,
+            "logical_cores": 16,
+            "physical_cores": 8,
+            "ram_gb": 64.0,
+        },
+    )
+    monkeypatch.setattr(run_pretrain_local, "detect_runtime_flavor", lambda: "gpu")
+    ensure_cuda_mock = Mock()
+    monkeypatch.setattr(run_pretrain_local, "ensure_torch_cuda_wheel", ensure_cuda_mock)
+    monkeypatch.setattr(sys, "argv", ["run_pretrain_local.py", "--dry-run", "--device", "cpu"])
+
+    run_pretrain_local.main()
+
+    ensure_cuda_mock.assert_called_once_with(require_cuda_wheel=False)
+
+
+def test_run_pretrain_local_gpu_runtime_falls_back_to_cpu_when_cuda_unusable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "pretrain_data"
+    (data_root / "train" / "images").mkdir(parents=True, exist_ok=True)
+    (data_root / "val" / "images").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "resolve_pretrain_data_root",
+        lambda explicit_root=None: data_root,
+    )
+    monkeypatch.setattr(run_pretrain_local, "count_prepared_images", lambda root: 64)
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "suggest_pretrain_profile",
+        lambda image_count=None, explicit_device=None: SimpleNamespace(
+            device="cpu",
+            epochs=6,
+            batch=8,
+            image_size=320,
+            workers=4,
+        ),
+    )
+    monkeypatch.setattr(
+        run_pretrain_local,
+        "detect_pretrain_hardware",
+        lambda: {
+            "device": "cpu",
+            "name": "NVIDIA RTX",
+            "memory_gb": 16.0,
+            "gpu_present": True,
+            "cuda_usable": False,
+            "logical_cores": 16,
+            "physical_cores": 8,
+            "ram_gb": 64.0,
+        },
+    )
+    monkeypatch.setattr(run_pretrain_local, "detect_runtime_flavor", lambda: "gpu")
+    monkeypatch.setattr(run_pretrain_local, "ensure_torch_cuda_wheel", Mock())
+    monkeypatch.setattr(sys, "argv", ["run_pretrain_local.py", "--dry-run"])
+
+    run_pretrain_local.main()

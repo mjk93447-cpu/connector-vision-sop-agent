@@ -1,6 +1,41 @@
-"""Runtime compatibility guards shared by app and pretrain entrypoints."""
+"""Runtime compatibility guards shared by the shipping app entrypoints."""
 
 from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+from typing import Literal
+
+RuntimeFlavor = Literal["cpu", "gpu"]
+
+
+def detect_runtime_flavor() -> RuntimeFlavor:
+    """Return the installed runtime flavor.
+
+    Priority:
+    1. `CONNECTOR_AGENT_RUNTIME_FLAVOR` override when explicitly set.
+    2. Installed torch wheel type (`torch.version.cuda`).
+    3. Safe fallback to `cpu`.
+    """
+
+    env_value = str(os.environ.get("CONNECTOR_AGENT_RUNTIME_FLAVOR", "")).strip().lower()
+    if env_value in {"cpu", "gpu"}:
+        return "gpu" if env_value == "gpu" else "cpu"
+
+    try:
+        import torch  # noqa: PLC0415
+    except ImportError:
+        return "cpu"
+
+    cuda_version = getattr(getattr(torch, "version", None), "cuda", None)
+    return "gpu" if cuda_version is not None else "cpu"
+
+
+def runtime_prefers_gpu() -> bool:
+    """Return True only when the installed runtime is the GPU variant."""
+
+    return detect_runtime_flavor() == "gpu"
 
 
 def ensure_numpy_compatibility() -> None:

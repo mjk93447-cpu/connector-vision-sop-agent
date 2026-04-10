@@ -6,13 +6,10 @@ param(
         "tests/unit/test_sop_document_ingest.py",
         "tests/unit/test_llm_offline.py",
         "tests/unit/test_check_local_runtime.py",
-        "tests/unit/test_pretrain_runtime.py",
-        "tests/unit/test_run_pretrain_local.py",
-        "tests/unit/test_legacy_pretrain_entrypoints.py",
         "tests/unit/test_pyinstaller_support.py",
-        "tests/unit/test_start_pretrain_bat.py",
         "tests/unit/test_app_runtime_guardrails.py",
-        "tests/unit/test_pretrain_runtime_guardrails.py"
+        "tests/unit/test_start_agent_launcher.py",
+        "tests/unit/test_gui_bundle_entrypoint.py"
     ),
     [string[]]$IntegrationTests = @(
         "tests/integration/test_no_yolo_sop_run.py"
@@ -62,9 +59,7 @@ function Test-RequiredFiles {
         "assets\config.json",
         "assets\sop_steps.json",
         "assets\launchers\start_agent.bat",
-        "assets\launchers\start_pretrain.bat",
-        "build_exe.spec",
-        "pretrain_exe.spec"
+        "build_exe.spec"
     )
     foreach ($item in $required) {
         if (-not (Test-Path $item)) {
@@ -87,26 +82,8 @@ Test-RequiredFiles
 Write-Host "[preflight] running unit tests..."
 Invoke-Pytest -Tests $UnitTests -TimeoutSec 60
 
-Write-Host "[preflight] running CUDA/runtime smoke test..."
-$requireCudaWheel = $env:CUDA_WHEEL_REQUIRED -eq "1"
-if (Test-Path "assets\models\yolo26x.pt") {
-    $args = @("scripts/preflight_cuda_pretrain.py", "--model", "assets/models/yolo26x.pt")
-    if ($requireCudaWheel) {
-        $args += "--require-cuda-wheel"
-    }
-    & python @args
-} else {
-    $args = @("scripts/preflight_cuda_pretrain.py", "--skip-model-load")
-    if ($requireCudaWheel) {
-        $args += "--require-cuda-wheel"
-    }
-    & python @args
-}
-if ($LASTEXITCODE -ne 0) {
-    throw "CUDA/runtime smoke test failed"
-}
-
 Write-Host "[preflight] running GUI CUDA fine-tuning smoke test..."
+$requireCudaWheel = $env:CUDA_WHEEL_REQUIRED -eq "1"
 $guiSmokeRan = $false
 if (Test-Path "assets\models\yolo26x.pt") {
     $args = @("scripts/preflight_cuda_app.py", "--model", "assets/models/yolo26x.pt")
@@ -133,20 +110,6 @@ Write-Host "[preflight] running GUI runtime guard checks..."
 & python scripts/preflight_gui_runtime.py
 if ($LASTEXITCODE -ne 0) {
     throw "GUI runtime guard checks failed"
-}
-
-Write-Host "[preflight] running pretrain runtime guard checks..."
-& python scripts/preflight_pretrain_runtime.py
-if ($LASTEXITCODE -ne 0) {
-    throw "Pretrain runtime guard checks failed"
-}
-
-if ((Test-Path "pretrain_data") -or (Test-Path "pretrain_data_test")) {
-    Write-Host "[preflight] verifying pretrain launcher dry-run..."
-    & python scripts/run_pretrain_local.py --dry-run
-    if ($LASTEXITCODE -ne 0) {
-        throw "Pretrain dry-run failed"
-    }
 }
 
 if ($IntegrationTests.Count -gt 0) {

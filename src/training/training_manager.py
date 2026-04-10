@@ -35,7 +35,11 @@ from src.model_artifacts import (
     resolve_model_artifact,
     resolve_runtime_model,
 )
-from src.runtime_compat import ensure_numpy_compatibility, ensure_torch_cuda_wheel
+from src.runtime_compat import (
+    detect_runtime_flavor,
+    ensure_numpy_compatibility,
+    ensure_torch_cuda_wheel,
+)
 
 _DEFAULT_BASE_MODEL = LOCAL_PRETRAIN_MODEL_NAME
 _TARGET_WEIGHTS = get_base_dir() / f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}"
@@ -551,17 +555,18 @@ class TrainingManager:
 
     @staticmethod
     def _resolve_accelerator() -> dict:
-        """Prefer CUDA on NVIDIA PCs and fail loudly when it is unavailable."""
+        """Choose the training device from runtime flavor and local hardware."""
 
-        accelerator = detect_local_accelerator()
-        if accelerator.get("gpu_present"):
+        accelerator = dict(detect_local_accelerator())
+        runtime_flavor = detect_runtime_flavor()
+        accelerator["runtime_flavor"] = runtime_flavor
+
+        if runtime_flavor == "gpu":
             ensure_torch_cuda_wheel(require_cuda_wheel=True)
-            if not accelerator.get("cuda_usable"):
-                raise RuntimeError(
-                    "NVIDIA GPU detected but torch CUDA is not usable. "
-                    "Merge the CUDA runtime artifact and verify the driver before "
-                    "starting YOLO26x fine-tuning."
-                )
+            accelerator["device"] = 0 if accelerator.get("cuda_usable") else "cpu"
+        else:
+            ensure_torch_cuda_wheel(require_cuda_wheel=False)
+            accelerator["device"] = "cpu"
         return accelerator
 
     @staticmethod

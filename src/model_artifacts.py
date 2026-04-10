@@ -174,7 +174,7 @@ def is_viable_model_artifact(candidate: str | Path) -> bool:
 def resolve_runtime_model(configured: str | Path | None = None) -> Path:
     """Resolve the model path that live SOP detection should load.
 
-    Runtime rule for v5.0.0:
+    Runtime rule for v5.1.0:
     1. If the config explicitly points to a non-COCO model and it exists, honor it.
     2. If the config still points at the legacy COCO base path, auto-upgrade to the
        best available fine-tuned/pretrained seed when one exists.

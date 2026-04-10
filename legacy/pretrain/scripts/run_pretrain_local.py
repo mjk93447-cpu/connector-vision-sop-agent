@@ -16,7 +16,11 @@ from src.pretrain_runtime import (  # noqa: E402
     resolve_pretrain_data_root,
     suggest_pretrain_profile,
 )
-from src.runtime_compat import ensure_numpy_compatibility  # noqa: E402
+from src.runtime_compat import (  # noqa: E402
+    detect_runtime_flavor,
+    ensure_numpy_compatibility,
+    ensure_torch_cuda_wheel,
+)
 
 _PIPELINE_IMPORT_ERROR: ImportError | None = None
 try:
@@ -61,6 +65,30 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _device_requests_cpu(raw_device: str | None) -> bool:
+    return raw_device is not None and raw_device.lower() == "cpu"
+
+
+def _device_requests_cuda(raw_device: str | None) -> bool:
+    return raw_device is not None and raw_device.lower() in {"0", "cuda", "cuda:0", "gpu"}
+
+
+def _should_require_cuda_wheel(
+    runtime_flavor: str, hardware: dict[str, object], raw_device: str | None
+) -> bool:
+    if _device_requests_cpu(raw_device):
+        return False
+    if _device_requests_cuda(raw_device):
+        return True
+    return runtime_flavor == "gpu"
+
+
+def _should_fail_for_unusable_cuda(
+    runtime_flavor: str, hardware: dict[str, object], raw_device: str | None
+) -> bool:
+    return _device_requests_cuda(raw_device) and not bool(hardware.get("cuda_usable"))
+
+
 def main() -> None:
     freeze_support()
     parser = _build_parser()
@@ -90,10 +118,24 @@ def main() -> None:
     pipeline = CompactPretrainPipeline(output_dir=output_dir, config=cfg)
 
     hardware = detect_pretrain_hardware()
+    runtime_flavor = detect_runtime_flavor()
+    if _should_require_cuda_wheel(runtime_flavor, hardware, args.device):
+        try:
+            ensure_torch_cuda_wheel(require_cuda_wheel=True)
+        except RuntimeError as exc:
+            raise SystemExit(f"[run_pretrain] {exc}") from exc
+    else:
+        ensure_torch_cuda_wheel(require_cuda_wheel=False)
+    if _should_fail_for_unusable_cuda(runtime_flavor, hardware, args.device):
+        raise SystemExit(
+            "[run_pretrain] CUDA was requested explicitly but torch CUDA is not usable. "
+            "Use the GPU runtime bundle or switch to --device cpu."
+        )
+
     image_count = count_prepared_images(output_dir)
     profile = suggest_pretrain_profile(image_count=image_count)
 
-    train_device = profile.device
+    train_device = "cpu" if runtime_flavor == "cpu" else profile.device
     if args.device is not None:
         if args.device.lower() == "cpu":
             train_device = "cpu"

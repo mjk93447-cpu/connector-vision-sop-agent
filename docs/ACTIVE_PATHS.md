@@ -26,16 +26,17 @@ Use this file as the canonical map for future maintenance and agent exploration.
 These paths are legacy/manual only and must not be used for new product work:
 
 - `legacy/pretrain/README.md`
-- `scripts/run_pretrain_local.py`
-- `scripts/run_pretrain.py`
-- `scripts/run_pretrain_compact.py`
-- `scripts/prepare_pretrain_data.py`
-- `src/pretrain_runtime.py`
-- `src/training/compact_pretrain_pipeline.py`
-- `src/training/pretrain_pipeline.py`
-- `.github/workflows/build-pretrain.yml`
-- `pretrain_exe.spec`
-- `requirements-pretrain.txt`
+- `legacy/pretrain/scripts/run_pretrain_local.py`
+- `legacy/pretrain/run_pretrain.py`
+- `legacy/pretrain/run_pretrain_compact.py`
+- `legacy/pretrain/prepare_pretrain_data.py`
+- `legacy/pretrain/scripts/preflight_cuda_pretrain.py`
+- `legacy/pretrain/scripts/preflight_pretrain_runtime.py`
+- `legacy/pretrain/src/pretrain_runtime.py`
+- `legacy/pretrain/src/training/compact_pretrain_pipeline.py`
+- `legacy/pretrain/src/training/pretrain_pipeline.py`
+- `legacy/pretrain/pretrain_exe.spec`
+- `legacy/pretrain/requirements-pretrain.txt`
 
 Agent boundary:
 
@@ -53,9 +54,6 @@ Agent boundary:
   - config and SOP files
   - `yolo26x.pt`
   - `yolo26x_local_pretrained.pt`
-- Archived pretrain bundle:
-  - manual rebuild use only
-  - never required for standard line deployment
 - Pretrain datasets:
   - excluded from active app packaging
   - treated as archived local-only materials

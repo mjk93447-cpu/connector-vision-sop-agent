@@ -12,3 +12,5 @@ def test_start_pretrain_bat_validates_blank_input() -> None:
     assert "if defined USER_BATCH" in content
     assert "PRETRAIN_ARGS" in content
     assert "--skip-bundle-prep" in content
+    assert "connector-agent-app-cpu" in content
+    assert "connector-agent-app-gpu" in content

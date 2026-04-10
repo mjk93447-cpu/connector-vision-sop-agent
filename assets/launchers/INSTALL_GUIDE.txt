@@ -1,39 +1,56 @@
 ================================================================
-Connector Vision SOP Agent v5.0.0 - App + CUDA Overlay
+Connector Vision SOP Agent v5.1.0 - Full App Packs
  INSTALL GUIDE
 ================================================================
 
 PACKAGE ARTIFACTS
 --------------------------------------------------
-  1. connector-agent-app-core.zip
-     - connector_vision_agent.exe
-     - launchers, config, SOP steps, docs
-     - lightweight runtime pieces that do not include torch CUDA payloads
-  2. connector-agent-cuda-runtime.zip
-     - torch / torchvision / nvidia runtime folders
-     - CUDA-related DLLs required by the packaged app and local training flows
+  1. connector-agent-app-cpu.zip
+     - complete Windows app bundle
+     - runs on CPU-only PCs without any extra runtime merge
+     - also runs on GPU PCs, but uses CPU only
+
+  2. connector-agent-app-gpu.zip
+     - complete Windows app bundle
+     - prefers CUDA on NVIDIA PCs
+     - still runs on CPU-only PCs by falling back to CPU
 
 OPTIONAL MANUAL ARTIFACTS
 --------------------------------------------------
-  - connector-agent-pretrain.zip
   - connector-agent-llm.zip
+
+FUNCTION SHARING POLICY
+--------------------------------------------------
+  The CPU and GPU app packs share the same application code and features:
+  - PyQt6 GUI
+  - Training tab YOLO26x fine-tuning
+  - SOP Run
+  - SOP Editor
+  - Config / Audit
+  - LLM integration flow
+
+  The only intended difference is the packaged torch runtime:
+  - CPU pack: CPU-only torch runtime
+  - GPU pack: CUDA-enabled torch runtime with CPU fallback
 
 CANONICAL ENTRYPOINTS
 --------------------------------------------------
   - Main app: src/gui_app.py -> connector_vision_agent.exe
   - Training tab fine-tuning promotes the latest runs\detect\train\weights\best.pt
     into assets\models\yolo26x_local_pretrained.pt automatically
-  - Local pretrain prefers CUDA first on NVIDIA PCs and now fails loudly when
-    a CUDA wheel is missing instead of silently dropping to CPU
   - Model naming reference: docs/MODEL_ARTIFACT_NAMING.md
 
-ASSEMBLY
+INSTALL
 --------------------------------------------------
-  1. Extract connector-agent-app-core.zip into the final deployment folder.
-  2. Extract connector-agent-cuda-runtime.zip into the same folder.
+  1. Create a deployment folder, for example:
+     C:\tools\connector_agent\
+  2. Extract exactly one full app pack into that folder:
+     - connector-agent-app-cpu.zip
+       or
+     - connector-agent-app-gpu.zip
   3. Keep the extracted folder structure unchanged.
-  4. Optional: merge connector-agent-pretrain.zip and connector-agent-llm.zip
-     only when those offline features are needed on the target PC.
+  4. Optional: merge connector-agent-llm.zip only when the offline LLM
+     feature is needed on the target PC.
 
 RUN
 --------------------------------------------------
@@ -47,22 +64,23 @@ FINAL FOLDER STRUCTURE
   +-- _internal\
   |   +-- torch\
   |   +-- torchvision\
-  |   +-- nvidia\
+  |   +-- nvidia\              <- GPU pack only
   +-- start_agent.bat
   +-- stop_ollama.bat
+  +-- runtime_flavor.txt
   +-- assets\
   |   +-- config.json
   |   +-- sop_steps.json
   |   +-- models\
   |       +-- yolo26x_local_pretrained.pt
   +-- PLACE_APP_HERE.txt
-  +-- PLACE_CUDA_RUNTIME_HERE.txt   <- only remains if CUDA overlay was not merged
   +-- README.md
   +-- README_INSTALL_EN.md
 
-NOTES
+RUNTIME BEHAVIOR
 --------------------------------------------------
-  - The packaged runtime model slot is assets\models\yolo26x_local_pretrained.pt.
-  - The core artifact alone is not a runnable GPU package until the CUDA overlay
-    is merged into the same folder.
+  - CPU pack on CPU-only PC: normal operation
+  - CPU pack on GPU PC: normal operation, CPU only
+  - GPU pack on GPU PC: CUDA preferred
+  - GPU pack on CPU-only PC: normal operation via CPU fallback
 ================================================================

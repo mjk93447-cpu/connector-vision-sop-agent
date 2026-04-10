@@ -1,5 +1,5 @@
 ===============================================================================
-  CONNECTOR VISION SOP AGENT v5.0.0
+  CONNECTOR VISION SOP AGENT v5.1.0
   Line PC Deployment Manual
 ===============================================================================
 
@@ -47,6 +47,6 @@ ARCHIVED PRETRAIN PATH
 ----------------------
 If a historical rebuild of the pretrained seed is ever needed, see:
 - `legacy/pretrain/README.md`
-- `scripts/run_pretrain_local.py`
+- `legacy/pretrain/scripts/run_pretrain_local.py`
 
 Do not use that path for standard field deployment.

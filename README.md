@@ -1,6 +1,6 @@
 # connector-vision-sop-agent
 
-Connector Vision SOP Agent 5.0.0 for offline OLED line operation.
+Connector Vision SOP Agent 5.1.0 for offline OLED line operation.
 
 ## Canonical paths
 
@@ -11,7 +11,7 @@ Connector Vision SOP Agent 5.0.0 for offline OLED line operation.
 - `src/gui/panels/sop_panel.py`: active SOP Run flow
 - `docs/ACTIVE_PATHS.md`: active vs archived path map
 - `docs/MODEL_ARTIFACT_NAMING.md`: model naming rules
-- `docs/V5_0_0_FOCUS.md`: 5.0.0 release focus
+- `docs/V5_1_0_FOCUS.md`: 5.1.0 release focus
 - `docs/AI_AGENT_GUIDE.md`: shared workflow guidance for Claude, Cursor Codex sidebar, and ChatGPT 5.4 medium
 
 ## Current product direction
@@ -26,10 +26,12 @@ development, release engineering, or standard line deployment.
 
 ## Release highlights
 
-- `5.0.0` standardizes the shipping app around the PyQt6 GUI bundle.
+- `5.1.0` standardizes the shipping app around the PyQt6 GUI bundle.
 - Fine-tuning, SOP Editor, and SOP Run are the active product surfaces.
-- CUDA runtime is packaged as a split overlay for faster app assembly while
-  keeping NVIDIA acceleration available in offline deployments.
+- Shipping artifacts are `cpu` and `gpu` full packs with shared app code.
+- The CPU pack runs anywhere and stays CPU-only.
+- The GPU pack prefers CUDA on NVIDIA PCs and falls back to CPU on CPU-only PCs.
+- Archived pretrain code is now physically isolated under `legacy/pretrain/`.
 - Agent workflow guidance now covers Claude, Cursor Codex sidebar, and
   ChatGPT 5.4 medium instead of a Claude-only operating model.
 
@@ -49,12 +51,18 @@ pytest -q
 
 ## Packaging policy
 
-- App bundle includes:
+- App artifacts:
+  - `connector-agent-app-cpu`
+  - `connector-agent-app-gpu`
+- Shared features in both packs:
   - `connector_vision_agent.exe`
   - `start_agent.bat`
   - `assets/config.json`
   - `assets/sop_steps.json`
   - `assets/models/yolo26x.pt`
   - `assets/models/yolo26x_local_pretrained.pt`
+- Runtime difference only:
+  - CPU pack ships CPU-only torch runtime
+  - GPU pack ships CUDA-enabled torch runtime with CPU fallback
 - Pretrain datasets are archived local-only materials and are excluded from the
   active app bundle.

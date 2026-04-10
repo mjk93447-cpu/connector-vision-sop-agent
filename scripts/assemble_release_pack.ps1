@@ -2,13 +2,12 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$AppRoot,
 
-    [string]$CudaRuntimeRoot = "",
-
-    [string]$PretrainRoot = "",
-
     [string]$OutputRoot = "connector_agent_pack",
 
-    [string]$LlmArtifactRoot = ""
+    [string]$LlmArtifactRoot = "",
+
+    [ValidateSet("cpu", "gpu", "unknown")]
+    [string]$RuntimeFlavor = "unknown"
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,60 +77,7 @@ New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 
 Copy-Tree -Source $AppRoot -Destination $OutputRoot
 
-if ($CudaRuntimeRoot -and (Test-Path $CudaRuntimeRoot)) {
-    Copy-Tree -Source $CudaRuntimeRoot -Destination $OutputRoot
-} else {
-    New-TextFile -Path (Join-Path $OutputRoot "PLACE_CUDA_RUNTIME_HERE.txt") -Content @"
-Drop the connector-agent-cuda-runtime artifact contents here:
-  - _internal\torch\
-  - _internal\torchvision\
-  - _internal\nvidia\
-  - CUDA-related DLLs listed in cuda_runtime_manifest.json
-
-Extract the CUDA runtime artifact into this same root after the app core bundle.
-"@
-}
-
-if ($PretrainRoot -and (Test-Path $PretrainRoot)) {
-    $pretrainExe = Join-Path $PretrainRoot "connector_pretrain.exe"
-    if (Test-Path $pretrainExe) {
-        Copy-Item -LiteralPath $pretrainExe -Destination (Join-Path $OutputRoot "connector_pretrain.exe") -Force
-    }
-
-    $pretrainDataRoot = Join-Path $PretrainRoot "pretrain_data"
-    $pretrainDataHasFiles = $false
-    if (Test-Path $pretrainDataRoot) {
-        $pretrainDataHasFiles = @(Get-ChildItem -LiteralPath $pretrainDataRoot -Force | Where-Object {
-            $_.Name -ne "PLACE_PRETRAIN_DATA_HERE.txt"
-        }).Count -gt 0
-    }
-
-    if ($pretrainDataHasFiles) {
-        Copy-Tree -Source $pretrainDataRoot -Destination (Join-Path $OutputRoot "pretrain_data")
-    } else {
-        Ensure-PlaceholderDirectory `
-            -DirectoryPath (Join-Path $OutputRoot "pretrain_data") `
-            -PlaceholderPath (Join-Path $OutputRoot "pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt") `
-            -PlaceholderContent @"
-Drop the connector-agent-pretrain artifact contents here:
-  - connector_pretrain.exe
-  - optional pretrain_data folder if you prepared one locally
-
-The current GitHub pretrain artifact is built without bundling the dataset.
-"@
-    }
-} else {
-    Ensure-PlaceholderDirectory `
-        -DirectoryPath (Join-Path $OutputRoot "pretrain_data") `
-        -PlaceholderPath (Join-Path $OutputRoot "pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt") `
-        -PlaceholderContent @"
-Drop the connector-agent-pretrain artifact contents here:
-  - connector_pretrain.exe
-  - pretrain_data\
-
-This folder is intentionally left as a placeholder until the pretrain artifact is merged.
-"@
-}
+New-TextFile -Path (Join-Path $OutputRoot "runtime_flavor.txt") -Content $RuntimeFlavor
 
 if ($LlmArtifactRoot -and (Test-Path $LlmArtifactRoot)) {
     Copy-Tree -Source $LlmArtifactRoot -Destination (Join-Path $OutputRoot "ollama_models")
@@ -149,29 +95,24 @@ This folder is intentionally left as a placeholder until the LLM artifact is mer
 }
 
 New-TextFile -Path (Join-Path $OutputRoot "MERGE_GUIDE.txt") -Content @"
-Connector Vision SOP Agent 4.5.0 Deployment Pack
+Connector Vision SOP Agent 5.0.0 Deployment Pack
 
 Contents:
-  - connector-agent-app-core.zip: main app EXE + launchers + config/models
-  - connector-agent-cuda-runtime.zip: torch / torchvision / CUDA overlay
-  - connector-agent-pretrain.zip: connector_pretrain.exe + optional pretrain_data tree
+  - connector-agent-app-cpu.zip: main app EXE + CPU runtime
+  - connector-agent-app-gpu.zip: main app EXE + CUDA-capable runtime
   - connector-agent-llm.zip: Ollama model blobs/manifests
 
-If you only received part of the artifacts:
-  1. Copy the app core bundle into this folder first.
-  2. Copy the CUDA runtime bundle into this same root so the packaged app regains
-     _internal\torch\ and related DLLs.
-  3. Copy the pretrain bundle into the same root so connector_pretrain.exe
-     and any local pretrain_data\ folder sit next to the main EXE.
-  4. Copy the LLM bundle contents into ollama_models\.
+Deployment:
+  1. Extract exactly one app pack into the final root.
+  2. Optional: copy the LLM bundle contents into ollama_models\.
 
-Look for PLACE_CUDA_RUNTIME_HERE.txt, PLACE_PRETRAIN_DATA_HERE.txt, and PLACE_LLM_HERE.txt for drop locations.
+This folder already includes the packaged runtime. No separate runtime merge is required.
+Look for PLACE_LLM_HERE.txt for optional content.
 "@
 
 New-TextFile -Path (Join-Path $OutputRoot "PLACE_APP_HERE.txt") -Content @"
 This folder is the final line deployment root.
-Put connector_vision_agent.exe, connector_pretrain.exe, start_agent.bat,
-start_pretrain.bat, and the asset folders here.
+Put connector_vision_agent.exe, start_agent.bat, and the asset folders here.
 "@
 
 Write-Host "[assemble] pack ready -> $OutputRoot"

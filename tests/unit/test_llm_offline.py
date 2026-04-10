@@ -556,6 +556,9 @@ class TestCheckHealth:
                     "gpu_present": True,
                     "cuda_usable": True,
                 },
+            ), patch(
+                "src.llm_offline.detect_runtime_flavor",
+                return_value="gpu",
             ):
                 result = llm.check_health()
         assert result is not None
@@ -576,6 +579,9 @@ class TestCheckHealth:
                     "gpu_present": False,
                     "cuda_usable": False,
                 },
+            ), patch(
+                "src.llm_offline.detect_runtime_flavor",
+                return_value="cpu",
             ):
                 result = llm.check_health()
         assert result is not None
@@ -725,9 +731,12 @@ class TestOptimizedOptions:
                 "gpu_present": True,
                 "cuda_usable": False,
             },
+        ), patch(
+            "src.llm_offline.detect_runtime_flavor",
+            return_value="gpu",
         ):
             opts = llm._get_optimized_options()
-        assert opts["num_gpu"] == 99
+        assert opts["num_gpu"] == 0
 
     def test_gpu_mode_sets_num_gpu_99(self) -> None:
         """CUDA 감지 시 num_gpu=99 설정 확인."""
@@ -741,9 +750,30 @@ class TestOptimizedOptions:
                 "gpu_present": True,
                 "cuda_usable": True,
             },
+        ), patch(
+            "src.llm_offline.detect_runtime_flavor",
+            return_value="gpu",
         ):
             opts = llm._get_optimized_options()
         assert opts["num_gpu"] == 99
+
+    def test_gpu_layers_override_limits_num_gpu(self) -> None:
+        llm = OfflineLLM.from_config({"gpu_layers": 24})
+        with patch(
+            "src.llm_offline.detect_local_accelerator",
+            return_value={
+                "device": 0,
+                "name": "NVIDIA RTX 4000 Ada Generation",
+                "memory_gb": 20.0,
+                "gpu_present": True,
+                "cuda_usable": True,
+            },
+        ), patch(
+            "src.llm_offline.detect_runtime_flavor",
+            return_value="gpu",
+        ):
+            opts = llm._get_optimized_options()
+        assert opts["num_gpu"] == 24
 
     def test_cpu_mode_sets_num_thread_and_num_gpu_0(self) -> None:
         """CPU-only 환경에서 num_gpu=0, num_thread>=1 설정 확인."""
@@ -757,6 +787,9 @@ class TestOptimizedOptions:
                 "gpu_present": False,
                 "cuda_usable": False,
             },
+        ), patch(
+            "src.llm_offline.detect_runtime_flavor",
+            return_value="cpu",
         ):
             opts = llm._get_optimized_options()
         assert opts["num_gpu"] == 0
@@ -778,6 +811,9 @@ class TestOptimizedOptions:
                 "gpu_present": False,
                 "cuda_usable": False,
             },
+        ), patch(
+            "src.llm_offline.detect_runtime_flavor",
+            return_value="cpu",
         ):
             opts = llm._get_optimized_options(brief=True)
         assert (
@@ -796,6 +832,9 @@ class TestOptimizedOptions:
                 "gpu_present": False,
                 "cuda_usable": False,
             },
+        ), patch(
+            "src.llm_offline.detect_runtime_flavor",
+            return_value="cpu",
         ):
             opts = llm._get_optimized_options(brief=True)
         assert opts["num_ctx"] == 4096
@@ -812,6 +851,9 @@ class TestOptimizedOptions:
                 "gpu_present": False,
                 "cuda_usable": False,
             },
+        ), patch(
+            "src.llm_offline.detect_runtime_flavor",
+            return_value="cpu",
         ):
             opts = llm._get_optimized_options(brief=False)
         assert "think" not in opts

@@ -1,123 +1,76 @@
-"""
-공통 pytest 픽스처 — 모든 테스트에서 사용하는 합성 데이터와 헬퍼.
-
-실제 디스플레이, YOLO 가중치, LLM 없이도 동작한다.
-"""
-
 from __future__ import annotations
 
+import os
+import re
+import shutil
+import uuid
 import json
 from pathlib import Path
-from typing import Any
 
-import numpy as np
 import pytest
 
 
-# ---------------------------------------------------------------------------
-# 이미지 픽스처
-# ---------------------------------------------------------------------------
+def _default_runtime_root() -> Path:
+    override = os.environ.get("CONNECTOR_AGENT_TEST_RUNTIME")
+    if override:
+        return Path(override).expanduser().resolve()
+
+    return Path("artifacts/test-runtime/tmpcases").resolve()
+
+
+_CREATED_DIRS: list[Path] = []
+
+
+def _safe_node_name(nodeid: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", nodeid)
+    return cleaned[:80] or "tmpcase"
 
 
 @pytest.fixture
-def dummy_screen_small() -> np.ndarray:
-    """480×640 합성 BGR 이미지 (빠른 단위 테스트용)."""
-    return np.zeros((480, 640, 3), dtype=np.uint8)
+def tmp_path(request: pytest.FixtureRequest) -> Path:
+    """Stable tmp_path replacement that avoids the flaky Windows tmpdir plugin path.
+
+    Some Windows environments in this repository produce inaccessible ACLs for the
+    built-in pytest tmpdir base folder during session cleanup. We keep a repo-local
+    temp root under artifacts/test-runtime instead, which also makes strict QA runs
+    easier to inspect after failures.
+    """
+
+    runtime_root = _default_runtime_root()
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    case_dir = runtime_root / f"{_safe_node_name(request.node.nodeid)}_{uuid.uuid4().hex[:8]}"
+    case_dir.mkdir(parents=True, exist_ok=False)
+    _CREATED_DIRS.append(case_dir)
+    return case_dir.resolve()
 
 
 @pytest.fixture
-def dummy_screen_full() -> np.ndarray:
-    """1080×1920 합성 BGR 이미지 (Full HD 라인 PC 기준)."""
-    return np.zeros((1080, 1920, 3), dtype=np.uint8)
-
-
-# ---------------------------------------------------------------------------
-# 설정 픽스처
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def sample_config() -> dict[str, Any]:
-    """최소 유효 config.json 딕셔너리."""
-    return {
-        "version": "2.0.0",
-        "password": "test_password",
-        "pin_count_min": None,
-        "vision": {"confidence_threshold": 0.6},
-        "llm": {
-            "enabled": False,
-            "backend": "ollama",
-            "model_path": "phi4-mini-reasoning",
-            "ctx_size": 8192,
-            "gpu_layers": 0,
-            "http_url": "http://localhost:11434/v1/chat/completions",
-            "max_input_tokens": 6144,
-            "max_output_tokens": 1024,
-        },
+def config_file(tmp_path: Path) -> Path:
+    config = {
+        "version": "5.1.0",
+        "password": "1111",
+        "llm": {"enabled": False, "backend": "http", "model_path": "dummy"},
+        "vision": {"model_path": "assets/models/yolo26x_local_pretrained.pt", "confidence_threshold": 0.6, "ocr_psm": 7},
+        "control": {"retries": 3},
     }
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    return path
 
 
-@pytest.fixture
-def config_file(tmp_path: Path, sample_config: dict[str, Any]) -> Path:
-    """임시 config.json 파일 경로."""
-    p = tmp_path / "config.json"
-    p.write_text(json.dumps(sample_config), encoding="utf-8")
-    return p
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    keep_tmp = session.config.getoption("--keep-tmp-artifacts", default=False)
+    if keep_tmp:
+        return
+
+    for path in reversed(_CREATED_DIRS):
+        shutil.rmtree(path, ignore_errors=True)
 
 
-# ---------------------------------------------------------------------------
-# 이벤트 픽스처
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def sample_events() -> list[dict[str, Any]]:
-    """테스트용 구조화 이벤트 리스트 (INFO 2개 + ERROR 2개)."""
-    return [
-        {
-            "ts": "2026-01-01T00:00:00.000000Z",
-            "level": "INFO",
-            "step": "login",
-            "message": "clicked login_button",
-            "data": {},
-        },
-        {
-            "ts": "2026-01-01T00:00:01.000000Z",
-            "level": "ERROR",
-            "step": "login",
-            "message": "target not found",
-            "data": {},
-        },
-        {
-            "ts": "2026-01-01T00:00:02.000000Z",
-            "level": "ERROR",
-            "step": "mold_left_roi",
-            "message": "drag timeout",
-            "data": {},
-        },
-        {
-            "ts": "2026-01-01T00:00:03.000000Z",
-            "level": "INFO",
-            "step": "save",
-            "message": "saved",
-            "data": {},
-        },
-    ]
-
-
-# ---------------------------------------------------------------------------
-# LLM 픽스처
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def mock_llm_response() -> dict[str, Any]:
-    """LLM analyze_logs() 반환값 형태의 더미 딕셔너리."""
-    return {
-        "config_patch": {"ocr_threshold": 0.8, "vision.confidence_threshold": 0.6},
-        "sop_recommendations": [
-            "ROI 좌표 재조정 권장",
-            "재시도 횟수를 3 → 5로 늘리세요",
-        ],
-        "raw_text": "Analysis complete. Two issues detected.",
-    }
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--keep-tmp-artifacts",
+        action="store_true",
+        default=False,
+        help="Keep repo-local temporary test directories under artifacts/test-runtime/tmpcases.",
+    )

@@ -56,4 +56,4 @@ The product and code rules should stay consistent across all three.
 - `README_INSTALL_EN.md`
 - `docs/ACTIVE_PATHS.md`
 - `docs/MODEL_ARTIFACT_NAMING.md`
-- `docs/V5_0_0_FOCUS.md`
+- `docs/V5_1_0_FOCUS.md`

@@ -1,4 +1,4 @@
-name: Build Connector Vision App + CUDA Overlay
+name: Build Connector Vision App Packs
 
 on:
   push:
@@ -15,7 +15,6 @@ on:
       - "assets/models/*.pt"
       - "build_exe.spec"
       - "scripts/pyinstaller_support.py"
-      - "scripts/split_cuda_runtime.py"
       - "scripts/preflight_cuda_app.py"
       - "scripts/preflight_gui_runtime.py"
       - "scripts/pipeline_quality_gate.ps1"
@@ -31,10 +30,24 @@ env:
 
 jobs:
   build-app:
-    name: App pack
+    name: App pack (${{ matrix.runtime_flavor }})
     runs-on: windows-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime_flavor: cpu
+            torch_index_url: https://download.pytorch.org/whl/cpu
+            require_cuda_wheel: "0"
+            artifact_name: connector-agent-app-cpu
+            package_root: connector_agent_app_cpu
+          - runtime_flavor: gpu
+            torch_index_url: https://download.pytorch.org/whl/cu121
+            require_cuda_wheel: "1"
+            artifact_name: connector-agent-app-gpu
+            package_root: connector_agent_app_gpu
 
     steps:
       - name: Checkout
@@ -56,9 +69,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-common.txt
-          python -m pip install --force-reinstall --index-url https://download.pytorch.org/whl/cu121 torch==2.3.1 torchvision==0.18.1
+          python -m pip install --force-reinstall --index-url ${{ matrix.torch_index_url }} torch==2.3.1 torchvision==0.18.1
           python -m pip install -r requirements-dev.txt
           python -m pip install --force-reinstall --no-cache-dir numpy==1.26.4
+
+      - name: Set runtime flavor
+        shell: pwsh
+        run: |
+          "CONNECTOR_AGENT_RUNTIME_FLAVOR=${{ matrix.runtime_flavor }}" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Materialize runtime YOLO checkpoint
         shell: pwsh
@@ -70,6 +88,7 @@ jobs:
         run: scripts\pipeline_quality_gate.ps1 -Stage ci-smart -Target app
 
       - name: Preflight CUDA app runtime
+        if: matrix.require_cuda_wheel == '1'
         shell: cmd
         run: python scripts/preflight_cuda_app.py --model assets/models/yolo26x_local_pretrained.pt --require-cuda-wheel
 
@@ -91,7 +110,7 @@ jobs:
       - name: Assemble full app folder
         shell: pwsh
         run: |
-          $pkg = "connector_agent_app_full"
+          $pkg = "${{ matrix.package_root }}"
           if (Test-Path $pkg) {
             Remove-Item -LiteralPath $pkg -Recurse -Force
           }
@@ -103,25 +122,15 @@ jobs:
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
           Copy-Item "assets\launchers\PLACE_APP_HERE.txt" "$pkg\PLACE_APP_HERE.txt"
+          Set-Content -LiteralPath "$pkg\runtime_flavor.txt" -Value "${{ matrix.runtime_flavor }}" -Encoding UTF8
           if (Test-Path "README_INSTALL_EN.md") { Copy-Item "README_INSTALL_EN.md" "$pkg\README_INSTALL_EN.md" }
           if (Test-Path "README.md") { Copy-Item "README.md" "$pkg\README.md" }
 
-      - name: Split CUDA overlay artifact
-        shell: cmd
-        run: python scripts/split_cuda_runtime.py --source connector_agent_app_full --core-out connector_agent_app_core --cuda-out connector_agent_cuda_runtime --manifest connector_agent_cuda_runtime/cuda_runtime_manifest.json
-
-      - name: Upload app core artifact
+      - name: Upload full app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: connector-agent-app-core
-          path: connector_agent_app_core/
-          retention-days: 90
-
-      - name: Upload CUDA runtime artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: connector-agent-cuda-runtime
-          path: connector_agent_cuda_runtime/
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.package_root }}/
           retention-days: 90
 
       - name: Create GitHub Release
@@ -129,8 +138,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            connector_agent_app_core/INSTALL_GUIDE.txt
-            connector_agent_app_core/MERGE_GUIDE.txt
-            connector_agent_cuda_runtime/cuda_runtime_manifest.json
+            ${{ matrix.package_root }}/INSTALL_GUIDE.txt
+            ${{ matrix.package_root }}/MERGE_GUIDE.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

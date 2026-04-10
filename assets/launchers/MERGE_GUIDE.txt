@@ -1,100 +1,83 @@
 ================================================================
-Connector Vision SOP Agent v5.0.0 - Portable Bundle Guide
+Connector Vision SOP Agent v5.1.0 - Deployment Guide
 ================================================================
 
-DOWNLOADS REQUIRED (GitHub Actions -> Artifacts tab):
-  1. connector-agent-app-core.zip      app EXE + launchers + config/models
-  2. connector-agent-cuda-runtime.zip  torch / torchvision / CUDA overlay
+REQUIRED DOWNLOADS
+  1. connector-agent-app-cpu.zip   full app pack with CPU-only torch runtime
+  2. connector-agent-app-gpu.zip   full app pack with CUDA-enabled torch runtime
 
-OPTIONAL DOWNLOADS:
-  3. connector-agent-pretrain.zip      local pretrain EXE + dataset helper
-  4. connector-agent-llm.zip           IBM Granite Vision 3.2-2b blobs
+OPTIONAL DOWNLOADS
+  3. connector-agent-llm.zip       IBM Granite Vision 3.2-2b blobs
 
-ASSEMBLY STEPS:
+CHOOSE ONE APP PACK
+  - CPU pack:
+    normal on CPU-only PCs
+    normal on GPU PCs, but CPU only
+
+  - GPU pack:
+    CUDA preferred on NVIDIA PCs
+    still usable on CPU-only PCs through CPU fallback
+
+INSTALL STEPS
   1. Create folder: C:\tools\connector_agent\
-  2. Extract connector-agent-app-core.zip
-     -> all files go into C:\tools\connector_agent\
-  3. Extract connector-agent-cuda-runtime.zip
-     -> overlay the same root folder so _internal\torch\ and CUDA DLLs land
-        in their original relative paths
-  4. Optional: extract connector-agent-pretrain.zip
-     -> add connector_pretrain.exe and any local pretrain_data\ files
-  5. Optional: extract connector-agent-llm.zip
-     -> all files go into C:\tools\connector_agent\ollama_models\
-        (blobs\ and manifests\ must be directly inside ollama_models\)
+  2. Extract exactly one app pack into that folder:
+     - connector-agent-app-cpu.zip
+       or
+     - connector-agent-app-gpu.zip
+  3. Optional: extract connector-agent-llm.zip into
+     C:\tools\connector_agent\ollama_models\
 
-FINAL FOLDER STRUCTURE:
+FINAL FOLDER STRUCTURE
   connector_agent\
-  +-- connector_vision_agent.exe   <- SOP agent (YOLO26x + PyQt6 GUI embedded)
-  +-- start_agent.bat              <- DOUBLE-CLICK TO RUN (GUI mode)
-  +-- connector_pretrain.exe       <- Local pretrain runner (epochs/batch only)
+  +-- connector_vision_agent.exe   <- SOP agent with PyQt6 GUI
+  +-- start_agent.bat              <- DOUBLE-CLICK TO RUN
   +-- _internal\
-  |   +-- torch\                   <- from connector-agent-cuda-runtime zip
-  |   +-- torchvision\             <- from connector-agent-cuda-runtime zip
-  |   +-- nvidia\                  <- from connector-agent-cuda-runtime zip (when present)
+  |   +-- torch\
+  |   +-- torchvision\
+  |   +-- nvidia\                  <- GPU pack only
+  +-- runtime_flavor.txt
   +-- assets\
-  |   +-- config.json              <- settings (editable)
-  |   +-- sop_steps.json           <- 40-step atomic SOP definition (editable)
+  |   +-- config.json
+  |   +-- sop_steps.json
   |   +-- models\
-  |       +-- yolo26x.pt           <- YOLO weights
-  |       +-- yolo26x_pretrain.pt  <- cloud/GitHub pretrain checkpoint
-  |       +-- yolo26x_local_pretrained.pt <- offline pretrain output
-  +-- start_pretrain.bat           <- DOUBLE-CLICK TO START LOCAL TRAINING
+  |       +-- yolo26x.pt
+  |       +-- yolo26x_pretrained.pt
+  |       +-- yolo26x_local_pretrained.pt
   +-- stop_ollama.bat
-  +-- pretrain_data\               <- optional local dataset folder (not bundled in GitHub artifact)
-  |   +-- source data: pcb_inspection + pcb_component_detection + pcb_defect_detection + rf100_smd_components + rf100_deeppcb
   +-- ollama_models\
-      +-- blobs\sha256-...         <- from connector-agent-llm zip
-      +-- manifests\...            <- from connector-agent-llm zip
-  +-- PLACE_APP_HERE.txt           <- root deployment note
-  +-- PLACE_CUDA_RUNTIME_HERE.txt  <- remove/ignore after CUDA overlay merge
-  +-- pretrain_data\PLACE_PRETRAIN_DATA_HERE.txt
-  +-- ollama_models\PLACE_LLM_HERE.txt
+      +-- blobs\sha256-...
+      +-- manifests\...
 
-MERGE ORDER:
-  1. Extract connector-agent-app-core.zip into the root folder.
-  2. Extract connector-agent-cuda-runtime.zip into the same root folder.
-  3. Optional: extract connector-agent-pretrain.zip into the same root folder.
-  4. Optional: extract connector-agent-llm.zip into ollama_models\.
-  5. Verify the placeholder txt files were replaced by real content.
+FEATURE PARITY
+  CPU and GPU app packs share the same code and user-facing features:
+  - GUI
+  - fine-tuning
+  - SOP Run
+  - SOP Editor
+  - Config
+  - Audit
+  - LLM flow
 
-HOW TO RUN:
+  The only intended runtime difference is torch acceleration behavior.
+
+HOW TO RUN
   Double-click start_agent.bat
-  -> Starts Ollama server (LLM backend)
-  -> Opens PyQt6 GUI with 7 tabs:
-       Tab 1: Run SOP    - 40-step atomic SOP execution with live log
-       Tab 2: Vision     - Screenshot capture + YOLO bbox overlay
-       Tab 3: LLM Chat   - ROI screenshot + ChatGPT-like streaming + Stop button
-       Tab 4: SOP Editor - Edit/reorder SOP steps (type_text/press_key/wait_ms)
-       Tab 5: Config     - Edit config.json via UI
-       Tab 6: Audit      - Config change history
-       Tab 7: Training   - Annotate connector images and fine-tune YOLO26x
+  -> Starts Ollama server when available
+  -> Opens the 7-tab PyQt6 GUI
 
-  Double-click start_pretrain.bat
-  -> Starts local YOLO26x pretraining on your local pretrain_data\ folder
-  -> Requires the merged CUDA runtime on NVIDIA PCs and prefers GPU first
-  -> Produces assets\models\yolo26x_local_pretrained.pt
+CUSTOMIZATION
+  - Edit assets\config.json to tune timing, thresholds, and runtime behavior
+  - Edit assets\sop_steps.json to modify SOP steps without rebuilding
+  - Use Tab 4 SOP Editor for live SOP updates
 
-CANONICAL PATHS
---------------------------------------------------
-  - Primary pretrain entrypoint: scripts/run_pretrain_local.py
-  - Legacy pretrain scripts are deprecated and kept only for compatibility
-  - Model naming reference: docs/MODEL_ARTIFACT_NAMING.md
-
-CUSTOMIZATION:
-  - Edit assets\config.json to tune pin counts, timing, thresholds
-  - Edit assets\sop_steps.json to modify the 40-step atomic SOP sequence
-    (changes take effect immediately without rebuilding EXE)
-  - Tab 4 SOP Editor: change PW, key bindings, wait duration directly in GUI
-
-LLM MODEL INFO:
+LLM MODEL INFO
   Name  : IBM Granite Vision 3.2-2b (ibm/granite3.2-vision:2b)
-  Vendor: IBM Corporation (USA) - non-Chinese model
-  Size  : ~2.0 GB (fully offline, multimodal)
-  Notes : Vision + text, SOP log analysis, ROI screenshot analysis
+  Vendor: IBM Corporation (USA)
+  Size  : ~2.0 GB
+  Notes : Fully offline multimodal model for ROI screenshot analysis
 
-TROUBLESHOOTING:
-  - If GUI does not open: check Windows Event Log or run from cmd prompt
-  - If LLM chat fails: ensure ollama.exe is running (check Task Manager)
-  - If YOLO detects nothing: yolo26x.pt may be a placeholder (CI build)
+TROUBLESHOOTING
+  - If GUI does not open: run start_agent.bat from cmd and inspect the output
+  - If LLM chat fails: ensure ollama.exe is available
+  - If YOLO detects nothing: verify assets\models\yolo26x_local_pretrained.pt
 ================================================================

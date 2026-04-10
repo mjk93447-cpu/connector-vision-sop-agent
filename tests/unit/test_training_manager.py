@@ -66,8 +66,12 @@ class TestTrainingManagerFileNotFound:
             target_weights=tmp_path / "target.pt",
         )
 
-        with pytest.raises(FileNotFoundError, match="Model file not found"):
-            tm.train(dataset_yaml=yaml_path, epochs=1)
+        with patch(
+            "src.training.training_manager.resolve_runtime_model",
+            return_value=tmp_path / "nonexistent_runtime.pt",
+        ):
+            with pytest.raises(FileNotFoundError, match="Model file not found"):
+                tm.train(dataset_yaml=yaml_path, epochs=1)
 
     def test_raises_when_dataset_yaml_missing(self, tmp_path: Path) -> None:
         """train() must raise FileNotFoundError when dataset.yaml does not exist."""
@@ -96,11 +100,16 @@ class TestTrainingManagerFileNotFound:
             target_weights=tmp_path / "out.pt",
         )
 
-        with pytest.raises(FileNotFoundError) as exc_info:
-            tm.train(dataset_yaml=yaml_path, epochs=1)
+        with patch(
+            "src.training.training_manager.resolve_runtime_model",
+            return_value=tmp_path / "missing_runtime.pt",
+        ):
+            with pytest.raises(FileNotFoundError) as exc_info:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
 
         # Message should hint that model needs to be placed locally
-        assert "missing.pt" in str(exc_info.value)
+        assert "Model file not found" in str(exc_info.value)
+        assert "Place yolo26x_local_pretrained.pt" in str(exc_info.value)
 
 
 class TestTrainingManagerOfflineGuard:
@@ -121,10 +130,14 @@ class TestTrainingManagerOfflineGuard:
         )
 
         # YOLO_OFFLINE is set at the very start of train() — before file checks.
-        try:
-            tm.train(dataset_yaml=yaml_path, epochs=1)
-        except FileNotFoundError:
-            pass
+        with patch(
+            "src.training.training_manager.resolve_runtime_model",
+            return_value=tmp_path / "missing_runtime.pt",
+        ):
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except FileNotFoundError:
+                pass
 
         assert os.environ.get("YOLO_OFFLINE") == "1"
 
@@ -186,6 +199,44 @@ class TestTrainingManagerBaseModelPriority:
                 # Accept any non-FileNotFoundError exception (e.g. model format errors)
                 assert "Model file not found" not in str(exc)
 
+    def test_explicit_base_model_override_wins_over_existing_target(
+        self, tmp_path: Path
+    ) -> None:
+        """A UI-selected base model must not be ignored just because target exists."""
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+
+        target = tmp_path / "target.pt"
+        _write_dummy_pt(target)
+        explicit_base = tmp_path / "explicit_base.pt"
+        _write_dummy_pt(explicit_base)
+
+        tm = TrainingManager(
+            base_model=str(tmp_path / "default_base.pt"),
+            target_weights=target,
+        )
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_result = MagicMock()
+            mock_result.save_dir = None
+            mock_model.train.return_value = mock_result
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(
+                    dataset_yaml=yaml_path,
+                    epochs=1,
+                    base_model=str(explicit_base),
+                )
+            except ImportError:
+                pytest.skip("ultralytics not installed")
+
+        assert mock_yolo_cls.called
+        assert mock_yolo_cls.call_args.args[0] == str(explicit_base)
+
     def test_filenotfounderror_when_both_target_and_base_missing(
         self, tmp_path: Path
     ) -> None:
@@ -200,11 +251,110 @@ class TestTrainingManagerBaseModelPriority:
             target_weights=tmp_path / "missing_target.pt",
         )
 
-        with pytest.raises(FileNotFoundError):
-            tm.train(dataset_yaml=yaml_path, epochs=1)
+        with patch(
+            "src.training.training_manager.resolve_runtime_model",
+            return_value=tmp_path / "missing_runtime.pt",
+        ):
+            with pytest.raises(FileNotFoundError):
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+
+    def test_default_target_weights_points_to_local_pretrained(self) -> None:
+        """Training output path should align with the live runtime checkpoint."""
+        from src.model_artifacts import LOCAL_PRETRAIN_MODEL_NAME
+        from src.training.training_manager import TrainingManager
+
+        tm = TrainingManager()
+
+        assert tm.target_weights.name == LOCAL_PRETRAIN_MODEL_NAME
+
+    def test_tiny_target_placeholder_is_not_used_as_resume_seed(
+        self, tmp_path: Path
+    ) -> None:
+        """A placeholder target checkpoint must not shadow a real fallback seed."""
+        from src.training.training_manager import TrainingManager
+
+        yaml_path = tmp_path / "dataset.yaml"
+        _write_minimal_yaml(yaml_path)
+
+        target = tmp_path / "target.pt"
+        target.write_bytes(b"fake_weights")
+        fallback = tmp_path / "fallback.pt"
+        fallback.write_bytes(b"0" * (1024 * 1024 + 128))
+
+        tm = TrainingManager(
+            base_model=str(fallback),
+            target_weights=target,
+        )
+
+        with patch("ultralytics.YOLO") as mock_yolo_cls:
+            mock_model = MagicMock()
+            mock_result = MagicMock()
+            mock_result.save_dir = None
+            mock_model.train.return_value = mock_result
+            mock_yolo_cls.return_value = mock_model
+
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except ImportError:
+                pytest.skip("ultralytics not installed")
+
+        assert mock_yolo_cls.called
+        assert mock_yolo_cls.call_args.args[0] == str(fallback)
 
 
 class TestTrainingManagerCudaDeviceSelection:
+    def test_resolve_device_uses_cpu_when_runtime_flavor_is_cpu(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.training.training_manager import TrainingManager
+
+        monkeypatch.setattr(
+            "src.training.training_manager.detect_local_accelerator",
+            lambda: {
+                "device": "cpu",
+                "name": "NVIDIA RTX 4000 Ada Generation",
+                "memory_gb": 20.0,
+                "gpu_present": True,
+                "cuda_usable": False,
+            },
+        )
+        monkeypatch.setattr(
+            "src.training.training_manager.detect_runtime_flavor",
+            lambda: "cpu",
+        )
+        monkeypatch.setattr(
+            "src.training.training_manager.ensure_torch_cuda_wheel",
+            lambda require_cuda_wheel=True: None,
+        )
+
+        assert TrainingManager._resolve_device() == "cpu"
+
+    def test_resolve_device_uses_cpu_when_gpu_runtime_has_no_usable_cuda(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.training.training_manager import TrainingManager
+
+        monkeypatch.setattr(
+            "src.training.training_manager.detect_local_accelerator",
+            lambda: {
+                "device": "cpu",
+                "name": "NVIDIA RTX 4000 Ada Generation",
+                "memory_gb": 20.0,
+                "gpu_present": True,
+                "cuda_usable": False,
+            },
+        )
+        monkeypatch.setattr(
+            "src.training.training_manager.detect_runtime_flavor",
+            lambda: "gpu",
+        )
+        monkeypatch.setattr(
+            "src.training.training_manager.ensure_torch_cuda_wheel",
+            lambda require_cuda_wheel=True: None,
+        )
+
+        assert TrainingManager._resolve_device() == "cpu"
+
     def test_train_passes_cuda_device_when_accelerator_is_available(self, tmp_path: Path) -> None:
         """train() should pass CUDA device index 0 when the accelerator reports CUDA."""
         from src.training.training_manager import TrainingManager
@@ -235,6 +385,12 @@ class TestTrainingManagerCudaDeviceSelection:
                 "gpu_present": True,
                 "cuda_usable": True,
             },
+        ), patch(
+            "src.training.training_manager.detect_runtime_flavor",
+            return_value="gpu",
+        ), patch(
+            "src.training.training_manager.ensure_torch_cuda_wheel",
+            return_value=None,
         ), patch("ultralytics.YOLO", return_value=fake_model), patch.object(
             TrainingManager, "_check_memory_requirements", lambda self: None
         ), patch.object(
@@ -420,10 +576,14 @@ class TestTrainingManagerOfflineEnvVars:
             target_weights=tmp_path / "out.pt",
         )
 
-        try:
-            tm.train(dataset_yaml=yaml_path, epochs=1)
-        except (FileNotFoundError, ValueError):
-            pass
+        with patch(
+            "src.training.training_manager.resolve_runtime_model",
+            return_value=tmp_path / "missing_runtime.pt",
+        ):
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except (FileNotFoundError, ValueError):
+                pass
 
         import os
 
@@ -441,10 +601,14 @@ class TestTrainingManagerOfflineEnvVars:
             target_weights=tmp_path / "out.pt",
         )
 
-        try:
-            tm.train(dataset_yaml=yaml_path, epochs=1)
-        except (FileNotFoundError, ValueError):
-            pass
+        with patch(
+            "src.training.training_manager.resolve_runtime_model",
+            return_value=tmp_path / "missing_runtime.pt",
+        ):
+            try:
+                tm.train(dataset_yaml=yaml_path, epochs=1)
+            except (FileNotFoundError, ValueError):
+                pass
 
         import os
 

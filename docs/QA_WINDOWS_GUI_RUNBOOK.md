@@ -1,6 +1,6 @@
 # Windows GUI QA Runbook
 
-This runbook defines the practical 5.0.0 QA flow for the current lab PC.
+This runbook defines the practical 5.1.0 QA flow for the current lab PC.
 
 ## Environment baseline
 

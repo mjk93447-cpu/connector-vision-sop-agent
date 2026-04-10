@@ -76,3 +76,23 @@ def test_training_panel_base_model_priority_is_preserved() -> None:
     assert model_paths[0].endswith(f"/{LOCAL_PRETRAIN_MODEL_NAME}")
     assert any(path.endswith(f"/{CLOUD_PRETRAIN_MODEL_NAME}") for path in model_paths)
     assert any(path.endswith(f"/{COCO_BASE_MODEL_NAME}") for path in model_paths)
+
+
+def test_console_runtime_model_path_prefers_local_pretrained_when_available(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import src.main as app_main
+
+    def _fake_resolve_runtime_model(configured: str | None) -> Path:
+        assert configured == f"assets/models/{COCO_BASE_MODEL_NAME}"
+        return tmp_path / "assets" / "models" / LOCAL_PRETRAIN_MODEL_NAME
+
+    monkeypatch.setattr(app_main, "resolve_runtime_model", _fake_resolve_runtime_model)
+
+    config = {"vision": {"model_path": f"assets/models/{COCO_BASE_MODEL_NAME}"}}
+
+    resolved = app_main._resolve_runtime_model_path(config)
+
+    assert resolved.replace("\\", "/").endswith(
+        f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}"
+    )

@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Literal, Optional, Type
 
 from src.config_loader import detect_local_accelerator
+from src.runtime_compat import detect_runtime_flavor
 
 BackendType = Literal["http", "ollama"]
 
@@ -147,9 +148,8 @@ class OfflineLLM:
         cpu_count = os.cpu_count() or 8
 
         accelerator = detect_local_accelerator()
-        has_gpu = bool(accelerator.get("gpu_present")) or bool(
-            accelerator.get("cuda_usable")
-        )
+        runtime_flavor = detect_runtime_flavor()
+        has_gpu = runtime_flavor == "gpu" and bool(accelerator.get("cuda_usable"))
 
         options: Dict[str, Any] = {
             "num_ctx": 4096 if brief else self.cfg.ctx_size,
@@ -695,7 +695,7 @@ class OfflineLLM:
             "class_names": class_names,
             "document_text": document_text,
             "output_schema": {
-                "version": "5.0.0",
+                "version": "5.1.0",
                 "title": "string",
                 "source_path": "string",
                 "source_type": "pdf|txt",
@@ -746,7 +746,7 @@ class OfflineLLM:
         except Exception:
             pass
         return {
-            "version": "5.0.0",
+            "version": "5.1.0",
             "title": source_path or "Imported SOP",
             "source_path": source_path,
             "source_type": source_type,

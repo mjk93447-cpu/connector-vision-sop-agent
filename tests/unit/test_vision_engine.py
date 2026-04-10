@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from src.model_artifacts import LOCAL_PRETRAIN_MODEL_NAME
 from src.vision_engine import (
     DEFAULT_MOLD_ROI,
     DEFAULT_TARGET_LABELS,
@@ -91,7 +92,7 @@ class TestDetectionConfig:
     def test_default_model_path_is_yolo26x(self) -> None:
         """CP-2: 기본 모델이 yolo26x로 변경되었는지 확인."""
         cfg = DetectionConfig()
-        assert "yolo26x" in cfg.model_path
+        assert cfg.model_path.endswith(f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}")
 
     def test_default_confidence_threshold(self) -> None:
         cfg = DetectionConfig()
@@ -120,7 +121,7 @@ class TestVisionEngineConstruction:
     def test_default_config_has_yolo26x_model(self) -> None:
         with patch.object(VisionEngine, "_load_model", return_value=None):
             e = VisionEngine()
-        assert "yolo26x" in e.config.model_path
+        assert e.config.model_path.endswith(f"assets/models/{LOCAL_PRETRAIN_MODEL_NAME}")
 
     def test_custom_config_stored(self) -> None:
         cfg = DetectionConfig(confidence_threshold=0.9)
@@ -143,6 +144,37 @@ class TestVisionEngineConstruction:
     def test_no_config_uses_defaults(self, engine: VisionEngine) -> None:
         assert engine.config is not None
         assert engine.config.confidence_threshold == 0.6
+
+    def test_reload_model_updates_path_and_config(self) -> None:
+        cfg = DetectionConfig(model_path="assets/models/original.pt")
+        original_model = object()
+        reloaded_model = object()
+
+        with patch.object(VisionEngine, "_load_model", return_value=original_model):
+            engine = VisionEngine(config=cfg)
+
+        with patch.object(VisionEngine, "_load_model", return_value=reloaded_model):
+            ok = engine.reload_model("assets/models/fine_tuned.pt")
+
+        assert ok is True
+        assert engine.model is reloaded_model
+        assert engine.model_path.replace("\\", "/").endswith("assets/models/fine_tuned.pt")
+        assert cfg.model_path.replace("\\", "/").endswith("assets/models/fine_tuned.pt")
+
+    def test_reload_model_preserves_existing_model_on_failure(self) -> None:
+        original_model = object()
+
+        with patch.object(VisionEngine, "_load_model", return_value=original_model):
+            engine = VisionEngine()
+
+        original_path = engine.model_path
+
+        with patch.object(VisionEngine, "_load_model", return_value=None):
+            ok = engine.reload_model("assets/models/missing.pt")
+
+        assert ok is False
+        assert engine.model is original_model
+        assert engine.model_path == original_path
 
 
 # ---------------------------------------------------------------------------

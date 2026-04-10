@@ -1,11 +1,35 @@
 # Changelog
 
+## [5.1.0] - 2026-04-10
+
+### Changed
+
+- Simplified the shipping release into `connector-agent-app-cpu` and
+  `connector-agent-app-gpu` full packs.
+- Physically isolated archived pretrain code, launchers, specs, and tests under
+  `legacy/pretrain/`.
+- Reworked release helper and guard scripts so active app validation no longer
+  traverses legacy pretrain paths.
+
+### Fixed
+
+- Updated the active test suite to match the current `src/main.py` helper API
+  and restored the shared `config_file` fixture for config loader coverage.
+
+### Docs
+
+- Added `docs/V5_1_0_FOCUS.md` for the new release baseline.
+- Updated install and deployment guides for CPU/GPU full-pack delivery.
+- Updated active-path guidance so agents see `legacy/pretrain/` as the only
+  archived pretrain boundary.
+
 ## [5.0.0] - 2026-04-10
 
 ### Changed
 
 - Promoted the product baseline from `4.5.0` to `5.0.0`.
-- Reframed the shipping package as a GUI app plus CUDA overlay release path.
+- Reframed the shipping package as `cpu` and `gpu` full app packs built from
+  the same shared GUI codebase.
 - Standardized fine-tuning so the active runtime slot is
   `assets/models/yolo26x_local_pretrained.pt`.
 - Expanded agent workflow documentation so the same guidance works for Claude,
@@ -20,9 +44,9 @@
 
 ### Docs
 
-- Added `docs/V5_0_0_FOCUS.md` for the new release focus.
+- Added the initial 5.x release-focus document for the new baseline.
 - Added `docs/AI_AGENT_GUIDE.md` for cross-agent development workflow.
-- Updated deployment, install, and QA documents for the `5.0.0` release.
+- Updated deployment, install, and QA documents for the `5.0.0` CPU/GPU full-pack release.
 
 ## [4.5.0] - 2026-04-08
 

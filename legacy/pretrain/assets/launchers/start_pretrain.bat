@@ -15,7 +15,7 @@ echo  Connector Vision SOP Agent v5.0.0  [Local Pretrain]
 echo  Data : local pretrain_data only
 echo  Note : GitHub artifact excludes the dataset
 echo  Model: yolo26x_local_pretrained.pt
-echo  CUDA : merge connector-agent-cuda-runtime before starting on NVIDIA PCs
+echo  Runtime: use connector-agent-app-cpu or connector-agent-app-gpu
 echo ================================================================
 echo.
 

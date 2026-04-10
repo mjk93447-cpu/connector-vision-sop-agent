@@ -209,7 +209,7 @@ class SOPDocumentIngestor:
             "class_names": list(class_names),
             "document_text": raw_text,
             "output_schema": {
-                "version": "5.0.0",
+                "version": "5.1.0",
                 "title": "string",
                 "source_path": "string",
                 "source_type": "pdf|txt",
@@ -287,7 +287,7 @@ class SOPDocumentIngestor:
             index += 1
         title = self._extract_title(lines) or "Imported SOP"
         return {
-            "version": "5.0.0",
+            "version": "5.1.0",
             "title": title,
             "source_path": "",
             "source_type": "text",
@@ -311,7 +311,7 @@ class SOPDocumentIngestor:
         metadata.setdefault("atomization_mode", "llm" if self._llm is not None else "rules")
         metadata.setdefault("class_registry", ClassRegistry.load().class_names())
         return SOPDocumentArtifact(
-            version=str(data.get("version", "5.0.0")),
+            version=str(data.get("version", "5.1.0")),
             title=str(data.get("title", path.stem)),
             source_path=str(path),
             source_type=source_type,

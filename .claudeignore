@@ -56,23 +56,6 @@ docs/
 
 # ── 레거시 pretrain 경로 (명시 요청 없으면 읽지 말 것) ──
 legacy/pretrain/
-scripts/run_pretrain_local.py
-scripts/run_pretrain.py
-scripts/run_pretrain_compact.py
-scripts/prepare_pretrain_data.py
-scripts/preflight_cuda_pretrain.py
-scripts/preflight_pretrain_runtime.py
-src/pretrain_runtime.py
-src/training/compact_pretrain_pipeline.py
-src/training/pretrain_pipeline.py
-.github/workflows/build-pretrain.yml
-pretrain_exe.spec
-requirements-pretrain.txt
-assets/launchers/start_pretrain.bat
-assets/launchers/PLACE_PRETRAIN_DATA_HERE.txt
-tests/unit/test_run_pretrain_local.py
-tests/unit/test_compact_pretrain_pipeline.py
-tests/unit/test_legacy_pretrain_entrypoints.py
 
 # ── Gemini/Tools 스크립트 (빈번히 참조 불필요) ──
 tools/

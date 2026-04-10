@@ -1,6 +1,8 @@
 .worktrees/
 .claude/worktrees/
-legacy/
+legacy/*
+!legacy/pretrain/
+!legacy/pretrain/**
 __pycache__/
 *.py[cod]
 .pytest_cache/

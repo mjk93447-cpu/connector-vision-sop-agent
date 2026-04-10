@@ -19,4 +19,4 @@ def test_active_paths_mark_pretrain_as_archived() -> None:
     content = Path("docs/ACTIVE_PATHS.md").read_text(encoding="utf-8")
     assert "src/gui_app.py" in content
     assert "Archived pretrain paths" in content
-    assert "scripts/run_pretrain_local.py" in content
+    assert "legacy/pretrain/scripts/run_pretrain_local.py" in content
