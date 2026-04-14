@@ -101,9 +101,24 @@ jobs:
           if ($env:RUNNER_OS -eq "Windows") {
             Start-Process -FilePath "ollama" -ArgumentList "serve"
           } else {
-            Start-Process -FilePath "ollama" -ArgumentList "serve" -RedirectStandardOutput "ollama-serve.log" -RedirectStandardError "ollama-serve.log"
+            Start-Process -FilePath "ollama" -ArgumentList "serve" -RedirectStandardOutput "ollama-serve.out" -RedirectStandardError "ollama-serve.err"
           }
-          Start-Sleep -Seconds 15
+          $ready = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              Invoke-WebRequest -Uri "http://127.0.0.1:11434/api/version" -UseBasicParsing -TimeoutSec 5 | Out-Null
+              $ready = $true
+              break
+            } catch {
+              Write-Host "Waiting for Ollama server to accept connections..."
+            }
+          }
+          if (-not $ready) {
+            if (Test-Path "ollama-serve.out") { Get-Content "ollama-serve.out" }
+            if (Test-Path "ollama-serve.err") { Get-Content "ollama-serve.err" }
+            throw "Ollama server did not become ready."
+          }
 
       - name: Validate TurboQuant inputs
         shell: pwsh
