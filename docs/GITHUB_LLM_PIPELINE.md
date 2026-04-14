@@ -42,6 +42,55 @@ The default model tag is the official Ollama name:
 
 - `gemma4:26b-a4b-it-q4_K_M`
 
+## Free storage options
+
+### 1. Hugging Face public model repo
+
+Best option for a very large single GGUF.
+
+- Free public storage is best-effort for free users.
+- Large public repos are supported.
+- `hf upload-large-folder` is designed for very large uploads.
+
+Helpers:
+
+```powershell
+python scripts/generate_quantization_manifest.py `
+  --gguf-path model.gguf `
+  --output quantization_manifest.json `
+  --model-name gemma4:26b-a4b-it-q4_K_M `
+  --base-model gemma4
+
+python scripts/publish_turboquant_to_hf.py `
+  --repo-id your-name/gemma4-turboquant `
+  --gguf-path model.gguf `
+  --quantization-manifest-path quantization_manifest.json
+```
+
+Auth required:
+
+- one Hugging Face write token in `HF_TOKEN`
+
+### 2. GitHub Release split parts
+
+Best no-new-account fallback when you already have GitHub repo write access.
+
+- Split the GGUF into sub-2GB parts
+- Upload the parts plus provenance manifest to a GitHub Release
+- Use the generated `gguf_download_manifest.public.json` URL as `gguf_manifest_url`
+
+Helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/publish_turboquant_to_github_release.ps1 `
+  -GgufPath model.gguf `
+  -QuantizationManifestPath quantization_manifest.json
+```
+
+Auth required:
+
+- existing `gh` login with release upload permission
+
 ## Artifact layout
 
 - Prepared artifact: `connector-agent-llm-prepared`

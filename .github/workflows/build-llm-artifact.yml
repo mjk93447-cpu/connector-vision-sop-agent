@@ -14,8 +14,13 @@ on:
         default: "gemma4:26b-a4b-it-q4_K_M"
         type: string
       gguf_url:
-        description: "Required TurboQuant GGUF URL produced by the upstream quantization stage."
-        required: true
+        description: "Optional direct TurboQuant GGUF URL."
+        required: false
+        default: ""
+        type: string
+      gguf_manifest_url:
+        description: "Optional split GGUF manifest URL. Use this for GitHub Release split parts."
+        required: false
         default: ""
         type: string
       quantization_manifest_url:
@@ -98,8 +103,13 @@ jobs:
       - name: Validate TurboQuant inputs
         shell: pwsh
         run: |
-          if (-not "${{ inputs.gguf_url }}") {
-            throw "gguf_url is required. This workflow only accepts TurboQuant GGUF imports."
+          $ggufUrl = "${{ inputs.gguf_url }}"
+          $ggufManifestUrl = "${{ inputs.gguf_manifest_url }}"
+          if ([string]::IsNullOrWhiteSpace($ggufUrl) -and [string]::IsNullOrWhiteSpace($ggufManifestUrl)) {
+            throw "One of gguf_url or gguf_manifest_url is required."
+          }
+          if (-not [string]::IsNullOrWhiteSpace($ggufUrl) -and -not [string]::IsNullOrWhiteSpace($ggufManifestUrl)) {
+            throw "Provide only one of gguf_url or gguf_manifest_url."
           }
           if (-not "${{ inputs.quantization_manifest_url }}") {
             throw "quantization_manifest_url is required. This workflow only accepts TurboQuant GGUF imports with provenance."
@@ -109,16 +119,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path "gguf-import" -Force | Out-Null
-          @'
-          import pathlib
-          import urllib.request
-
-          url = r"${{ inputs.gguf_url }}"
-          target = pathlib.Path("gguf-import/model.gguf").resolve()
-          target.parent.mkdir(parents=True, exist_ok=True)
-          urllib.request.urlretrieve(url, target)
-          print(target)
-          '@ | python -
+          python scripts/fetch_remote_gguf.py `
+            --output "gguf-import/model.gguf" `
+            --gguf-url "${{ inputs.gguf_url }}" `
+            --gguf-manifest-url "${{ inputs.gguf_manifest_url }}" `
+            > "gguf-import/fetch_result.json"
           @'
           from pathlib import Path
 
@@ -152,6 +157,7 @@ jobs:
             model_name = "${{ inputs.model_name }}"
             source_mode = "gguf-import"
             gguf_url = "${{ inputs.gguf_url }}"
+            gguf_manifest_url = "${{ inputs.gguf_manifest_url }}"
             quantization_manifest_url = "${{ inputs.quantization_manifest_url }}"
             quantization_origin = "turboquant"
             turboquant_required = $true
@@ -194,6 +200,10 @@ jobs:
         run: |
           Copy-Item "prepare_metadata.json" "${env:OLLAMA_STAGING_ROOT}\prepare_metadata.json" -Force
           Copy-Item "gguf-import\quantization_manifest.json" "${env:OLLAMA_STAGING_ROOT}\quantization_manifest.json" -Force
+          if (Test-Path "gguf-import\gguf_download_manifest.json") {
+            Copy-Item "gguf-import\gguf_download_manifest.json" "${env:OLLAMA_STAGING_ROOT}\gguf_download_manifest.json" -Force
+          }
+          Copy-Item "gguf-import\fetch_result.json" "${env:OLLAMA_STAGING_ROOT}\fetch_result.json" -Force
           Copy-Item "ollama_show.txt" "${env:OLLAMA_STAGING_ROOT}\ollama_show.txt" -Force
           Copy-Item "ollama_show.json" "${env:OLLAMA_STAGING_ROOT}\ollama_show.json" -Force
           ollama list | Out-File -FilePath "${env:OLLAMA_STAGING_ROOT}\ollama_models_list.txt" -Encoding utf8

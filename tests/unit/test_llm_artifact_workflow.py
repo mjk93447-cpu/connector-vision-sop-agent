@@ -10,6 +10,8 @@ def test_llm_artifact_workflow_uses_chunked_ollama_packaging() -> None:
     assert "actions/upload-artifact@v4" in content
     assert "quantization_manifest_url" in content
     assert "This workflow only accepts TurboQuant GGUF imports" in content
+    assert "gguf_manifest_url" in content
+    assert "scripts/fetch_remote_gguf.py" in content
 
 
 def test_verify_workflow_downloads_prepare_artifact_and_runs_metadata_check() -> None:
@@ -33,3 +35,6 @@ def test_publish_workflow_consumes_verification_report_and_republishes_bundle() 
 def test_turboquant_pipeline_helpers_exist() -> None:
     assert Path("scripts/dispatch_turboquant_pipeline.ps1").exists()
     assert Path("scripts/run_turboquant_pipeline.ps1").exists()
+    assert Path("scripts/publish_turboquant_to_hf.py").exists()
+    assert Path("scripts/publish_turboquant_to_github_release.ps1").exists()
+    assert Path("scripts/generate_quantization_manifest.py").exists()
