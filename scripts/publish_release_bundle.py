@@ -9,6 +9,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from scripts.package_ollama_models import split_file_to_parts
+
 MAX_ASSET_BYTES = 2_000_000_000
 
 
@@ -65,14 +67,6 @@ def publish_release_bundle(
         raise ValueError("max_asset_bytes must be positive.")
 
     source_files = sorted(candidate for candidate in source_dir.rglob("*") if candidate.is_file())
-    for path in source_files:
-        rel = path.relative_to(source_dir)
-        size = path.stat().st_size
-        if size > max_asset_bytes:
-            raise ValueError(
-                f"Bundle file exceeds max asset size of {max_asset_bytes} bytes: {rel.as_posix()}"
-            )
-
     _ensure_release(repo=repo, tag=tag, title=title, notes=notes)
     release_base = f"https://github.com/{repo}/releases/download/{tag}"
     files: list[dict[str, object]] = []
@@ -81,17 +75,32 @@ def publish_release_bundle(
         rel = path.relative_to(source_dir)
         size = path.stat().st_size
         asset_name = _asset_name(asset_prefix, rel)
+        asset_entries: list[dict[str, object]] = []
         with tempfile.TemporaryDirectory(prefix="release-asset-") as asset_dir:
             upload_path = Path(asset_dir) / asset_name
             shutil.copy2(path, upload_path)
-            _upload_asset(repo, tag, upload_path)
+            upload_parts = split_file_to_parts(
+                upload_path,
+                chunk_size=max_asset_bytes,
+                delete_source=False,
+            )
+            for part_path in upload_parts:
+                _upload_asset(repo, tag, part_path)
+                asset_entries.append(
+                    {
+                        "asset_name": part_path.name,
+                        "size_bytes": part_path.stat().st_size,
+                        "sha256": _sha256(part_path),
+                        "url": f"{release_base}/{part_path.name}",
+                    }
+                )
         files.append(
             {
                 "relative_path": rel.as_posix(),
-                "asset_name": asset_name,
                 "size_bytes": size,
                 "sha256": _sha256(path),
-                "url": f"{release_base}/{asset_name}",
+                "merge_strategy": "single" if len(asset_entries) == 1 else "concat",
+                "assets": asset_entries,
             }
         )
 

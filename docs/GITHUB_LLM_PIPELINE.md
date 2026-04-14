@@ -22,6 +22,7 @@ This repository now separates large Ollama model handling into three workflow st
    - Downloads the final published bundle artifact.
    - Uploads every file to a GitHub Release as a flat asset set.
    - Enforces a hard `<= 2,000,000,000 bytes` limit per uploaded asset.
+   - Re-splits any legacy oversized chunk again during deployment if needed.
    - Publishes a release manifest so the bundle can be reconstructed later.
 
 ## TurboQuant rule
