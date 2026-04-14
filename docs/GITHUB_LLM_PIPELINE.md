@@ -3,7 +3,7 @@
 This repository now separates large Ollama model handling into three workflow stages:
 
 1. `Prepare Ollama LLM Artifact`
-   - Pulls the official Ollama model or imports a custom GGUF.
+   - Imports a TurboQuant GGUF only.
    - Stages `~/.ollama/models` into a chunked transport directory.
    - Uploads the prepared model cache as a GitHub Actions artifact.
 
@@ -20,13 +20,17 @@ This repository now separates large Ollama model handling into three workflow st
 
 ## TurboQuant rule
 
-The current workflows treat TurboQuant as a documented artifact-chain requirement, not as a stock Ollama pull capability.
+TurboQuant is mandatory in this pipeline.
 
-- `source_mode=official-pull` is allowed for compatibility testing.
-- `source_mode=gguf-import` is required when `require_turboquant=true`.
-- `quantization_origin` should contain `turboquant` when a custom GGUF was produced by a TurboQuant toolchain.
+- The prepare workflow no longer accepts a stock `ollama pull` path.
+- A TurboQuant-built GGUF URL is required.
+- A `quantization_manifest.json` URL is also required.
+- Verification fails unless:
+  - the prepared model was imported through `gguf-import`
+  - the quantization manifest identifies `turboquant`
+  - `ollama show` reports the imported model as `gguf`
 
-This means the verified pipeline can reject an official Ollama pull when the deployment contract says TurboQuant is mandatory for RTX 3070-class local inference.
+This is intentional because the deployment contract says RTX 3070-class local inference is not acceptable without a TurboQuant path.
 
 ## Recommended runner setup
 
@@ -53,6 +57,16 @@ python scripts/package_ollama_models.py restore --root ollama_artifact_stage --r
 ## Typical flow
 
 1. Run `Prepare Ollama LLM Artifact`
-2. If TurboQuant is mandatory, use `source_mode=gguf-import` and provide a TurboQuant GGUF URL.
+2. Provide a TurboQuant GGUF URL and a matching quantization manifest URL.
 3. Run or wait for `Verify Ollama LLM Artifact`
 4. Run or wait for `Publish Verified Ollama LLM Artifact`
+
+## Dispatch helper
+
+You can start the first stage locally with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dispatch_turboquant_pipeline.ps1 `
+  -GgufUrl "https://example.invalid/gemma4-turboquant.gguf" `
+  -QuantizationManifestUrl "https://example.invalid/quantization_manifest.json"
+```

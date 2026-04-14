@@ -8,6 +8,8 @@ def test_llm_artifact_workflow_uses_chunked_ollama_packaging() -> None:
     assert "scripts/package_ollama_models.py stage" in content
     assert "2147483648" in content
     assert "actions/upload-artifact@v4" in content
+    assert "quantization_manifest_url" in content
+    assert "This workflow only accepts TurboQuant GGUF imports" in content
 
 
 def test_verify_workflow_downloads_prepare_artifact_and_runs_metadata_check() -> None:

@@ -13,29 +13,16 @@ on:
         required: true
         default: "gemma4:26b-a4b-it-q4_K_M"
         type: string
-      source_mode:
-        description: "Model preparation mode"
-        required: true
-        default: "official-pull"
-        type: choice
-        options:
-          - official-pull
-          - gguf-import
       gguf_url:
-        description: "Required when source_mode=gguf-import. URL to a prebuilt GGUF, e.g. TurboQuant output."
-        required: false
+        description: "Required TurboQuant GGUF URL produced by the upstream quantization stage."
+        required: true
         default: ""
         type: string
-      quantization_origin:
-        description: "Describe the quantization path, e.g. turboquant, stock-ollama, custom-gguf"
+      quantization_manifest_url:
+        description: "Required JSON manifest URL describing the TurboQuant build provenance."
         required: true
-        default: "turboquant"
+        default: ""
         type: string
-      turboquant_required:
-        description: "Whether downstream verification must require TurboQuant evidence"
-        required: true
-        default: true
-        type: boolean
       chunk_size_bytes:
         description: "Per-file split size for staged model blobs"
         required: true
@@ -63,9 +50,9 @@ jobs:
       OLLAMA_STAGING_ROOT: ${{ github.workspace }}/ollama_artifact_stage
       PREPARED_ARTIFACT_NAME: ${{ inputs.prepared_artifact_name }}
       TARGET_MODEL_NAME: ${{ inputs.model_name }}
-      SOURCE_MODE: ${{ inputs.source_mode }}
-      QUANTIZATION_ORIGIN: ${{ inputs.quantization_origin }}
-      TURBOQUANT_REQUIRED: ${{ inputs.turboquant_required }}
+      SOURCE_MODE: gguf-import
+      QUANTIZATION_ORIGIN: turboquant
+      TURBOQUANT_REQUIRED: true
 
     steps:
       - name: Checkout
@@ -108,19 +95,19 @@ jobs:
           }
           Start-Sleep -Seconds 15
 
-      - name: Prepare model via official pull
-        if: ${{ inputs.source_mode == 'official-pull' }}
-        shell: pwsh
-        run: |
-          ollama pull "${{ inputs.model_name }}"
-
-      - name: Prepare model via GGUF import
-        if: ${{ inputs.source_mode == 'gguf-import' }}
+      - name: Validate TurboQuant inputs
         shell: pwsh
         run: |
           if (-not "${{ inputs.gguf_url }}") {
-            throw "gguf_url is required when source_mode=gguf-import."
+            throw "gguf_url is required. This workflow only accepts TurboQuant GGUF imports."
           }
+          if (-not "${{ inputs.quantization_manifest_url }}") {
+            throw "quantization_manifest_url is required. This workflow only accepts TurboQuant GGUF imports with provenance."
+          }
+
+      - name: Prepare model via TurboQuant GGUF import
+        shell: pwsh
+        run: |
           New-Item -ItemType Directory -Path "gguf-import" -Force | Out-Null
           @'
           import pathlib
@@ -142,6 +129,20 @@ jobs:
           '@ | python -
           ollama create "${{ inputs.model_name }}" -f "gguf-import/Modelfile"
 
+      - name: Fetch quantization manifest
+        shell: pwsh
+        run: |
+          @'
+          import pathlib
+          import urllib.request
+
+          url = r"${{ inputs.quantization_manifest_url }}"
+          target = pathlib.Path("gguf-import/quantization_manifest.json").resolve()
+          target.parent.mkdir(parents=True, exist_ok=True)
+          urllib.request.urlretrieve(url, target)
+          print(target)
+          '@ | python -
+
       - name: Capture show output and preparation metadata
         shell: pwsh
         run: |
@@ -149,10 +150,11 @@ jobs:
             schema_version = "1"
             stage = "prepare"
             model_name = "${{ inputs.model_name }}"
-            source_mode = "${{ inputs.source_mode }}"
+            source_mode = "gguf-import"
             gguf_url = "${{ inputs.gguf_url }}"
-            quantization_origin = "${{ inputs.quantization_origin }}"
-            turboquant_required = [System.Convert]::ToBoolean("${{ inputs.turboquant_required }}")
+            quantization_manifest_url = "${{ inputs.quantization_manifest_url }}"
+            quantization_origin = "turboquant"
+            turboquant_required = $true
             prepared_artifact_name = "${{ inputs.prepared_artifact_name }}"
             chunk_size_bytes = [Int64]::Parse("${{ inputs.chunk_size_bytes }}")
             runner_os = $env:RUNNER_OS
@@ -191,6 +193,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item "prepare_metadata.json" "${env:OLLAMA_STAGING_ROOT}\prepare_metadata.json" -Force
+          Copy-Item "gguf-import\quantization_manifest.json" "${env:OLLAMA_STAGING_ROOT}\quantization_manifest.json" -Force
           Copy-Item "ollama_show.txt" "${env:OLLAMA_STAGING_ROOT}\ollama_show.txt" -Force
           Copy-Item "ollama_show.json" "${env:OLLAMA_STAGING_ROOT}\ollama_show.json" -Force
           ollama list | Out-File -FilePath "${env:OLLAMA_STAGING_ROOT}\ollama_models_list.txt" -Encoding utf8

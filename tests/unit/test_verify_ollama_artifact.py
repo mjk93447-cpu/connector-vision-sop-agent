@@ -9,7 +9,13 @@ from scripts.package_ollama_models import MANIFEST_NAME
 from scripts.verify_ollama_artifact import build_verification_report
 
 
-def _write_prepared_stage(tmp_path: Path, *, source_mode: str, quantization_origin: str) -> Path:
+def _write_prepared_stage(
+    tmp_path: Path,
+    *,
+    source_mode: str,
+    quantization_origin: str,
+    include_quant_manifest: bool = True,
+) -> Path:
     stage_root = tmp_path / "prepared_stage"
     stage_root.mkdir()
     (stage_root / MANIFEST_NAME).write_text(
@@ -34,7 +40,15 @@ def _write_prepared_stage(tmp_path: Path, *, source_mode: str, quantization_orig
         encoding="utf-8",
     )
     (stage_root / "ollama_show.txt").write_text("show output", encoding="utf-8")
-    (stage_root / "ollama_show.json").write_text("{}", encoding="utf-8")
+    (stage_root / "ollama_show.json").write_text(
+        json.dumps({"details": {"format": "gguf"}}),
+        encoding="utf-8",
+    )
+    if include_quant_manifest:
+        (stage_root / "quantization_manifest.json").write_text(
+            json.dumps({"tool": "turboquant", "quantization_origin": quantization_origin}),
+            encoding="utf-8",
+        )
     return stage_root
 
 
@@ -53,6 +67,7 @@ def test_build_verification_report_accepts_turboquant_import_stage(tmp_path: Pat
     assert report["status"] == "prepared"
     assert report["source_mode"] == "gguf-import"
     assert report["quantization_origin"] == "turboquant"
+    assert report["quantization_manifest_summary"]["tool"] == "turboquant"
 
 
 def test_build_verification_report_rejects_official_pull_when_turboquant_required(
@@ -72,18 +87,19 @@ def test_build_verification_report_rejects_official_pull_when_turboquant_require
         )
 
 
-def test_build_verification_report_allows_official_pull_when_turboquant_not_required(
+def test_build_verification_report_rejects_missing_quant_manifest_for_turboquant(
     tmp_path: Path,
 ) -> None:
     stage_root = _write_prepared_stage(
         tmp_path,
-        source_mode="official-pull",
-        quantization_origin="stock-ollama",
+        source_mode="gguf-import",
+        quantization_origin="turboquant",
+        include_quant_manifest=False,
     )
-    report = build_verification_report(
-        stage_root=stage_root,
-        expected_model="gemma4:26b-a4b-it-q4_K_M",
-        source_run_id="12345",
-        require_turboquant=False,
-    )
-    assert report["source_mode"] == "official-pull"
+    with pytest.raises(FileNotFoundError, match="quantization_manifest.json"):
+        build_verification_report(
+            stage_root=stage_root,
+            expected_model="gemma4:26b-a4b-it-q4_K_M",
+            source_run_id="12345",
+            require_turboquant=True,
+        )

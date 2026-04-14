@@ -31,9 +31,11 @@ def build_verification_report(
     show_text_path = stage_root / "ollama_show.txt"
     if not show_json_path.exists() or not show_text_path.exists():
         raise FileNotFoundError("Prepared artifact is missing ollama_show evidence files.")
+    quant_manifest_path = stage_root / "quantization_manifest.json"
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     prepare_metadata = json.loads(prepare_metadata_path.read_text(encoding="utf-8"))
+    show_json = json.loads(show_json_path.read_text(encoding="utf-8"))
     prepared_model = str(prepare_metadata.get("model_name", "")).strip()
     if prepared_model != expected_model:
         raise ValueError(
@@ -55,6 +57,28 @@ def build_verification_report(
                 "TurboQuant verification requires quantization_origin to include "
                 "'turbo' so the artifact chain documents its quantization source."
             )
+        if not quant_manifest_path.exists():
+            raise FileNotFoundError(
+                "TurboQuant verification requires quantization_manifest.json in the prepared artifact."
+            )
+        quant_manifest = json.loads(quant_manifest_path.read_text(encoding="utf-8"))
+        manifest_origin = str(quant_manifest.get("quantization_origin", "")).strip()
+        manifest_tool = str(quant_manifest.get("tool", "")).strip()
+        if "turbo" not in manifest_origin.lower() and "turbo" not in manifest_tool.lower():
+            raise ValueError(
+                "TurboQuant verification requires quantization_manifest.json to identify "
+                "a TurboQuant tool or quantization_origin."
+            )
+    else:
+        quant_manifest = (
+            json.loads(quant_manifest_path.read_text(encoding="utf-8"))
+            if quant_manifest_path.exists()
+            else {}
+        )
+
+    details = show_json.get("details", {})
+    if str(details.get("format", "")).strip().lower() != "gguf":
+        raise ValueError("Prepared model is not reported as GGUF by ollama show.")
 
     return {
         "schema_version": "1",
@@ -75,6 +99,9 @@ def build_verification_report(
             "text": show_text_path.name,
             "json": show_json_path.name,
         },
+        "quantization_manifest_path": quant_manifest_path.name if quant_manifest_path.exists() else "",
+        "quantization_manifest_summary": quant_manifest,
+        "ollama_details": details,
     }
 
 
