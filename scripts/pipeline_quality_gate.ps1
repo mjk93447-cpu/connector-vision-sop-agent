@@ -65,7 +65,7 @@ function New-StepSet {
         [string]$CurrentTarget
     )
 
-    $changedFiles = Get-ChangedFiles
+    $changedFiles = @(Get-ChangedFiles)
     $steps = @()
 
     $dependencyPaths = @(
