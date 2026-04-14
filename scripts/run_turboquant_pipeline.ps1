@@ -6,6 +6,9 @@ param(
     [string]$PreparedArtifactName = "connector-agent-llm-prepared",
     [string]$VerificationArtifactName = "connector-agent-llm-verify-report",
     [string]$PublishedArtifactName = "connector-agent-llm-verified-cache",
+    [string]$ReleaseTag = "llm-bundle-turboquant-gemma4-26b-q4",
+    [string]$ReleaseTitle = "Verified LLM Bundle - TurboQuant Gemma4 26B Q4_K_M",
+    [string]$ReleaseAssetPrefix = "connector-agent-llm-verified-cache",
     [string]$Branch = "main"
 )
 
@@ -71,7 +74,21 @@ $publishRunId = Get-LatestWorkflowRunId -WorkflowName "Publish Verified Ollama L
 Write-Host "[pipeline] Watching publish run $publishRunId"
 gh run watch $publishRunId --exit-status
 
+Write-Host "[pipeline] Dispatching deploy stage..."
+gh workflow run "Deploy Verified Ollama LLM Bundle Release" `
+  -f publish_run_id="$publishRunId" `
+  -f published_artifact_name="$PublishedArtifactName" `
+  -f release_tag="$ReleaseTag" `
+  -f release_title="$ReleaseTitle" `
+  -f asset_prefix="$ReleaseAssetPrefix"
+
+Start-Sleep -Seconds 5
+$deployRunId = Get-LatestWorkflowRunId -WorkflowName "Deploy Verified Ollama LLM Bundle Release" -BranchName $Branch
+Write-Host "[pipeline] Watching deploy run $deployRunId"
+gh run watch $deployRunId --exit-status
+
 Write-Host "[pipeline] Completed."
 Write-Host "  prepare run : $prepareRunId"
 Write-Host "  verify run  : $verifyRunId"
 Write-Host "  publish run : $publishRunId"
+Write-Host "  deploy run  : $deployRunId"

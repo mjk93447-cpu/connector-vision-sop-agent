@@ -230,6 +230,19 @@ jobs:
           from pathlib import Path
 
           report = json.loads(Path("verification_report.json").read_text(encoding="utf-8"))
+          live_show = json.loads(Path("verification_show.json").read_text(encoding="utf-8"))
+          details = live_show.get("details", {})
+          expected_family = report["model_name"].split(":", 1)[0].strip().lower()
+          expected_quant = report["model_name"].rsplit("-", 1)[-1].strip()
+          expected_quant = expected_quant[:1].upper() + expected_quant[1:]
+          families = {str(item).strip().lower() for item in details.get("families", [])}
+          family = str(details.get("family", "")).strip().lower()
+          if expected_family not in families | {family}:
+              raise SystemExit("Live ollama show family does not match expected model.")
+          if str(details.get("quantization_level", "")).strip().lower() != expected_quant.lower():
+              raise SystemExit("Live ollama show quantization_level does not match expected model.")
+          if str(details.get("format", "")).strip().lower() != "gguf":
+              raise SystemExit("Live ollama show format is not gguf.")
           report["live_verification"] = {
               "show_text_path": "verification_show.txt",
               "show_json_path": "verification_show.json",

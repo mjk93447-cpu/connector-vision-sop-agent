@@ -75,13 +75,21 @@ def fetch_remote_gguf(
     output_file.parent.mkdir(parents=True, exist_ok=True)
     if gguf_url:
         _download(gguf_url, output_file)
-        return {"mode": "direct-url", "url": gguf_url, "output": str(output_file)}
+        return {
+            "mode": "direct-url",
+            "url": gguf_url,
+            "output": str(output_file),
+            "output_sha256": _sha256(output_file),
+            "size_bytes": output_file.stat().st_size,
+        }
 
     manifest = _download_from_manifest(gguf_manifest_url, output_file)
     return {
         "mode": "manifest-url",
         "manifest_url": gguf_manifest_url,
         "output": str(output_file),
+        "output_sha256": _sha256(output_file),
+        "size_bytes": output_file.stat().st_size,
         "manifest": manifest,
     }
 

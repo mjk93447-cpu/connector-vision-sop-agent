@@ -134,6 +134,14 @@ def mirror_remote_file_to_release(
             "notes": quantization_notes,
             "source_url": remote_url,
             "mirrored_by": "mirror_remote_file_to_release.py",
+            "expected_family": model_name.split(":", 1)[0].strip().lower(),
+            "expected_quantization_level": (
+                model_name.rsplit("-", 1)[-1][:1].upper()
+                + model_name.rsplit("-", 1)[-1][1:]
+            ),
+            "gguf_file": remote_filename,
+            "gguf_size_bytes": total_size,
+            "gguf_sha256": whole_digest.hexdigest(),
         }
 
         download_manifest_path = temp_root / "gguf_download_manifest.public.json"

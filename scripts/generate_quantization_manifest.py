@@ -24,7 +24,16 @@ def generate_manifest(
     tool: str,
     command: str,
     notes: str,
+    source_url: str,
+    reference_url: str,
+    expected_family: str,
+    expected_quantization_level: str,
 ) -> dict:
+    resolved_family = expected_family or model_name.split(":", 1)[0].strip().lower()
+    quant_suffix = model_name.rsplit("-", 1)[-1].strip()
+    resolved_quantization = expected_quantization_level or (
+        quant_suffix[:1].upper() + quant_suffix[1:]
+    )
     manifest = {
         "schema_version": "1",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -34,6 +43,10 @@ def generate_manifest(
         "quantization_origin": tool,
         "command": command,
         "notes": notes,
+        "source_url": source_url,
+        "reference_url": reference_url,
+        "expected_family": resolved_family,
+        "expected_quantization_level": resolved_quantization,
         "gguf_file": gguf_path.name,
         "gguf_size_bytes": gguf_path.stat().st_size,
         "gguf_sha256": sha256_file(gguf_path),
@@ -51,6 +64,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tool", default="turboquant")
     parser.add_argument("--command", default="")
     parser.add_argument("--notes", default="")
+    parser.add_argument("--source-url", default="")
+    parser.add_argument("--reference-url", default="")
+    parser.add_argument("--expected-family", default="")
+    parser.add_argument("--expected-quantization-level", default="")
     return parser
 
 
@@ -65,6 +82,10 @@ def main() -> None:
         tool=args.tool,
         command=args.command,
         notes=args.notes,
+        source_url=args.source_url,
+        reference_url=args.reference_url,
+        expected_family=args.expected_family,
+        expected_quantization_level=args.expected_quantization_level,
     )
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
 

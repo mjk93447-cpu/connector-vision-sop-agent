@@ -18,6 +18,8 @@ def test_fetch_remote_gguf_from_direct_url(tmp_path: Path) -> None:
     result = fetch_remote_gguf(output_file=output, gguf_url=_url(source))
     assert output.read_bytes() == b"hello"
     assert result["mode"] == "direct-url"
+    assert result["size_bytes"] == 5
+    assert result["output_sha256"] == hashlib.sha256(b"hello").hexdigest()
 
 
 def test_fetch_remote_gguf_from_split_manifest(tmp_path: Path) -> None:
@@ -41,3 +43,5 @@ def test_fetch_remote_gguf_from_split_manifest(tmp_path: Path) -> None:
     result = fetch_remote_gguf(output_file=output, gguf_manifest_url=_url(manifest_path))
     assert output.read_bytes() == combined
     assert result["mode"] == "manifest-url"
+    assert result["size_bytes"] == len(combined)
+    assert result["output_sha256"] == hashlib.sha256(combined).hexdigest()

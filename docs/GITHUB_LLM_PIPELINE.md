@@ -18,6 +18,12 @@ This repository now separates large Ollama model handling into three workflow st
    - Resolves the original prepared artifact run id from the report.
    - Repackages the chunked model cache plus verification evidence into a final artifact.
 
+4. `Deploy Verified Ollama LLM Bundle Release`
+   - Downloads the final published bundle artifact.
+   - Uploads every file to a GitHub Release as a flat asset set.
+   - Enforces a hard `<= 2,000,000,000 bytes` limit per uploaded asset.
+   - Publishes a release manifest so the bundle can be reconstructed later.
+
 ## TurboQuant rule
 
 TurboQuant is mandatory in this pipeline.
@@ -28,7 +34,11 @@ TurboQuant is mandatory in this pipeline.
 - Verification fails unless:
   - the prepared model was imported through `gguf-import`
   - the quantization manifest identifies `turboquant`
+  - the quantization manifest carries model/family/quantization/sha256/size provenance
+  - the fetched GGUF hash and size match that provenance
   - `ollama show` reports the imported model as `gguf`
+  - `ollama show` reports the expected `gemma4` family and `Q4_K_M` quantization
+  - every staged or released chunk stays within the 2GB deployment limit
 
 This is intentional because the deployment contract says RTX 3070-class local inference is not acceptable without a TurboQuant path.
 
@@ -118,6 +128,7 @@ Default source:
 - Prepared artifact: `connector-agent-llm-prepared`
 - Verification report: `connector-agent-llm-verify-report`
 - Published bundle: `connector-agent-llm-verified-cache`
+- Release deployment tag: `llm-bundle-turboquant-gemma4-26b-q4`
 
 The prepared and published bundles both carry `ollama_split_manifest.json`, so large blob parts can be restored locally with:
 
@@ -131,6 +142,7 @@ python scripts/package_ollama_models.py restore --root ollama_artifact_stage --r
 2. Provide a TurboQuant GGUF URL and a matching quantization manifest URL.
 3. Run or wait for `Verify Ollama LLM Artifact`
 4. Run or wait for `Publish Verified Ollama LLM Artifact`
+5. Run or wait for `Deploy Verified Ollama LLM Bundle Release`
 
 ## Dispatch helper
 
@@ -149,3 +161,5 @@ powershell -ExecutionPolicy Bypass -File scripts/run_turboquant_pipeline.ps1 `
   -GgufUrl "https://example.invalid/gemma4-turboquant.gguf" `
   -QuantizationManifestUrl "https://example.invalid/quantization_manifest.json"
 ```
+
+The helper now dispatches deploy as well, so it effectively runs the full `prepare -> verify -> publish -> deploy` chain.

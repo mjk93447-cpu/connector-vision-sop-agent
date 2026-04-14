@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CHUNK_BYTES = 2 * 1024 * 1024 * 1024
+DEFAULT_CHUNK_BYTES = 2_000_000_000
 MANIFEST_NAME = "ollama_split_manifest.json"
 
 

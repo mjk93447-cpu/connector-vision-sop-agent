@@ -1,0 +1,112 @@
+name: Deploy Verified Ollama LLM Bundle Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_run_id:
+        description: "Workflow run id of Publish Verified Ollama LLM Artifact"
+        required: true
+        type: string
+      published_artifact_name:
+        description: "Published bundle artifact name"
+        required: true
+        default: "connector-agent-llm-verified-cache"
+        type: string
+      repo_full_name:
+        description: "owner/name repository for the release"
+        required: true
+        default: "mjk93447-cpu/connector-vision-sop-agent"
+        type: string
+      release_tag:
+        description: "Release tag used to publish the verified LLM bundle"
+        required: true
+        default: "llm-bundle-turboquant-gemma4-26b-q4"
+        type: string
+      release_title:
+        description: "GitHub Release title"
+        required: true
+        default: "Verified LLM Bundle - TurboQuant Gemma4 26B Q4_K_M"
+        type: string
+      asset_prefix:
+        description: "Asset prefix for flattened release uploads"
+        required: true
+        default: "connector-agent-llm-verified-cache"
+        type: string
+  workflow_run:
+    workflows:
+      - Publish Verified Ollama LLM Artifact
+    types:
+      - completed
+
+jobs:
+  deploy-release:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve publish run and release inputs
+        id: resolve
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $publishRunId = "${{ inputs.publish_run_id }}"
+            $artifactName = "${{ inputs.published_artifact_name }}"
+            $repoName = "${{ inputs.repo_full_name }}"
+            $releaseTag = "${{ inputs.release_tag }}"
+            $releaseTitle = "${{ inputs.release_title }}"
+            $assetPrefix = "${{ inputs.asset_prefix }}"
+          } else {
+            $publishRunId = "${{ github.event.workflow_run.id }}"
+            $artifactName = "connector-agent-llm-verified-cache"
+            $repoName = "${{ github.repository }}"
+            $releaseTag = "llm-bundle-turboquant-gemma4-26b-q4"
+            $releaseTitle = "Verified LLM Bundle - TurboQuant Gemma4 26B Q4_K_M"
+            $assetPrefix = "connector-agent-llm-verified-cache"
+          }
+          "publish_run_id=$publishRunId" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact_name=$artifactName" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "repo_name=$repoName" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_tag=$releaseTag" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_title=$releaseTitle" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "asset_prefix=$assetPrefix" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Download published bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.resolve.outputs.artifact_name }}
+          path: published_bundle
+          run-id: ${{ steps.resolve.outputs.publish_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish bundle files to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          python scripts/publish_release_bundle.py `
+            --source-dir "published_bundle" `
+            --repo "${{ steps.resolve.outputs.repo_name }}" `
+            --tag "${{ steps.resolve.outputs.release_tag }}" `
+            --title "${{ steps.resolve.outputs.release_title }}" `
+            --notes "Verified TurboQuant Gemma4 Ollama bundle uploaded as <=2GB release assets." `
+            --asset-prefix "${{ steps.resolve.outputs.asset_prefix }}" `
+            > release_deploy_result.json
+
+      - name: Upload release deploy result
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-release-deploy-result
+          path: release_deploy_result.json
+          retention-days: 14
+          compression-level: 0

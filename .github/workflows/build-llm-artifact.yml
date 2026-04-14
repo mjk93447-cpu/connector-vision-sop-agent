@@ -36,7 +36,7 @@ on:
       chunk_size_bytes:
         description: "Per-file split size for staged model blobs"
         required: true
-        default: "2147483648"
+        default: "2000000000"
         type: string
       prepared_artifact_name:
         description: "Uploaded prepared artifact name"
@@ -166,6 +166,74 @@ jobs:
           target.parent.mkdir(parents=True, exist_ok=True)
           urllib.request.urlretrieve(url, target)
           print(target)
+          '@ | python -
+
+      - name: Validate TurboQuant provenance before import
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+
+          gguf_path = Path("gguf-import/model.gguf")
+          manifest_path = Path("gguf-import/quantization_manifest.json")
+          fetch_result_path = Path("gguf-import/fetch_result.json")
+          download_manifest_path = Path("gguf-import/gguf_download_manifest.json")
+
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          fetch_result = json.loads(fetch_result_path.read_text(encoding="utf-8"))
+          download_manifest = (
+              json.loads(download_manifest_path.read_text(encoding="utf-8"))
+              if download_manifest_path.exists()
+              else {}
+          )
+
+          expected_model = "${{ inputs.model_name }}"
+          expected_family = expected_model.split(":", 1)[0].strip().lower()
+          quant_suffix = expected_model.rsplit("-", 1)[-1].strip()
+          expected_quant = quant_suffix[:1].upper() + quant_suffix[1:]
+
+          required = [
+              "model_name",
+              "tool",
+              "quantization_origin",
+              "expected_family",
+              "expected_quantization_level",
+              "gguf_sha256",
+              "gguf_size_bytes",
+              "source_url",
+              "reference_url",
+          ]
+          missing = [key for key in required if not str(manifest.get(key, "")).strip()]
+          if missing:
+              raise SystemExit(
+                  "quantization_manifest.json missing required fields: " + ", ".join(missing)
+              )
+          tool = str(manifest.get("tool", "")).lower()
+          origin = str(manifest.get("quantization_origin", "")).lower()
+          if "turbo" not in tool and "turbo" not in origin:
+              raise SystemExit("quantization_manifest.json must declare a TurboQuant origin.")
+          if str(manifest.get("model_name", "")).strip() != expected_model:
+              raise SystemExit("quantization_manifest.json model_name mismatch.")
+          if str(manifest.get("expected_family", "")).strip().lower() != expected_family:
+              raise SystemExit("quantization_manifest.json expected_family mismatch.")
+          if str(manifest.get("expected_quantization_level", "")).strip().lower() != expected_quant.lower():
+              raise SystemExit("quantization_manifest.json expected_quantization_level mismatch.")
+
+          actual_size = gguf_path.stat().st_size
+          actual_sha = str(fetch_result.get("output_sha256", "")).strip().lower()
+          if not actual_sha:
+              raise SystemExit("fetch_result.json is missing output_sha256.")
+          if actual_size != int(manifest.get("gguf_size_bytes", 0)):
+              raise SystemExit("Downloaded GGUF size does not match quantization manifest.")
+          if actual_sha != str(manifest.get("gguf_sha256", "")).strip().lower():
+              raise SystemExit("Downloaded GGUF sha256 does not match quantization manifest.")
+
+          if download_manifest:
+              if str(download_manifest.get("sha256", "")).strip().lower() != actual_sha:
+                  raise SystemExit("gguf_download_manifest.json sha256 mismatch.")
+              if int(download_manifest.get("size_bytes", 0)) != actual_size:
+                  raise SystemExit("gguf_download_manifest.json size mismatch.")
           '@ | python -
 
       - name: Capture show output

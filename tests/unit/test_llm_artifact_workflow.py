@@ -6,12 +6,13 @@ from pathlib import Path
 def test_llm_artifact_workflow_uses_chunked_ollama_packaging() -> None:
     content = Path(".github/workflows/build-llm-artifact.yml").read_text(encoding="utf-8")
     assert "scripts/package_ollama_models.py stage" in content
-    assert "2147483648" in content
+    assert "2000000000" in content
     assert "actions/upload-artifact@v4" in content
     assert "quantization_manifest_url" in content
     assert "This workflow only accepts TurboQuant GGUF imports" in content
     assert "gguf_manifest_url" in content
     assert "scripts/fetch_remote_gguf.py" in content
+    assert "Validate TurboQuant provenance before import" in content
 
 
 def test_verify_workflow_downloads_prepare_artifact_and_runs_metadata_check() -> None:
@@ -30,6 +31,16 @@ def test_publish_workflow_consumes_verification_report_and_republishes_bundle() 
     assert "verification_report.json" in content
     assert "connector-agent-llm-verified-cache" in content
     assert "published_bundle" in content
+
+
+def test_deploy_workflow_publishes_release_assets_in_chunked_form() -> None:
+    content = Path(".github/workflows/deploy-llm-bundle-release.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "Publish Verified Ollama LLM Artifact" in content
+    assert "scripts/publish_release_bundle.py" in content
+    assert "llm-bundle-turboquant-gemma4-26b-q4" in content
+    assert "connector-agent-llm-verified-cache" in content
 
 
 def test_turboquant_pipeline_helpers_exist() -> None:
