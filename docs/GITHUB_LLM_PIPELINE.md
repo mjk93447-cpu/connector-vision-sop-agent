@@ -70,3 +70,11 @@ powershell -ExecutionPolicy Bypass -File scripts/dispatch_turboquant_pipeline.ps
   -GgufUrl "https://example.invalid/gemma4-turboquant.gguf" `
   -QuantizationManifestUrl "https://example.invalid/quantization_manifest.json"
 ```
+
+Or run the full 3-stage chain sequentially:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_turboquant_pipeline.ps1 `
+  -GgufUrl "https://example.invalid/gemma4-turboquant.gguf" `
+  -QuantizationManifestUrl "https://example.invalid/quantization_manifest.json"
+```

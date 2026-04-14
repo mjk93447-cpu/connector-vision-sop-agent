@@ -28,3 +28,8 @@ def test_publish_workflow_consumes_verification_report_and_republishes_bundle() 
     assert "verification_report.json" in content
     assert "connector-agent-llm-verified-cache" in content
     assert "published_bundle" in content
+
+
+def test_turboquant_pipeline_helpers_exist() -> None:
+    assert Path("scripts/dispatch_turboquant_pipeline.ps1").exists()
+    assert Path("scripts/run_turboquant_pipeline.ps1").exists()
