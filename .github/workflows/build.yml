@@ -75,6 +75,18 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip install --force-reinstall --no-cache-dir numpy==1.26.4
 
+      - name: Install Ollama runtime
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
+          }
+          $cmd = Get-Command ollama -ErrorAction SilentlyContinue
+          if (-not $cmd) {
+            throw "Unable to locate ollama.exe after installation."
+          }
+          "OLLAMA_EXE=$($cmd.Source)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Set runtime flavor
         shell: pwsh
         run: |
@@ -121,6 +133,7 @@ jobs:
           Copy-Item "dist\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe" -Force
           Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
           Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
+          Copy-Item "assets\launchers\restore_ollama_stage.ps1" "$pkg\restore_ollama_stage.ps1"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"
           Copy-Item "assets\launchers\MERGE_GUIDE.txt" "$pkg\MERGE_GUIDE.txt"
           Copy-Item "assets\launchers\PLACE_APP_HERE.txt" "$pkg\PLACE_APP_HERE.txt"
@@ -128,6 +141,9 @@ jobs:
           Copy-Item "assets\config.json" "$pkg\assets\config.json" -Force
           Copy-Item "assets\sop_steps.json" "$pkg\assets\sop_steps.json" -Force
           Copy-Item "assets\models" "$pkg\assets\models" -Recurse -Force
+          if ($env:OLLAMA_EXE -and (Test-Path $env:OLLAMA_EXE)) {
+            Copy-Item $env:OLLAMA_EXE "$pkg\ollama.exe" -Force
+          }
           Set-Content -LiteralPath "$pkg\runtime_flavor.txt" -Value "${{ matrix.runtime_flavor }}" -Encoding UTF8
           if (Test-Path "README_INSTALL_EN.md") { Copy-Item "README_INSTALL_EN.md" "$pkg\README_INSTALL_EN.md" }
           if (Test-Path "README.md") { Copy-Item "README.md" "$pkg\README.md" }

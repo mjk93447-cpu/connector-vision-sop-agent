@@ -53,15 +53,18 @@ INSTALL
        or
      - connector-agent-app-gpu.zip
   3. Keep the extracted folder structure unchanged.
-  4. Optional: merge connector-agent-llm-verified-cache only when the offline LLM
-     feature is needed on the target PC.
+  4. When offline LLM is needed, extract connector-agent-llm-verified-cache into
+     the same folder. The launcher accepts either:
+     - llm_stage\
+     - ollama_models\
+     and restores split blobs automatically on first start.
 
 RUN
 --------------------------------------------------
   - Double-click start_agent.bat to launch the main SOP agent.
   - If ollama.exe is absent, the launcher continues in non-LLM mode.
-  - If the LLM artifact contains split model chunks, use MERGE_OLLAMA_PARTS.ps1
-    after extraction to restore the original blob files.
+  - If llm_stage\ or ollama_models\ contains split model chunks, start_agent.bat
+    runs restore_ollama_stage.ps1 automatically before starting Ollama.
   - For cloud-built model artifacts, see docs/GITHUB_LLM_PIPELINE.md
 
 FINAL FOLDER STRUCTURE
@@ -70,6 +73,7 @@ FINAL FOLDER STRUCTURE
   +-- connector_vision_agent.exe
   +-- start_agent.bat
   +-- stop_ollama.bat
+  +-- restore_ollama_stage.ps1
   +-- runtime_flavor.txt
   +-- assets\
   |   +-- config.json
@@ -84,6 +88,8 @@ RUNTIME BEHAVIOR
 --------------------------------------------------
   - The Python runtime, torch stack, and packaged dependencies are embedded
     into connector_vision_agent.exe.
+  - The launcher prefers a colocated TurboQuant Gemma bundle in llm_stage\ or
+    ollama_models\ and validates gemma4:26b-a4b-it-q4_K_M on startup.
   - CPU pack on CPU-only PC: normal operation
   - CPU pack on GPU PC: normal operation, CPU only
   - GPU pack on GPU PC: CUDA preferred

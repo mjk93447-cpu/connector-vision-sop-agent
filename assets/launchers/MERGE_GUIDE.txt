@@ -25,14 +25,17 @@ INSTALL STEPS
      - connector-agent-app-cpu.zip
        or
      - connector-agent-app-gpu.zip
-  3. Optional: extract connector-agent-llm-verified-cache\llm_stage into
-     C:\tools\connector_agent\ollama_models\
-     If a local zip build was split, join the `.zip.001` / `.zip.002` parts first.
+  3. Optional: extract connector-agent-llm-verified-cache into the same folder.
+     The launcher accepts:
+     - C:\tools\connector_agent\llm_stage\
+     - C:\tools\connector_agent\ollama_models\
+     and rebuilds split blobs automatically on first launch.
 
 FINAL FOLDER STRUCTURE
   connector_agent\
   +-- connector_vision_agent.exe   <- SOP agent with bundled runtime
   +-- start_agent.bat              <- DOUBLE-CLICK TO RUN
+  +-- restore_ollama_stage.ps1
   +-- runtime_flavor.txt
   +-- assets\
   |   +-- config.json
@@ -63,6 +66,7 @@ FEATURE PARITY
 HOW TO RUN
   Double-click start_agent.bat
   -> Starts Ollama server when available
+  -> Restores split TurboQuant model blobs when llm_stage\ or ollama_models\ contains ollama_split_manifest.json
   -> Opens the 7-tab PyQt6 GUI
 
 CUSTOMIZATION
@@ -72,12 +76,12 @@ CUSTOMIZATION
 
 LLM MODEL INFO
   Target deployment: Gemma 4 26B A4B IT Q4_K_M + TurboQuant
-  Packaged cache    : local Ollama blobs/manifests copied from the build machine
-  Split policy      : individual model blobs larger than 2 GB are chunked for transport
+  Verified cache    : cloud-built GGUF import path verified through Ollama show + smoke chat
+  Split policy      : individual model blobs larger than 2 GB are chunked for transport and restored by the launcher
 
 TROUBLESHOOTING
   - If GUI does not open: run start_agent.bat from cmd and inspect the output
-  - If SOP Generate fails: ensure ollama.exe and the expected model cache are available
+  - If SOP Generate fails: ensure ollama.exe is present and the expected model cache was extracted beside the app
   - For GitHub cloud-built model artifacts: see docs\GITHUB_LLM_PIPELINE.md
   - If YOLO detects nothing: verify assets\models\yolo26x_local_pretrained.pt
 ================================================================

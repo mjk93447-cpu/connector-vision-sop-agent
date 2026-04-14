@@ -8,3 +8,11 @@ def test_start_agent_launcher_tolerates_missing_ollama() -> None:
     assert "ollama.exe not found" in content
     assert "Continuing with GUI smoke / non-LLM mode" in content
     assert "LLM verification skipped" in content
+    assert "llm_stage" in content
+    assert "restore_ollama_stage.ps1" in content
+
+
+def test_restore_launcher_script_exists() -> None:
+    content = Path("assets/launchers/restore_ollama_stage.ps1").read_text(encoding="utf-8")
+    assert "ollama_split_manifest.json" in content
+    assert "split_files" in content

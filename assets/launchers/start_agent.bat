@@ -3,7 +3,10 @@ chcp 65001 >nul
 cd /d "%~dp0"
 title Connector Vision SOP Agent v6.0.0 [Offline]
 
-set OLLAMA_MODELS=%~dp0ollama_models
+set MODEL_ROOT=%~dp0ollama_models
+if exist "%~dp0llm_stage\ollama_split_manifest.json" set MODEL_ROOT=%~dp0llm_stage
+if exist "%~dp0ollama_models\ollama_split_manifest.json" set MODEL_ROOT=%~dp0ollama_models
+set OLLAMA_MODELS=%MODEL_ROOT%
 set OLLAMA_HOST=127.0.0.1:11434
 set OLLAMA_ORIGINS=*
 if not defined OLLAMA_CONTEXT_LENGTH set OLLAMA_CONTEXT_LENGTH=8192
@@ -31,6 +34,17 @@ echo  LLM  : Gemma 4 26B A4B IT Q4_K_M  (Ollama + TurboQuant)
 echo  YOLO : GUI runtime + local pretrained fine-tune seed bundle
 echo ================================================================
 echo.
+echo [prep] Ollama model root: %OLLAMA_MODELS%
+if exist "%~dp0restore_ollama_stage.ps1" (
+    if exist "%OLLAMA_MODELS%\ollama_split_manifest.json" (
+        echo [prep] Restoring split Ollama blobs...
+        powershell -ExecutionPolicy Bypass -File "%~dp0restore_ollama_stage.ps1" -ModelsRoot "%OLLAMA_MODELS%"
+        if errorlevel 1 (
+            echo [WARN] Failed to restore split Ollama blobs. LLM startup may fail.
+        )
+    )
+)
+
 echo [1/3] Starting Ollama server...
 if exist "%~dp0ollama.exe" (
     start /B "" "%~dp0ollama.exe" serve
@@ -46,6 +60,14 @@ if exist "%~dp0ollama.exe" (
     if errorlevel 1 (
         echo [WARN] ollama list returned an error. Ollama may still be starting.
         echo        If the EXE fails to connect, wait 10s and retry start_agent.bat.
+    ) else (
+        "%~dp0ollama.exe" show "gemma4:26b-a4b-it-q4_K_M" >nul 2>&1
+        if errorlevel 1 (
+            echo [WARN] Expected Gemma 4 TurboQuant model is not ready in %OLLAMA_MODELS%.
+            echo        Extract the verified LLM bundle so llm_stage\ or ollama_models\ is present.
+        ) else (
+            echo Gemma 4 TurboQuant model is ready.
+        )
     )
 ) else (
     echo [INFO] LLM verification skipped because ollama.exe is absent.

@@ -21,3 +21,6 @@ def test_build_workflow_emits_cpu_and_gpu_full_packs() -> None:
     assert "https://download.pytorch.org/whl/cpu" in content
     assert "https://download.pytorch.org/whl/cu121" in content
     assert "CONNECTOR_AGENT_RUNTIME_FLAVOR=${{ matrix.runtime_flavor }}" in content
+    assert "Install Ollama runtime" in content
+    assert 'Copy-Item "assets\\launchers\\restore_ollama_stage.ps1"' in content
+    assert 'Copy-Item $env:OLLAMA_EXE "$pkg\\ollama.exe" -Force' in content

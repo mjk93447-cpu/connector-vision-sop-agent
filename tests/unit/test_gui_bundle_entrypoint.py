@@ -15,6 +15,8 @@ def test_packaged_launcher_marks_gui_runtime() -> None:
     content = Path("assets/launchers/start_agent.bat").read_text(encoding="utf-8")
     assert "Launching SOP Agent (GUI mode)" in content
     assert "connector_vision_agent.exe" in content
+    assert "restore_ollama_stage.ps1" in content
+    assert "Gemma 4 TurboQuant model is ready." in content
 
 
 def test_active_paths_mark_pretrain_as_archived() -> None:

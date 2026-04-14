@@ -104,7 +104,8 @@ Contents:
 
 Deployment:
   1. Extract exactly one app pack into the final root.
-  2. Optional: copy the LLM bundle contents into ollama_models\.
+  2. Optional: extract the LLM bundle into the same root.
+     The launcher accepts llm_stage\ or ollama_models\ and restores split blobs automatically.
 
 This folder already includes the packaged runtime. No separate runtime merge is required.
 Look for PLACE_LLM_HERE.txt for optional content.
