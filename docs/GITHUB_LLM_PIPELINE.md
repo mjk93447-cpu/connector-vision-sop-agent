@@ -91,6 +91,26 @@ Auth required:
 
 - existing `gh` login with release upload permission
 
+### 3. GitHub Actions cloud mirror from a public TurboQuant source
+
+Best fully cloud-based no-extra-account path.
+
+- Source file stays public on the original host
+- GitHub Actions downloads it in HTTP range chunks
+- Each chunk is uploaded directly as a GitHub Release asset
+- The workflow also emits:
+  - `gguf_download_manifest.public.json`
+  - `quantization_manifest.json`
+
+Workflow:
+
+- [mirror-public-turboquant-to-release.yml](/c:/connector-vision-sop-agent/.github/workflows/mirror-public-turboquant-to-release.yml:1)
+
+Default source:
+
+- `BugTraceAI-Apex-G4-26B-Q4.gguf`
+- Public source URL supports range downloads and is about 16.8 GB
+
 ## Artifact layout
 
 - Prepared artifact: `connector-agent-llm-prepared`

@@ -1,0 +1,98 @@
+name: Mirror Public TurboQuant GGUF To Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_full_name:
+        description: "owner/name repository for the release"
+        required: true
+        default: "mjk93447-cpu/connector-vision-sop-agent"
+        type: string
+      release_tag:
+        description: "Release tag used to host split GGUF parts"
+        required: true
+        default: "turboquant-gemma4-26b-q4"
+        type: string
+      release_title:
+        description: "GitHub Release title"
+        required: true
+        default: "TurboQuant Gemma4 26B GGUF Mirror"
+        type: string
+      remote_url:
+        description: "Public GGUF URL to mirror"
+        required: true
+        default: "https://huggingface.co/BugTraceAI/BugTraceAI-Apex-G4-26B-Q4/resolve/main/BugTraceAI-Apex-G4-26B-Q4.gguf?download=true"
+        type: string
+      remote_filename:
+        description: "Target GGUF filename"
+        required: true
+        default: "BugTraceAI-Apex-G4-26B-Q4.gguf"
+        type: string
+      model_name:
+        description: "Model name to record in the generated quantization manifest"
+        required: true
+        default: "gemma4:26b-a4b-it-q4_K_M"
+        type: string
+      base_model:
+        description: "Base model string for provenance"
+        required: true
+        default: "google/gemma-4-26B-A4B-it"
+        type: string
+      reference_url:
+        description: "Public reference page that claims the TurboQuant lineage"
+        required: true
+        default: "https://huggingface.co/BugTraceAI/BugTraceAI-Apex-G4-26B-Q4"
+        type: string
+      quantization_notes:
+        description: "Notes stored into quantization_manifest.json"
+        required: true
+        default: "BugTraceAI model card claims a TurboQuant optimized Q4 GGUF for consumer GPUs."
+        type: string
+      chunk_size_bytes:
+        description: "Per-part size for release assets"
+        required: true
+        default: "1900000000"
+        type: string
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install requests
+        run: python -m pip install requests
+
+      - name: Mirror GGUF into split GitHub Release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/mirror_remote_file_to_release.py \
+            --remote-url "${{ inputs.remote_url }}" \
+            --repo "${{ inputs.repo_full_name }}" \
+            --tag "${{ inputs.release_tag }}" \
+            --release-title "${{ inputs.release_title }}" \
+            --remote-filename "${{ inputs.remote_filename }}" \
+            --chunk-size-bytes "${{ inputs.chunk_size_bytes }}" \
+            --model-name "${{ inputs.model_name }}" \
+            --base-model "${{ inputs.base_model }}" \
+            --reference-url "${{ inputs.reference_url }}" \
+            --quantization-notes "${{ inputs.quantization_notes }}" \
+            > mirror_result.json
+
+      - name: Upload mirror result artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: turboquant-mirror-result
+          path: mirror_result.json
+          retention-days: 14
+          compression-level: 0
