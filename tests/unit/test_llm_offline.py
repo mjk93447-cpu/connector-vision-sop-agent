@@ -33,9 +33,14 @@ class TestLLMConfig:
         cfg = LLMConfig.from_dict({})
         assert cfg.backend == "ollama"
 
-    def test_default_model_is_llama4_scout(self) -> None:
+    def test_default_model_is_gemma(self) -> None:
         cfg = LLMConfig.from_dict({})
         assert cfg.model_path == _OLLAMA_DEFAULT_MODEL
+
+    def test_default_turboquant_enabled(self) -> None:
+        cfg = LLMConfig.from_dict({})
+        assert cfg.turboquant_enabled is True
+        assert cfg.turboquant_mode == "--turboquant"
 
     def test_default_http_url_is_ollama(self) -> None:
         cfg = LLMConfig.from_dict({})
@@ -1055,11 +1060,11 @@ class TestGraniteVisionAPI:
 
         assert "/api/chat" in _OLLAMA_DEFAULT_URL
 
-    def test_default_model_is_granite_vision(self) -> None:
+    def test_default_model_is_gemma(self) -> None:
         """기본 모델이 IBM Granite Vision 이어야 한다."""
         from src.llm_offline import _OLLAMA_DEFAULT_MODEL
 
-        assert "granite" in _OLLAMA_DEFAULT_MODEL.lower()
+        assert "gemma" in _OLLAMA_DEFAULT_MODEL.lower()
 
     def test_chat_returns_native_message_content(self) -> None:
         """_chat_ollama()가 Ollama /api/chat 응답 포맷에서 content를 추출한다."""

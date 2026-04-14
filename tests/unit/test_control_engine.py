@@ -391,6 +391,34 @@ class TestNonTextAndRoi:
 
         mock_find.assert_called_once_with(img, label="mold_left_label", roi=roi)
 
+    def test_detection_label_override_used_for_non_text(
+        self,
+        vision: VisionEngine,
+        mock_ocr: MagicMock,
+    ) -> None:
+        """NON_TEXT detection should use yolo_class override instead of target_name."""
+        ctrl = ControlEngine(vision_agent=vision, ocr_engine=mock_ocr)
+
+        ctrl._registry = MagicMock()
+        ctrl._registry.is_non_text.side_effect = (
+            lambda name: name in {"mold_left_label", "connector_pin"}
+        )
+
+        yolo_detection = _make_detection("mold_left_label")
+        with patch.object(
+            ctrl.vision, "find_detection", return_value=yolo_detection
+        ) as mock_find:
+            img = _make_bgr()
+            coords = ctrl._resolve_target_coordinates(
+                "click_mold_left_tab",
+                image=img,
+                target_type="NON_TEXT",
+                detection_label="mold_left_label",
+            )
+
+        assert coords == (55, 30)
+        mock_find.assert_called_once_with(img, label="mold_left_label", roi=None)
+
     def test_trace_cb_fired_on_success(
         self,
         vision: VisionEngine,

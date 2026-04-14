@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Connector Vision SOP Agent v5.1.0 [Offline]
+title Connector Vision SOP Agent v6.0.0 [Offline]
 
 set OLLAMA_MODELS=%~dp0ollama_models
 set OLLAMA_HOST=127.0.0.1:11434
@@ -25,9 +25,9 @@ set NO_PROXY=localhost,127.0.0.1,::1
 set no_proxy=localhost,127.0.0.1,::1
 
 echo ================================================================
-echo  Connector Vision SOP Agent v5.1.0  [Fully Offline]
-echo  GUI  : PyQt6 7-tab MainWindow (Vision, LLM Chat, SOP Editor, Training...)
-echo  LLM  : IBM Granite Vision 3.2-2b  (Ollama, multimodal)
+echo  Connector Vision SOP Agent v6.0.0  [Fully Offline]
+echo  GUI  : PyQt6 7-tab MainWindow (Vision, SOP Generate, SOP Editor, Training...)
+echo  LLM  : Gemma 4 26B A4B Q4_K_M  (Ollama + TurboQuant)
 echo  YOLO : GUI runtime + local pretrained fine-tune seed bundle
 echo ================================================================
 echo.
@@ -40,7 +40,7 @@ if exist "%~dp0ollama.exe" (
     echo [WARN] ollama.exe not found. Continuing with GUI smoke / non-LLM mode.
 )
 
-echo [2/3] Verifying LLM model (OLLAMA_MODELS=%OLLAMA_MODELS%)...
+echo [2/3] Verifying Gemma + TurboQuant runtime (OLLAMA_MODELS=%OLLAMA_MODELS%)...
 if exist "%~dp0ollama.exe" (
     "%~dp0ollama.exe" list
     if errorlevel 1 (

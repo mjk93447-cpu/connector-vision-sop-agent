@@ -1,5 +1,27 @@
 # Changelog
 
+## [6.0.0] - 2026-04-14
+
+### Changed
+
+- Replaced Tab 3 `LLM Chat` with the new `SOP Generate` document-to-SOP workflow.
+- Introduced canonical SOP generation, questionnaire completion, runtime compilation,
+  same-session apply, and portable package import/export flows.
+- Switched the offline LLM baseline to the Gemma + TurboQuant deployment target.
+- Expanded document ingestion to support `.pdf`, `.pptx`, `.txt`, and `.md`
+  with preserved source references.
+
+### Fixed
+
+- Refreshed SOP Run and SOP Editor immediately after generated runtime SOPs are applied.
+- Expanded the runtime JSON editor so generated step types and fields round-trip
+  without dropping data.
+
+### Release
+
+- Bumped the shipping baseline to `6.0.0`.
+- Added local release-pack helpers for optional Ollama model staging and 2GB split packaging.
+
 ## [5.1.0] - 2026-04-10
 
 ### Changed

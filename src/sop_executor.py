@@ -441,6 +441,7 @@ class SopExecutor:
             tuple(step["roi"]) if step.get("roi") else None  # type: ignore[assignment]
         )
         target_type: Optional[str] = step.get("target_type")
+        detection_label: Optional[str] = step.get("yolo_class")
 
         if step_type == "click":
             target = step.get("target", step_id)
@@ -450,6 +451,7 @@ class SopExecutor:
                 roi=roi,
                 step_id=step_id,
                 target_type=target_type,
+                detection_label=detection_label,
             )
             return result.success, result.details
 
@@ -481,6 +483,7 @@ class SopExecutor:
                     roi=roi,
                     step_id=step_id,
                     target_type=target_type,
+                    detection_label=detection_label,
                 )
                 details_parts.append(res.details)
                 if not res.success:
@@ -614,10 +617,16 @@ class SopExecutor:
             tuple(step["roi"]) if step.get("roi") else None  # type: ignore[assignment]
         )
         target_type: Optional[str] = step.get("target_type")
+        detection_label: Optional[str] = step.get("yolo_class")
 
         # 1. Click the input field
         click_res = self._click_with_trace(
-            target, step_name, roi=roi, step_id=step_id, target_type=target_type
+            target,
+            step_name,
+            roi=roi,
+            step_id=step_id,
+            target_type=target_type,
+            detection_label=detection_label,
         )
         if not click_res.success:
             return SopStepResult(
@@ -664,10 +673,16 @@ class SopExecutor:
             tuple(step["roi"]) if step.get("roi") else None  # type: ignore[assignment]
         )
         target_type: Optional[str] = step.get("target_type")
+        detection_label: Optional[str] = step.get("yolo_class")
 
         # 1. Click label
         click_res = self._click_with_trace(
-            label_target, step_name, roi=roi, step_id=step_id, target_type=target_type
+            label_target,
+            step_name,
+            roi=roi,
+            step_id=step_id,
+            target_type=target_type,
+            detection_label=detection_label,
         )
         if not click_res.success:
             return SopStepResult(
@@ -741,6 +756,7 @@ class SopExecutor:
         roi: Optional[Tuple[int, int, int, int]] = None,
         step_id: Optional[str] = None,
         target_type: Optional[str] = None,
+        detection_label: Optional[str] = None,
     ) -> SopStepResult:
         """Helper to run a click step and convert to ``SopStepResult``."""
 
@@ -757,11 +773,17 @@ class SopExecutor:
                 details=f"[DRY-RUN] would click {target_name}",
             )
 
+        click_kwargs = {
+            "roi": roi,
+            "step_id": step_id,
+            "target_type": target_type,
+        }
+        if detection_label is not None:
+            click_kwargs["detection_label"] = detection_label
+
         result: ControlResult = self.control.click_target(
             target_name,
-            roi=roi,
-            step_id=step_id,
-            target_type=target_type,
+            **click_kwargs,
         )
         if result.success:
             coords_repr = f"@{result.coords}" if result.coords else "@?"

@@ -4,14 +4,14 @@ MainWindow — PyQt6 QMainWindow for Connector Vision SOP Agent.
 Seven-tab layout:
   Tab 1 (▶ Run SOP)   — SopPanel
   Tab 2 (👁 Vision)   — VisionPanel
-  Tab 3 (💬 LLM Chat) — LlmPanel
+  Tab 3 (🧩 SOP Generate) — SOPGeneratePanel
   Tab 4 (📋 SOP Edit) — SopEditorPanel
   Tab 5 (⚙ Config)   — ConfigPanel
   Tab 6 (📊 Audit)    — AuditPanel
   Tab 7 (🧠 Training) — TrainingPanel
 
 The window wires QThread workers (SopWorker, LLMWorker, TrainingWorker)
-so all heavy computation runs off the main thread.
+so heavy computation stays off the main UI thread.
 """
 
 from __future__ import annotations
@@ -40,13 +40,15 @@ except ImportError:
 from src.gui.panels.audit_panel import AuditPanel
 from src.gui.panels.config_panel import ConfigPanel
 from src.gui.panels.llm_panel import LlmPanel
+from src.gui.panels.sop_generate_panel import SOPGeneratePanel
 from src.gui.panels.sop_editor_panel import SopEditorPanel
 from src.gui.panels.sop_panel import SopPanel
 from src.gui.panels.training_panel import TrainingPanel
 from src.gui.panels.vision_panel import VisionPanel
 from src.gui.workers import AnalysisWorker, LLMStreamWorker, LLMWorker, SopWorker
+from src.sop_generation import RuntimeCompileResult, SOPGenerationService
 
-_APP_VERSION = "5.1.0"
+_APP_VERSION = "6.0.0"
 
 
 class MainWindow(QMainWindow):  # type: ignore[misc]
@@ -81,6 +83,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._steps: List[Dict[str, Any]] = []
         self._worker: Optional[Any] = None
         self._llm_worker: Optional[Any] = None
+        self._sop_generation_service = SOPGenerationService(llm=llm, ocr=ocr)
 
         # ExceptionHandler for M2 popup monitoring during SOP execution
         self._exception_handler: Optional[Any] = None
@@ -95,6 +98,9 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self._exc_monitor_timer: Optional[Any] = None
 
         self._load_steps()
+        control_engine = getattr(self._sop_executor, "control", None)
+        if control_engine is not None and hasattr(control_engine, "set_sop_steps"):
+            control_engine.set_sop_steps(self._steps)
         self._setup_ui()
         self._connect_signals()
         self._update_status()
@@ -107,7 +113,28 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         """Reload sop_steps.json and update Run SOP panel."""
         self._load_steps()
         self._sop_panel.set_steps(self._steps)
+        control_engine = getattr(self._sop_executor, "control", None)
+        if control_engine is not None and hasattr(control_engine, "set_sop_steps"):
+            control_engine.set_sop_steps(self._steps)
+        if hasattr(self, "_sop_editor_panel"):
+            self._sop_editor_panel.set_runtime_artifact(
+                {"version": "runtime-live", "steps": list(self._steps)}
+            )
         self._update_status()
+
+    def apply_generated_runtime(self, compile_result: RuntimeCompileResult) -> None:
+        """Persist compiled runtime JSON and refresh all same-session runtime views."""
+        runtime_json = compile_result.runtime_json
+        steps = runtime_json.get("steps", [])
+        if not steps:
+            raise ValueError("Compiled runtime JSON has no executable steps.")
+        self._sop_steps_path.write_text(
+            json.dumps(runtime_json, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.reload_sop_steps()
+        if hasattr(self, "_sop_editor_panel"):
+            self._sop_editor_panel.set_runtime_artifact(runtime_json)
 
     def on_llm_send(
         self,
@@ -234,7 +261,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             return
 
         line_id = self._config.get("line_id", "LINE-??")
-        model = self._config.get("llm", {}).get("model", "offline")
+        model = self._config.get("llm", {}).get("model_path", "offline")
         self.setWindowTitle(
             f"Connector Vision SOP Agent v{_APP_VERSION} — {line_id} | {model}"
         )
@@ -253,6 +280,10 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         )
         self._vision_panel = VisionPanel()
         self._llm_panel = LlmPanel()
+        self._sop_generate_panel = SOPGeneratePanel(
+            self._sop_generation_service,
+            parent=self,
+        )
         self._sop_editor_panel = SopEditorPanel(
             sop_path=self._sop_steps_path,
             llm=self._llm,
@@ -269,7 +300,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
 
         self._tabs.addTab(self._sop_panel, "▶ Run SOP")
         self._tabs.addTab(self._vision_panel, "👁 Vision")
-        self._tabs.addTab(self._llm_panel, "💬 LLM Chat")
+        self._tabs.addTab(self._sop_generate_panel, "SOP Generate")
         self._tabs.addTab(self._sop_editor_panel, "📋 SOP Editor")
         self._tabs.addTab(self._config_panel, "⚙ Config")
         self._tabs.addTab(self._audit_panel, "📊 Audit")

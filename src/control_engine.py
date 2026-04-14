@@ -88,18 +88,8 @@ class ControlEngine:
         self.vision = vision_agent
         self._ocr = ocr_engine
         self._exception_handler = exception_handler
-        # Build button_text lookup: target → button_text
         self._button_text_map: Dict[str, str] = {}
-        if sop_steps:
-            for step in sop_steps:
-                tgt = step.get("target", "")
-                btn_txt = step.get("button_text", "")
-                if tgt and btn_txt:
-                    self._button_text_map[tgt] = btn_txt
-                # Also index by step id
-                sid = step.get("id", "")
-                if sid and btn_txt:
-                    self._button_text_map[sid] = btn_txt
+        self.set_sop_steps(sop_steps or [])
 
         self._registry = ClassRegistry.load()
         self._trace_cb: Optional[Callable[[dict], None]] = None
@@ -120,6 +110,18 @@ class ControlEngine:
             self.drag_duration = 0.40
             self.retry_delay = 0.50
             self.step_delay = 1.00
+
+    def set_sop_steps(self, sop_steps: List[Dict[str, Any]]) -> None:
+        """Refresh OCR button text lookup from the active runtime SOP steps."""
+        self._button_text_map = {}
+        for step in sop_steps:
+            tgt = step.get("target", "")
+            btn_txt = step.get("button_text", "")
+            if tgt and btn_txt:
+                self._button_text_map[tgt] = btn_txt
+            sid = step.get("id", "")
+            if sid and btn_txt:
+                self._button_text_map[sid] = btn_txt
 
     @staticmethod
     def _ensure_pyautogui_available() -> None:
@@ -211,6 +213,7 @@ class ControlEngine:
         roi: Optional[Tuple[int, int, int, int]] = None,
         step_id: Optional[str] = None,
         target_type: Optional[str] = None,
+        detection_label: Optional[str] = None,
     ) -> Optional[Tuple[int, int]]:
         """OCR-first target resolution.
 
@@ -235,14 +238,22 @@ class ControlEngine:
         if image is None:
             image = self.vision.capture_screen()
 
+        effective_detection_label = (detection_label or target_name).strip() or target_name
+
         # Determine if NON_TEXT
         is_non_text = (target_type == "NON_TEXT") or (
             target_type is None and self._registry.is_non_text(target_name)
+        ) or (
+            target_type is None and self._registry.is_non_text(effective_detection_label)
         )
 
         if is_non_text:
             # Skip OCR entirely — go directly to YOLO26x
-            detection = self.vision.find_detection(image, label=target_name, roi=roi)
+            detection = self.vision.find_detection(
+                image,
+                label=effective_detection_label,
+                roi=roi,
+            )
             if detection is not None:
                 coord = self._center_of_bbox(detection.bbox)
                 self._emit_trace(
@@ -319,7 +330,11 @@ class ControlEngine:
                 logger.debug("[OCR] diagnostic scan failed: %s", _diag_exc)
 
         # --- Priority 3: YOLO26x (fallback / visual targets) ---
-        detection = self.vision.find_detection(image, label=target_name, roi=roi)
+        detection = self.vision.find_detection(
+            image,
+            label=effective_detection_label,
+            roi=roi,
+        )
         if detection is not None:
             coord = self._center_of_bbox(detection.bbox)
             self._emit_trace(
@@ -434,6 +449,7 @@ class ControlEngine:
         roi: Optional[Tuple[int, int, int, int]] = None,
         step_id: Optional[str] = None,
         target_type: Optional[str] = None,
+        detection_label: Optional[str] = None,
     ) -> ControlResult:
         """Locate a named UI target and click it with retries.
 
@@ -450,6 +466,8 @@ class ControlEngine:
             Step identifier passed through to trace callback.
         target_type:
             Override class type: "TEXT", "NON_TEXT", or None (auto-detect).
+        detection_label:
+            Optional YOLO class name override used for NON_TEXT detection.
         """
 
         start = time.perf_counter()
@@ -471,6 +489,7 @@ class ControlEngine:
                     roi=roi,
                     step_id=step_id,
                     target_type=target_type,
+                    detection_label=detection_label,
                 )
                 if coords is None:
                     last_error = (

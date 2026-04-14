@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.sop_document_ingest import SOPDocumentIngestor
+from src.sop_document_ingest import SOPDocumentIngestor, SOPSourceRef
 
 
 class _FakeRegistry:
@@ -100,3 +100,33 @@ def test_export_json_round_trip(monkeypatch, tmp_path: Path) -> None:
 
     assert data["steps"][0]["name"] == "Login"
     assert data["metadata"]["atomization_mode"] == "rules"
+
+
+def test_extract_document_txt_builds_section_refs(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("src.sop_document_ingest.ClassRegistry.load", lambda: _FakeRegistry())
+    ingestor = SOPDocumentIngestor()
+    txt = tmp_path / "sample.txt"
+    txt.write_text("Header\n\nStep one\nStep two", encoding="utf-8")
+
+    extraction = ingestor.extract_document(txt)
+
+    assert extraction.source_type == "txt"
+    assert extraction.refs
+    assert extraction.refs[0].kind == "section"
+
+
+def test_extract_document_pptx_uses_slide_refs(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("src.sop_document_ingest.ClassRegistry.load", lambda: _FakeRegistry())
+    ingestor = SOPDocumentIngestor()
+    pptx = tmp_path / "sample.pptx"
+    pptx.write_bytes(b"fake")
+    monkeypatch.setattr(
+        ingestor,
+        "_extract_pptx_refs",
+        lambda _path: [SOPSourceRef(kind="slide", index=1, label="Slide 1", text="Click LOGIN")],
+    )
+
+    extraction = ingestor.extract_document(pptx)
+
+    assert extraction.source_type == "pptx"
+    assert extraction.refs[0].kind == "slide"

@@ -47,7 +47,7 @@ def tmp_path(request: pytest.FixtureRequest) -> Path:
 @pytest.fixture
 def config_file(tmp_path: Path) -> Path:
     config = {
-        "version": "5.1.0",
+        "version": "6.0.0",
         "password": "1111",
         "llm": {"enabled": False, "backend": "http", "model_path": "dummy"},
         "vision": {"model_path": "assets/models/yolo26x_local_pretrained.pt", "confidence_threshold": 0.6, "ocr_psm": 7},

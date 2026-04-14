@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 from dataclasses import dataclass, field
@@ -9,7 +10,23 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from src.class_registry import ClassRegistry
 
 _STEP_TYPES = {"click", "drag", "validate_pins", "click_sequence", "type_text", "press_key", "wait_ms", "auth_sequence", "input_text", "mold_setup"}
-_DOC_SUFFIXES = {".txt", ".md", ".pdf"}
+_DOC_SUFFIXES = {".txt", ".md", ".pdf", ".pptx"}
+
+
+@dataclass
+class SOPSourceRef:
+    kind: str
+    index: int
+    label: str
+    text: str
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "index": self.index,
+            "label": self.label,
+            "text": self.text,
+        }
 
 
 @dataclass
@@ -79,6 +96,26 @@ class SOPDocumentArtifact:
         }
 
 
+@dataclass
+class SOPDocumentExtraction:
+    source_path: str
+    source_type: str
+    title: str
+    raw_text: str
+    refs: List[SOPSourceRef] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "source_path": self.source_path,
+            "source_type": self.source_type,
+            "title": self.title,
+            "raw_text": self.raw_text,
+            "refs": [ref.to_json() for ref in self.refs],
+            "metadata": dict(self.metadata),
+        }
+
+
 class SOPDocumentIngestor:
     """Read PDF/TXT SOP files and atomize them into schema-ready JSON."""
 
@@ -93,8 +130,9 @@ class SOPDocumentIngestor:
         if path.suffix.lower() not in _DOC_SUFFIXES:
             raise ValueError(f"Unsupported SOP document type: {path.suffix}")
 
-        source_type = path.suffix.lower().lstrip(".")
-        raw_text = self._extract_text(path)
+        extraction = self.extract_document(path)
+        source_type = extraction.source_type
+        raw_text = extraction.raw_text
         registry = ClassRegistry.load()
         class_names = registry.class_names()
 
@@ -104,6 +142,10 @@ class SOPDocumentIngestor:
             parsed = self._atomize_with_rules(raw_text, class_names)
 
         parsed = self._normalize_artifact(parsed, path, raw_text, source_type)
+        parsed.metadata.setdefault(
+            "source_refs",
+            [ref.to_json() for ref in extraction.refs],
+        )
         self.validate_artifact(parsed)
         return parsed
 
@@ -119,26 +161,93 @@ class SOPDocumentIngestor:
     def _extract_text(self, path: Path) -> str:
         if path.suffix.lower() == ".txt" or path.suffix.lower() == ".md":
             return path.read_text(encoding="utf-8", errors="replace")
+        if path.suffix.lower() == ".pptx":
+            return self._extract_pptx_text(path)
         return self._extract_pdf_text(path)
 
+    def extract_document(self, source_path: str | Path) -> SOPDocumentExtraction:
+        path = Path(source_path)
+        if not path.exists():
+            raise FileNotFoundError(f"SOP document not found: {path}")
+        suffix = path.suffix.lower()
+        if suffix not in _DOC_SUFFIXES:
+            raise ValueError(f"Unsupported SOP document type: {path.suffix}")
+
+        if suffix in {".txt", ".md"}:
+            raw_text = path.read_text(encoding="utf-8", errors="replace")
+            refs = self._build_text_refs(raw_text)
+        elif suffix == ".pptx":
+            refs = self._extract_pptx_refs(path)
+            raw_text = "\n\n".join(ref.text for ref in refs if ref.text.strip()).strip()
+        else:
+            refs = self._extract_pdf_refs(path)
+            raw_text = "\n\n".join(ref.text for ref in refs if ref.text.strip()).strip()
+            if not raw_text:
+                raw_text = self._extract_pdf_text(path)
+        title = self._extract_title(
+            [ref.label for ref in refs]
+            + [line.strip() for line in raw_text.splitlines() if line.strip()]
+        ) or path.stem
+        return SOPDocumentExtraction(
+            source_path=str(path),
+            source_type=suffix.lstrip("."),
+            title=title,
+            raw_text=raw_text,
+            refs=refs,
+            metadata={"source_file_name": path.name},
+        )
+
+    def _build_text_refs(self, text: str) -> List[SOPSourceRef]:
+        refs: List[SOPSourceRef] = []
+        blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+        if not blocks:
+            blocks = [line.strip() for line in text.splitlines() if line.strip()]
+        for idx, block in enumerate(blocks, start=1):
+            refs.append(
+                SOPSourceRef(
+                    kind="section",
+                    index=idx,
+                    label=f"Section {idx}",
+                    text=block,
+                )
+            )
+        return refs
+
     def _extract_pdf_text(self, path: Path) -> str:
-        pages_text: List[str] = []
+        refs = self._extract_pdf_refs(path)
+        text = "\n".join(ref.text for ref in refs if ref.text.strip()).strip()
+        if text:
+            return text
+        return self._ocr_pdf(path)
+
+    def _extract_pdf_refs(self, path: Path) -> List[SOPSourceRef]:
+        refs: List[SOPSourceRef] = []
         try:
             from pypdf import PdfReader  # type: ignore[import]
 
             reader = PdfReader(str(path))
-            for page in reader.pages:
+            for index, page in enumerate(reader.pages, start=1):
                 try:
-                    pages_text.append(page.extract_text() or "")
+                    page_text = (page.extract_text() or "").strip()
                 except Exception:
-                    pages_text.append("")
+                    page_text = ""
+                if page_text:
+                    refs.append(
+                        SOPSourceRef(
+                            kind="page",
+                            index=index,
+                            label=f"Page {index}",
+                            text=page_text,
+                        )
+                    )
         except Exception:
-            pages_text = []
-
-        text = "\n".join(t.strip() for t in pages_text if t and t.strip()).strip()
-        if text:
-            return text
-        return self._ocr_pdf(path)
+            refs = []
+        if refs:
+            return refs
+        ocr_text = self._ocr_pdf(path)
+        if not ocr_text.strip():
+            return []
+        return self._build_text_refs(ocr_text)
 
     def _ocr_pdf(self, path: Path) -> str:
         try:
@@ -184,12 +293,47 @@ class SOPDocumentIngestor:
         try:
             from PIL import Image  # type: ignore[import]
             import pytesseract  # type: ignore[import]
-            import io
 
             image = Image.open(io.BytesIO(image_bytes))
             return pytesseract.image_to_string(image).strip()
         except Exception:
             return ""
+
+    def _extract_pptx_text(self, path: Path) -> str:
+        refs = self._extract_pptx_refs(path)
+        return "\n\n".join(ref.text for ref in refs if ref.text.strip()).strip()
+
+    def _extract_pptx_refs(self, path: Path) -> List[SOPSourceRef]:
+        refs: List[SOPSourceRef] = []
+        try:
+            from pptx import Presentation  # type: ignore[import]
+        except Exception:
+            return refs
+
+        prs = Presentation(str(path))
+        for slide_idx, slide in enumerate(prs.slides, start=1):
+            parts: List[str] = []
+            for shape in slide.shapes:
+                text = getattr(shape, "text", "")
+                if text and str(text).strip():
+                    parts.append(str(text).strip())
+                    continue
+                image = getattr(shape, "image", None)
+                if image is not None:
+                    ocr_text = self._ocr_page_image(image.blob)
+                    if ocr_text:
+                        parts.append(ocr_text)
+            slide_text = "\n".join(part for part in parts if part.strip()).strip()
+            if slide_text:
+                refs.append(
+                    SOPSourceRef(
+                        kind="slide",
+                        index=slide_idx,
+                        label=f"Slide {slide_idx}",
+                        text=slide_text,
+                    )
+                )
+        return refs
 
     def _atomize_with_llm(
         self, path: Path, raw_text: str, class_names: Sequence[str]
@@ -209,7 +353,7 @@ class SOPDocumentIngestor:
             "class_names": list(class_names),
             "document_text": raw_text,
             "output_schema": {
-                "version": "5.1.0",
+                "version": "6.0.0",
                 "title": "string",
                 "source_path": "string",
                 "source_type": "pdf|txt",
@@ -287,7 +431,7 @@ class SOPDocumentIngestor:
             index += 1
         title = self._extract_title(lines) or "Imported SOP"
         return {
-            "version": "5.1.0",
+            "version": "6.0.0",
             "title": title,
             "source_path": "",
             "source_type": "text",
@@ -311,7 +455,7 @@ class SOPDocumentIngestor:
         metadata.setdefault("atomization_mode", "llm" if self._llm is not None else "rules")
         metadata.setdefault("class_registry", ClassRegistry.load().class_names())
         return SOPDocumentArtifact(
-            version=str(data.get("version", "5.1.0")),
+            version=str(data.get("version", "6.0.0")),
             title=str(data.get("title", path.stem)),
             source_path=str(path),
             source_type=source_type,

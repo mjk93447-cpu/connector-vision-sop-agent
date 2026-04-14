@@ -75,17 +75,22 @@ def _mock_streaming_response(tokens: list[str]) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-class TestGraniteConfig:
+class TestGemmaConfig:
     """assets/config.json이 Granite 모델/엔드포인트로 설정돼 있는지 확인."""
 
-    def test_model_path_is_granite(self) -> None:
-        """model_path가 granite 계열 모델 태그여야 한다."""
+    def test_model_path_is_gemma(self) -> None:
+        """model_path should target the Gemma runtime."""
         cfg = _load_config_json()
         model = cfg["llm"]["model_path"]
-        assert "granite" in model.lower(), (
-            f"config.json model_path should be granite — got: {model!r}. "
-            "Run: update llm.model_path to 'granite3.2-vision:2b'"
+        assert "gemma" in model.lower(), (
+            f"config.json model_path should target gemma — got: {model!r}. "
+            "Run: update llm.model_path to 'gemma4:26b-a4b-q4_K_M'"
         )
+
+    def test_turboquant_flags_enabled(self) -> None:
+        cfg = _load_config_json()
+        assert cfg["llm"]["turboquant_enabled"] is True
+        assert cfg["llm"]["turboquant_mode"] == "--turboquant"
 
     def test_http_url_is_ollama_api_chat(self) -> None:
         """http_url이 Ollama 네이티브 /api/chat 엔드포인트여야 한다."""
@@ -106,14 +111,14 @@ class TestGraniteConfig:
         cfg = _load_config_json()
         assert cfg["llm"]["enabled"] is True
 
-    def test_offline_llm_from_config_uses_granite(self) -> None:
-        """OfflineLLM.from_config(config.json llm 블록)이 granite 모델로 초기화된다."""
+    def test_offline_llm_from_config_uses_gemma(self) -> None:
+        """OfflineLLM.from_config(config.json llm block) should target Gemma."""
         from src.llm_offline import OfflineLLM
 
         cfg = _load_config_json()
         llm = OfflineLLM.from_config(cfg["llm"])
         assert llm.cfg.backend == "ollama"
-        assert "granite" in (llm.cfg.model_path or "").lower()
+        assert "gemma" in (llm.cfg.model_path or "").lower()
         assert "/api/chat" in (llm.cfg.http_url or "")
 
 

@@ -1,0 +1,107 @@
+name: Build Ollama LLM Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: "GitHub runner label"
+        required: true
+        default: "windows-latest"
+        type: string
+      model_name:
+        description: "Ollama model to pull when pull_model=true"
+        required: true
+        default: "gemma4:26b-a4b-q4_K_M"
+        type: string
+      pull_model:
+        description: "Pull the requested model before packaging"
+        required: true
+        default: true
+        type: boolean
+      ollama_models_root:
+        description: "Optional pre-existing Ollama models root"
+        required: false
+        default: ""
+        type: string
+      chunk_size_bytes:
+        description: "Per-file split size for staged model blobs"
+        required: true
+        default: "2147483648"
+        type: string
+      artifact_name:
+        description: "Uploaded artifact name"
+        required: true
+        default: "connector-agent-llm-local-cache"
+        type: string
+
+jobs:
+  build-llm-artifact:
+    runs-on: ${{ inputs.runner_label }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Ensure Ollama CLI exists
+        shell: pwsh
+        run: |
+          if (Get-Command ollama -ErrorAction SilentlyContinue) {
+            Write-Host "Ollama already available."
+            exit 0
+          }
+          winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
+          if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            throw "Ollama installation failed."
+          }
+
+      - name: Start Ollama
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "ollama" -ArgumentList "serve"
+          Start-Sleep -Seconds 10
+
+      - name: Pull target model
+        if: ${{ inputs.pull_model }}
+        shell: pwsh
+        run: |
+          ollama pull "${{ inputs.model_name }}"
+
+      - name: Resolve models root
+        id: models-root
+        shell: pwsh
+        run: |
+          $root = "${{ inputs.ollama_models_root }}"
+          if (-not $root) {
+            $root = Join-Path $env:USERPROFILE ".ollama\models"
+          }
+          if (-not (Test-Path $root)) {
+            throw "Ollama models root not found: $root"
+          }
+          "root=$root" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Stage chunked Ollama cache
+        shell: pwsh
+        run: |
+          python scripts/package_ollama_models.py stage `
+            --source "${{ steps.models-root.outputs.root }}" `
+            --output "ollama_artifact_stage" `
+            --chunk-size "${{ inputs.chunk_size_bytes }}" *> $null
+
+      - name: Capture installed models list
+        shell: pwsh
+        run: |
+          ollama list | Out-File -FilePath "ollama_artifact_stage\ollama_models_list.txt" -Encoding utf8
+
+      - name: Upload chunked LLM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ollama_artifact_stage/
+          retention-days: 14

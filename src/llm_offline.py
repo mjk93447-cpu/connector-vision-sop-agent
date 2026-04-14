@@ -3,7 +3,7 @@ Offline LLM integration for Connector Vision SOP Agent.
 
 Supported backends:
 - ``ollama`` : Ollama local server (recommended). Native /api/chat endpoint.
-               Install: https://ollama.com  /  ollama pull ibm/granite3.3-vision:2b
+               Install: https://ollama.com  /  ollama pull gemma4:26b-a4b-q4_K_M
 - ``http``   : LM Studio / Ollama or any OpenAI-compatible HTTP server.
 
 Heavy dependencies are NOT loaded at import time.
@@ -16,8 +16,9 @@ New in v3.0:
 - propose_sop_improvement() : analyze success patterns → sop_steps.proposed.json
 - brief_mode        : shorter max_output_tokens for faster responses
 
-New in v3.10:
-- IBM Granite Vision 3.3-2b (multimodal, DocVQA 89%)
+New in v5.2:
+- Gemma 4 26B A4B Q4_K_M default runtime target
+- TurboQuant capability flags in config
 - image_b64 parameter for screenshot attachment
 - Ollama /api/chat native endpoint (NDJSON streaming)
 """
@@ -37,10 +38,10 @@ from src.runtime_compat import detect_runtime_flavor
 BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/api/chat"
-_OLLAMA_DEFAULT_MODEL = "granite3.2-vision:2b"
+_OLLAMA_DEFAULT_MODEL = "gemma4:26b-a4b-q4_K_M"
 
-# Brief mode: shorter token limit for fast responses
-# Granite Vision 3.2-2b는 <think> 토큰을 생성하지 않으므로 512로 충분
+# Brief mode: shorter token limit for fast responses.
+# Gemma local brief responses do not need long reasoning buffers here.
 _BRIEF_MAX_TOKENS = 512
 
 
@@ -53,6 +54,8 @@ class LLMConfig:
     http_url: str | None = _OLLAMA_DEFAULT_URL
     max_input_tokens: int = 6144
     max_output_tokens: int = 1024
+    turboquant_enabled: bool = True
+    turboquant_mode: str = "--turboquant"
 
     @classmethod
     def from_dict(cls: Type["LLMConfig"], data: Dict[str, Any]) -> "LLMConfig":
@@ -64,6 +67,8 @@ class LLMConfig:
             http_url=data.get("http_url", _OLLAMA_DEFAULT_URL),
             max_input_tokens=int(data.get("max_input_tokens", 6144)),
             max_output_tokens=int(data.get("max_output_tokens", 1024)),
+            turboquant_enabled=bool(data.get("turboquant_enabled", True)),
+            turboquant_mode=str(data.get("turboquant_mode", "--turboquant")),
         )
 
 
@@ -156,6 +161,9 @@ class OfflineLLM:
             "use_mlock": True,  # 모델을 RAM에 고정 — 스왑 방지
             "use_mmap": True,  # 메모리맵 로딩 — 콜드 스타트 단축
         }
+        if self.cfg.turboquant_enabled:
+            options["turboquant"] = True
+            options["turboquant_mode"] = self.cfg.turboquant_mode
 
         if has_gpu:
             options["num_gpu"] = max(0, int(self.cfg.gpu_layers or 0)) or 99
@@ -219,16 +227,42 @@ class OfflineLLM:
             ) from exc
 
         # 하드웨어 감지 및 정보 반환
+        if self.cfg.model_path:
+            try:
+                tags_resp = requests.get(
+                    base + "/api/tags",
+                    timeout=_HEALTH_TIMEOUT,
+                    proxies={"http": None, "https": None},
+                )
+                tags_resp.raise_for_status()
+                models = tags_resp.json().get("models", [])
+                names = {
+                    str(model.get("name", ""))
+                    for model in models
+                    if isinstance(model, dict)
+                }
+                if names and self.cfg.model_path not in names:
+                    raise RuntimeError(
+                        f"Ollama model '{self.cfg.model_path}' is not installed."
+                    )
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
+
         opts = self._get_optimized_options()
         has_gpu = opts.get("num_gpu", 0) > 0
         num_thread = opts.get("num_thread", 1)
+        turbo_suffix = ""
+        if self.cfg.turboquant_enabled:
+            turbo_suffix = f" | TurboQuant {self.cfg.turboquant_mode}"
 
         if has_gpu:
-            return "ℹ️ GPU mode detected — fast inference expected"
+            return f"ℹ️ GPU mode detected — fast inference expected{turbo_suffix}"
         else:
             return (
                 f"ℹ️ CPU-only mode ({num_thread} threads) — "
-                "Granite Vision 3.3-2b: ~10-30s per response on CPU"
+                f"Gemma 4 26B local inference may be slow{turbo_suffix}"
             )
 
     # ------------------------------------------------------------------ #
@@ -311,7 +345,7 @@ class OfflineLLM:
 
         설치 및 모델 준비:
             winget install Ollama.Ollama
-            ollama pull ibm/granite3.3-vision:2b
+            ollama pull gemma4:26b-a4b-q4_K_M
             ollama serve
         """
 
@@ -383,7 +417,7 @@ class OfflineLLM:
             {"message": {"content": "token"}, "done": false}
             {"done": true}
 
-        Supports image attachment for multimodal models (Granite Vision 3.3-2b).
+        Supports image attachment for multimodal models (Gemma-class local runtime).
         <think>…</think> routing is preserved for backward compatibility.
         """
         url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
@@ -417,8 +451,8 @@ class OfflineLLM:
         _in_think = False  # True while inside a <think> block
 
         session = self._get_session()
-        # timeout=(10, 600): TCP 연결 10s + 첫 바이트 수신 600s
-        # Granite Vision CPU cold-start with image: up to 60-120s for first token
+        # timeout=(10, 600): TCP connect 10s + generous first-byte wait.
+        # Gemma local cold-start with an image can still take noticeable time.
         try:
             with session.post(
                 url, json=payload, stream=True, timeout=(10, 600)
@@ -674,7 +708,7 @@ class OfflineLLM:
         source_path: str = "",
         source_type: str = "txt",
     ) -> Dict[str, Any]:
-        """Convert an SOP document into strict JSON using the local Granite model.
+        """Convert an SOP document into strict JSON using the local Gemma model.
 
         The returned payload is designed to be schema-friendly for the new
         document ingestion workflow. If the model output cannot be parsed,
@@ -695,7 +729,7 @@ class OfflineLLM:
             "class_names": class_names,
             "document_text": document_text,
             "output_schema": {
-                "version": "5.1.0",
+                "version": "6.0.0",
                 "title": "string",
                 "source_path": "string",
                 "source_type": "pdf|txt",
@@ -746,7 +780,7 @@ class OfflineLLM:
         except Exception:
             pass
         return {
-            "version": "5.1.0",
+            "version": "6.0.0",
             "title": source_path or "Imported SOP",
             "source_path": source_path,
             "source_type": source_type,

@@ -95,12 +95,12 @@ This folder is intentionally left as a placeholder until the LLM artifact is mer
 }
 
 New-TextFile -Path (Join-Path $OutputRoot "MERGE_GUIDE.txt") -Content @"
-Connector Vision SOP Agent 5.0.0 Deployment Pack
+Connector Vision SOP Agent 6.0.0 Deployment Pack
 
 Contents:
   - connector-agent-app-cpu.zip: main app EXE + CPU runtime
   - connector-agent-app-gpu.zip: main app EXE + CUDA-capable runtime
-  - connector-agent-llm.zip: Ollama model blobs/manifests
+  - connector-agent-llm-local-cache.zip: Ollama model blobs/manifests
 
 Deployment:
   1. Extract exactly one app pack into the final root.

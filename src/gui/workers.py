@@ -254,7 +254,7 @@ class LLMStreamWorker(QThread):  # type: ignore[misc]
     # Hard cutoff for streaming LLM requests (seconds).
     # concurrent.futures.future.result(timeout=...) guarantees the UI thread
     # is unblocked after this duration even if iter_lines() is still blocking.
-    # 600s: generous buffer for Granite Vision 3.2-2b CPU with attached images
+    # 600s: generous buffer for Gemma local CPU inference with attached images
     _STREAM_TIMEOUT_SECS: int = 600
 
     def run(self) -> None:

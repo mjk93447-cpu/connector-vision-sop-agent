@@ -103,6 +103,8 @@
         "gpu_layers": {"type": "number", "minimum": 0},
         "max_input_tokens": {"type": "number", "minimum": 128},
         "max_output_tokens": {"type": "number", "minimum": 64},
+        "turboquant_enabled": {"type": "boolean"},
+        "turboquant_mode": {"type": "string"},
         "allow_config_write": {"type": "boolean"}
       }
     },

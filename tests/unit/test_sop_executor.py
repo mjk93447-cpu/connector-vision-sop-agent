@@ -149,6 +149,28 @@ class TestSopExecutorRoi:
         assert kwargs.get("roi") == (10, 20, 800, 300)
         assert kwargs.get("target_type") == "NON_TEXT"
 
+    def test_step_yolo_class_passed_as_detection_label(
+        self, executor: SopExecutor
+    ) -> None:
+        """yolo_class should be forwarded to click_target as detection_label."""
+        step = {
+            "id": "click_mold_left_tab",
+            "name": "Click Mold Left Tab",
+            "type": "click",
+            "target": "click_mold_left_tab",
+            "target_type": "NON_TEXT",
+            "yolo_class": "mold_left_label",
+        }
+
+        with patch.object(
+            executor.control, "click_target", return_value=_ok_result()
+        ) as mock_click:
+            success, _ = executor.run_step(step)
+
+        assert success is True
+        _args, kwargs = mock_click.call_args
+        assert kwargs.get("detection_label") == "mold_left_label"
+
     def test_step_id_passed_to_control_engine(self, executor: SopExecutor) -> None:
         """Step 'id' field is forwarded as step_id to click_target."""
         step = {

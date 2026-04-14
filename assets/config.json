@@ -1,5 +1,5 @@
 {
-  "version": "5.1.0",
+  "version": "6.0.0",
   "line_id": "LINE-A3",
   "password": "1111",
 
@@ -29,12 +29,14 @@
   "llm": {
     "enabled": true,
     "backend": "ollama",
-    "model_path": "granite3.2-vision:2b",
+    "model_path": "gemma4:26b-a4b-q4_K_M",
     "http_url": "http://localhost:11434/api/chat",
     "ctx_size": 8192,
     "gpu_layers": 0,
     "max_input_tokens": 6144,
     "max_output_tokens": 1024,
+    "turboquant_enabled": true,
+    "turboquant_mode": "--turboquant",
     "allow_config_write": false
   },
 

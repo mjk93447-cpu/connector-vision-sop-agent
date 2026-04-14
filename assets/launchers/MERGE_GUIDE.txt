@@ -1,5 +1,5 @@
 ================================================================
-Connector Vision SOP Agent v5.1.0 - Deployment Guide
+Connector Vision SOP Agent v6.0.0 - Deployment Guide
 ================================================================
 
 REQUIRED DOWNLOADS
@@ -7,7 +7,8 @@ REQUIRED DOWNLOADS
   2. connector-agent-app-gpu.zip   full app pack with CUDA-enabled torch runtime
 
 OPTIONAL DOWNLOADS
-  3. connector-agent-llm.zip       IBM Granite Vision 3.2-2b blobs
+  3. connector-agent-llm-local-cache.zip       local Ollama model cache
+     or split parts connector-agent-llm-local-cache.zip.001 / .002 ...
 
 CHOOSE ONE APP PACK
   - CPU pack:
@@ -24,8 +25,9 @@ INSTALL STEPS
      - connector-agent-app-cpu.zip
        or
      - connector-agent-app-gpu.zip
-  3. Optional: extract connector-agent-llm.zip into
+  3. Optional: extract connector-agent-llm-local-cache.zip into
      C:\tools\connector_agent\ollama_models\
+     If the artifact was split, join the `.zip.001` / `.zip.002` parts first.
 
 FINAL FOLDER STRUCTURE
   connector_agent\
@@ -52,7 +54,7 @@ FEATURE PARITY
   - SOP Editor
   - Config
   - Audit
-  - LLM flow
+  - SOP Generate
 
   The only intended runtime difference is torch acceleration behavior.
   The runtime itself is embedded into the EXE instead of shipping as a
@@ -69,13 +71,12 @@ CUSTOMIZATION
   - Use Tab 4 SOP Editor for live SOP updates
 
 LLM MODEL INFO
-  Name  : IBM Granite Vision 3.2-2b (ibm/granite3.2-vision:2b)
-  Vendor: IBM Corporation (USA)
-  Size  : ~2.0 GB
-  Notes : Fully offline multimodal model for ROI screenshot analysis
+  Target deployment: Gemma 4 26B A4B Q4_K_M + TurboQuant
+  Packaged cache    : local Ollama blobs/manifests copied from the build machine
+  Split policy      : individual model blobs larger than 2 GB are chunked for transport
 
 TROUBLESHOOTING
   - If GUI does not open: run start_agent.bat from cmd and inspect the output
-  - If LLM chat fails: ensure ollama.exe is available
+  - If SOP Generate fails: ensure ollama.exe and the expected model cache are available
   - If YOLO detects nothing: verify assets\models\yolo26x_local_pretrained.pt
 ================================================================

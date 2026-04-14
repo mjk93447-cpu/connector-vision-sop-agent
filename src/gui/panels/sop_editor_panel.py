@@ -53,6 +53,8 @@ _STEP_TYPES = [
     "press_key",
     "wait_ms",
     "auth_sequence",
+    "input_text",
+    "mold_setup",
 ]
 _TARGET_TYPES = ["auto", "TEXT", "NON_TEXT"]
 
@@ -446,6 +448,39 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         _wm_form.addRow("Duration:", self._ms_spin)
         form.addRow(self._wait_ms_widget)
 
+        self._click_sequence_widget = QWidget()
+        _cs_form = QFormLayout(self._click_sequence_widget)
+        _cs_form.setContentsMargins(0, 0, 0, 0)
+        _cs_form.setSpacing(4)
+        self._targets_edit = QLineEdit(", ".join(self._step.get("targets", [])))
+        self._targets_edit.setPlaceholderText("Comma-separated targets for click_sequence")
+        _cs_form.addRow("Targets:", self._targets_edit)
+        form.addRow(self._click_sequence_widget)
+
+        self._auth_widget = QWidget()
+        _auth_form = QFormLayout(self._auth_widget)
+        _auth_form.setContentsMargins(0, 0, 0, 0)
+        _auth_form.setSpacing(4)
+        self._login_button_edit = QLineEdit(self._step.get("login_button", "login_button"))
+        self._password_field_edit = QLineEdit(self._step.get("password_field", "password_field"))
+        self._ok_button_edit = QLineEdit(self._step.get("ok_button", "ok_button"))
+        _auth_form.addRow("Login Button:", self._login_button_edit)
+        _auth_form.addRow("Password Field:", self._password_field_edit)
+        _auth_form.addRow("OK Button:", self._ok_button_edit)
+        form.addRow(self._auth_widget)
+
+        self._mold_setup_widget = QWidget()
+        _mold_form = QFormLayout(self._mold_setup_widget)
+        _mold_form.setContentsMargins(0, 0, 0, 0)
+        _mold_form.setSpacing(4)
+        self._label_target_edit = QLineEdit(self._step.get("label_target", "mold_left_label"))
+        self._drag_start_edit = QLineEdit(",".join(str(v) for v in self._step.get("drag_start", [100, 200])))
+        self._drag_end_edit = QLineEdit(",".join(str(v) for v in self._step.get("drag_end", [800, 350])))
+        _mold_form.addRow("Label Target:", self._label_target_edit)
+        _mold_form.addRow("Drag Start:", self._drag_start_edit)
+        _mold_form.addRow("Drag End:", self._drag_end_edit)
+        form.addRow(self._mold_setup_widget)
+
         self._target_edit = QLineEdit(self._step.get("target", ""))
         self._target_edit.setPlaceholderText("Target name for click type")
         self._target_edit.textChanged.connect(self._on_target_changed)
@@ -549,9 +584,12 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
         """Show/hide type-specific input fields based on the selected step type."""
         if not _QT_AVAILABLE:
             return
-        self._type_text_widget.setVisible(type_str == "type_text")
+        self._type_text_widget.setVisible(type_str in {"type_text", "input_text"})
         self._press_key_widget.setVisible(type_str == "press_key")
         self._wait_ms_widget.setVisible(type_str == "wait_ms")
+        self._click_sequence_widget.setVisible(type_str == "click_sequence")
+        self._auth_widget.setVisible(type_str == "auth_sequence")
+        self._mold_setup_widget.setVisible(type_str == "mold_setup")
         self.adjustSize()
 
     def _on_target_changed(self, text: str) -> None:
@@ -687,6 +725,15 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
             return
         self.accept()
 
+    def _parse_point_pair(self, text: str, default: Tuple[int, int]) -> List[int]:
+        parts = [part.strip() for part in text.split(",") if part.strip()]
+        if len(parts) != 2:
+            return [default[0], default[1]]
+        try:
+            return [int(parts[0]), int(parts[1])]
+        except ValueError:
+            return [default[0], default[1]]
+
     def get_step(self) -> Dict[str, Any]:
         step: Dict[str, Any] = dict(self._step)
         if _QT_AVAILABLE:
@@ -730,6 +777,25 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
             if step_type == "type_text":
                 step["text"] = self._text_edit.text()  # allow empty
                 step["clear_first"] = self._clear_first_chk.isChecked()
+                step.pop("targets", None)
+                step.pop("login_button", None)
+                step.pop("password_field", None)
+                step.pop("ok_button", None)
+                step.pop("label_target", None)
+                step.pop("drag_start", None)
+                step.pop("drag_end", None)
+                step.pop("key", None)
+                step.pop("ms", None)
+            elif step_type == "input_text":
+                step["text"] = self._text_edit.text()
+                step["clear_first"] = self._clear_first_chk.isChecked()
+                step.pop("targets", None)
+                step.pop("login_button", None)
+                step.pop("password_field", None)
+                step.pop("ok_button", None)
+                step.pop("label_target", None)
+                step.pop("drag_start", None)
+                step.pop("drag_end", None)
                 step.pop("key", None)
                 step.pop("ms", None)
             elif step_type == "press_key":
@@ -738,16 +804,77 @@ class _StepEditDialog(QDialog):  # type: ignore[misc]
                     step["key"] = k
                 elif "key" in step:
                     del step["key"]
+                step.pop("targets", None)
+                step.pop("login_button", None)
+                step.pop("password_field", None)
+                step.pop("ok_button", None)
+                step.pop("label_target", None)
+                step.pop("drag_start", None)
+                step.pop("drag_end", None)
                 step.pop("text", None)
                 step.pop("clear_first", None)
                 step.pop("ms", None)
             elif step_type == "wait_ms":
                 step["ms"] = self._ms_spin.value()
+                step.pop("targets", None)
+                step.pop("login_button", None)
+                step.pop("password_field", None)
+                step.pop("ok_button", None)
+                step.pop("label_target", None)
+                step.pop("drag_start", None)
+                step.pop("drag_end", None)
                 step.pop("text", None)
                 step.pop("clear_first", None)
                 step.pop("key", None)
+            elif step_type == "click_sequence":
+                targets = [part.strip() for part in self._targets_edit.text().split(",") if part.strip()]
+                if targets:
+                    step["targets"] = targets
+                elif "targets" in step:
+                    del step["targets"]
+                step.pop("login_button", None)
+                step.pop("password_field", None)
+                step.pop("ok_button", None)
+                step.pop("label_target", None)
+                step.pop("drag_start", None)
+                step.pop("drag_end", None)
+                step.pop("text", None)
+                step.pop("clear_first", None)
+                step.pop("key", None)
+                step.pop("ms", None)
+            elif step_type == "auth_sequence":
+                step["login_button"] = self._login_button_edit.text().strip() or "login_button"
+                step["password_field"] = self._password_field_edit.text().strip() or "password_field"
+                step["ok_button"] = self._ok_button_edit.text().strip() or "ok_button"
+                step.pop("targets", None)
+                step.pop("label_target", None)
+                step.pop("drag_start", None)
+                step.pop("drag_end", None)
+                step.pop("text", None)
+                step.pop("clear_first", None)
+                step.pop("key", None)
+                step.pop("ms", None)
+            elif step_type == "mold_setup":
+                step["label_target"] = self._label_target_edit.text().strip() or "mold_left_label"
+                step["drag_start"] = self._parse_point_pair(self._drag_start_edit.text(), (100, 200))
+                step["drag_end"] = self._parse_point_pair(self._drag_end_edit.text(), (800, 350))
+                step.pop("targets", None)
+                step.pop("login_button", None)
+                step.pop("password_field", None)
+                step.pop("ok_button", None)
+                step.pop("text", None)
+                step.pop("clear_first", None)
+                step.pop("key", None)
+                step.pop("ms", None)
             else:
                 # click-based types: remove type-specific fields if present
+                step.pop("targets", None)
+                step.pop("login_button", None)
+                step.pop("password_field", None)
+                step.pop("ok_button", None)
+                step.pop("label_target", None)
+                step.pop("drag_start", None)
+                step.pop("drag_end", None)
                 step.pop("text", None)
                 step.pop("clear_first", None)
                 step.pop("key", None)
@@ -789,6 +916,13 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
     def get_steps(self) -> List[Dict[str, Any]]:
         return list(self._steps)
 
+    def set_runtime_artifact(self, artifact: Dict[str, Any]) -> None:
+        """Replace the in-memory runtime artifact and refresh the grid."""
+        self._last_import_artifact = dict(artifact)
+        self._steps = list(artifact.get("steps", []))
+        self._dirty = False
+        self._refresh_table()
+
     def validate_config(self) -> List[str]:
         """Check all steps. Return list of warning strings (empty = ok)."""
         warnings: List[str] = []
@@ -816,6 +950,19 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
                         f"Step '{step['id']}': NON_TEXT target has button_text set"
                         " (OCR will be skipped)"
                     )
+                if eff_type == "NON_TEXT":
+                    detection_label = step.get("yolo_class") or target
+                    det_type = registry.get_type(detection_label)
+                    if det_type is None:
+                        warnings.append(
+                            f"Step '{step['id']}': NON_TEXT detection class "
+                            f"'{detection_label}' not in class_registry"
+                        )
+                    elif det_type != "NON_TEXT":
+                        warnings.append(
+                            f"Step '{step['id']}': detection class "
+                            f"'{detection_label}' is not marked NON_TEXT"
+                        )
         return warnings
 
     # ------------------------------------------------------------------
@@ -850,8 +997,8 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
         # Buttons
         btn_row = QHBoxLayout()
 
-        btn_import = QPushButton("Import SOP Doc")
-        btn_import.setToolTip("Import PDF or TXT SOP and atomize it into steps")
+        btn_import = QPushButton("Import Runtime JSON")
+        btn_import.setToolTip("Import a compiled SOP runtime JSON file")
         btn_import.clicked.connect(self._on_import_document)
 
         btn_export = QPushButton("Export JSON")
@@ -939,15 +1086,19 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
             return
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Import SOP Document",
+            "Import Runtime JSON",
             "",
-            "SOP Documents (*.pdf *.txt *.md)",
+            "Runtime JSON (*.json)",
         )
         if not path:
             return
         try:
-            artifact = self._ingestor.ingest(path)
-            self._steps = artifact.steps
+            artifact = json.loads(Path(path).read_text(encoding="utf-8"))
+            if "runtime_json" in artifact and isinstance(artifact["runtime_json"], dict):
+                artifact = artifact["runtime_json"]
+            if not isinstance(artifact, dict) or not isinstance(artifact.get("steps"), list):
+                raise ValueError("Selected file is not a valid runtime SOP JSON.")
+            self._steps = list(artifact.get("steps", []))
             self._last_import_artifact = artifact
             self._dirty = True
             self._refresh_table()
@@ -955,7 +1106,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
             QMessageBox.information(
                 self,
                 "Import Complete",
-                f"Imported {len(self._steps)} atomic steps.\n"
+                f"Imported {len(self._steps)} runtime steps.\n"
                 "Review the table, then Save to update live SOP or Export JSON.",
             )
         except Exception as exc:  # noqa: BLE001
@@ -969,7 +1120,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
             artifact = dict(base)
         else:
             artifact = {}
-        artifact["version"] = artifact.get("version", "5.1.0")
+        artifact["version"] = artifact.get("version", "6.0.0")
         artifact["title"] = artifact.get("title", self._sop_path.stem)
         artifact["source_path"] = artifact.get("source_path", str(self._sop_path))
         artifact["source_type"] = artifact.get("source_type", "json")
@@ -1092,7 +1243,7 @@ class SopEditorPanel(QWidget):  # type: ignore[misc]
             return
         try:
             data = self._build_export_artifact()
-            data["version"] = "5.1.0"
+            data["version"] = "6.0.0"
             self._sop_path.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
             )

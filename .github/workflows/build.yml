@@ -19,6 +19,8 @@ on:
       - "scripts/preflight_gui_runtime.py"
       - "scripts/pipeline_quality_gate.ps1"
       - "scripts/assemble_release_pack.ps1"
+      - "scripts/build_release_artifacts.ps1"
+      - "scripts/package_ollama_models.py"
       - "src/model_artifacts.py"
       - "requirements-common.txt"
       - "requirements-dev.txt"

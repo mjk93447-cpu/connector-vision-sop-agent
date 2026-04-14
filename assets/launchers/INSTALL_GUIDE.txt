@@ -1,5 +1,5 @@
 ================================================================
-Connector Vision SOP Agent v5.1.0 - Full App Packs
+Connector Vision SOP Agent v6.0.0 - Full App Packs
  INSTALL GUIDE
 ================================================================
 
@@ -19,7 +19,8 @@ PACKAGE ARTIFACTS
 
 OPTIONAL MANUAL ARTIFACTS
 --------------------------------------------------
-  - connector-agent-llm.zip
+  - connector-agent-llm-local-cache.zip
+  - connector-agent-llm-local-cache.zip.001 / .002 ... (when split packaging is used)
 
 FUNCTION SHARING POLICY
 --------------------------------------------------
@@ -29,7 +30,7 @@ FUNCTION SHARING POLICY
   - SOP Run
   - SOP Editor
   - Config / Audit
-  - LLM integration flow
+  - SOP Generate
 
   The only intended difference is the packaged torch runtime:
   - CPU pack: CPU-only torch runtime
@@ -51,13 +52,15 @@ INSTALL
        or
      - connector-agent-app-gpu.zip
   3. Keep the extracted folder structure unchanged.
-  4. Optional: merge connector-agent-llm.zip only when the offline LLM
+  4. Optional: merge connector-agent-llm-local-cache.zip only when the offline LLM
      feature is needed on the target PC.
 
 RUN
 --------------------------------------------------
   - Double-click start_agent.bat to launch the main SOP agent.
   - If ollama.exe is absent, the launcher continues in non-LLM mode.
+  - If the LLM artifact contains split model chunks, use MERGE_OLLAMA_PARTS.ps1
+    after extraction to restore the original blob files.
 
 FINAL FOLDER STRUCTURE
 --------------------------------------------------

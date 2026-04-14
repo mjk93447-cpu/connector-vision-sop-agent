@@ -849,7 +849,7 @@ class LlmPanel(QWidget):  # type: ignore[misc]
         if is_timeout:
             self._append_system(
                 "⏱ Request timed out (600s limit). "
-                "CPU-only mode: Granite Vision 3.2-2b may be slow without a GPU. "
+                "CPU-only mode: Gemma 4 26B local inference may be slow without a GPU. "
                 "Solutions: 1) Install GPU (recommended) "
                 "2) Ensure Brief mode is ON "
                 "3) Check Ollama is running (start_agent.bat)"
