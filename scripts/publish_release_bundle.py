@@ -9,6 +9,11 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from scripts.package_ollama_models import split_file_to_parts
 
 MAX_ASSET_BYTES = 2_000_000_000
