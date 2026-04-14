@@ -27,7 +27,7 @@ set no_proxy=localhost,127.0.0.1,::1
 echo ================================================================
 echo  Connector Vision SOP Agent v6.0.0  [Fully Offline]
 echo  GUI  : PyQt6 7-tab MainWindow (Vision, SOP Generate, SOP Editor, Training...)
-echo  LLM  : Gemma 4 26B A4B Q4_K_M  (Ollama + TurboQuant)
+echo  LLM  : Gemma 4 26B A4B IT Q4_K_M  (Ollama + TurboQuant)
 echo  YOLO : GUI runtime + local pretrained fine-tune seed bundle
 echo ================================================================
 echo.

@@ -1,0 +1,211 @@
+name: Verify Ollama LLM Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_labels_json:
+        description: 'JSON array of runner labels for verification. Larger or self-hosted is recommended.'
+        required: true
+        default: '["self-hosted","linux","x64","ollama-large"]'
+        type: string
+      source_run_id:
+        description: "Workflow run id of Prepare Ollama LLM Artifact"
+        required: true
+        type: string
+      prepared_artifact_name:
+        description: "Prepared artifact name to download"
+        required: true
+        default: "connector-agent-llm-prepared"
+        type: string
+      expected_model_name:
+        description: "Model name expected to pass verification"
+        required: true
+        default: "gemma4:26b-a4b-it-q4_K_M"
+        type: string
+      require_turboquant:
+        description: "Fail if the prepared artifact cannot prove a TurboQuant import path"
+        required: true
+        default: true
+        type: boolean
+      verification_artifact_name:
+        description: "Small verification report artifact name"
+        required: true
+        default: "connector-agent-llm-verify-report"
+        type: string
+  workflow_run:
+    workflows:
+      - Prepare Ollama LLM Artifact
+    types:
+      - completed
+
+jobs:
+  verify-llm-artifact:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["self-hosted","linux","x64","ollama-large"]') }}
+    permissions:
+      actions: read
+      contents: read
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_MODELS: ${{ github.workspace }}/restored_models
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve source run and artifact inputs
+        id: resolve
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $runId = "${{ inputs.source_run_id }}"
+            $artifactName = "${{ inputs.prepared_artifact_name }}"
+            $modelName = "${{ inputs.expected_model_name }}"
+            $requireTurbo = "${{ inputs.require_turboquant }}"
+            $verifyArtifact = "${{ inputs.verification_artifact_name }}"
+          } else {
+            $runId = "${{ github.event.workflow_run.id }}"
+            $artifactName = "connector-agent-llm-prepared"
+            $modelName = "gemma4:26b-a4b-it-q4_K_M"
+            $requireTurbo = "true"
+            $verifyArtifact = "connector-agent-llm-verify-report"
+          }
+          "run_id=$runId" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact_name=$artifactName" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "model_name=$modelName" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "require_turbo=$requireTurbo" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "verify_artifact=$verifyArtifact" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Download prepared artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.resolve.outputs.artifact_name }}
+          path: prepared_stage
+          run-id: ${{ steps.resolve.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify metadata contract
+        shell: pwsh
+        run: |
+          python scripts/verify_ollama_artifact.py `
+            --stage-root "prepared_stage" `
+            --expected-model "${{ steps.resolve.outputs.model_name }}" `
+            --source-run-id "${{ steps.resolve.outputs.run_id }}" `
+            --require-turboquant "${{ steps.resolve.outputs.require_turbo }}" `
+            --output "verification_report.json"
+
+      - name: Restore prepared stage into active OLLAMA_MODELS
+        shell: pwsh
+        run: |
+          python scripts/package_ollama_models.py restore --root prepared_stage --remove-parts
+          if (Test-Path "${env:OLLAMA_MODELS}") {
+            Remove-Item -LiteralPath "${env:OLLAMA_MODELS}" -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path "${env:OLLAMA_MODELS}" -Force | Out-Null
+          foreach ($dir in @("blobs", "manifests")) {
+            $source = Join-Path "prepared_stage" $dir
+            if (Test-Path $source) {
+              Copy-Item $source "${env:OLLAMA_MODELS}" -Recurse -Force
+            }
+          }
+
+      - name: Install Ollama when missing
+        shell: pwsh
+        run: |
+          if (Get-Command ollama -ErrorAction SilentlyContinue) {
+            Write-Host "Ollama already available."
+            exit 0
+          }
+          if ($env:RUNNER_OS -eq "Windows") {
+            winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
+          } else {
+            bash -lc "curl -fsSL https://ollama.com/install.sh | sh"
+          }
+          if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            throw "Ollama installation failed."
+          }
+
+      - name: Start Ollama server
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_OS -eq "Windows") {
+            Start-Process -FilePath "ollama" -ArgumentList "serve"
+          } else {
+            Start-Process -FilePath "ollama" -ArgumentList "serve" -RedirectStandardOutput "ollama-serve.log" -RedirectStandardError "ollama-serve.log"
+          }
+          Start-Sleep -Seconds 15
+
+      - name: Capture verification show output
+        shell: pwsh
+        run: |
+          ollama show "${{ steps.resolve.outputs.model_name }}" | Out-File -FilePath "verification_show.txt" -Encoding utf8
+          @'
+          import json
+          import urllib.request
+
+          model = r"${{ steps.resolve.outputs.model_name }}"
+          req = urllib.request.Request(
+              "http://127.0.0.1:11434/api/show",
+              data=json.dumps({"model": model}).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=120) as resp:
+              data = json.loads(resp.read().decode("utf-8"))
+          with open("verification_show.json", "w", encoding="utf-8") as fh:
+              json.dump(data, fh, ensure_ascii=False, indent=2)
+          req = urllib.request.Request(
+              "http://127.0.0.1:11434/api/chat",
+              data=json.dumps(
+                  {
+                      "model": model,
+                      "messages": [{"role": "user", "content": "Reply with OK only."}],
+                      "stream": False,
+                      "options": {"num_predict": 8},
+                  }
+              ).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=300) as resp:
+              data = json.loads(resp.read().decode("utf-8"))
+          with open("verification_smoke.json", "w", encoding="utf-8") as fh:
+              json.dump(data, fh, ensure_ascii=False, indent=2)
+          '@ | python -
+
+      - name: Finalize verification report
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("verification_report.json").read_text(encoding="utf-8"))
+          report["live_verification"] = {
+              "show_text_path": "verification_show.txt",
+              "show_json_path": "verification_show.json",
+              "smoke_chat_path": "verification_smoke.json",
+          }
+          report["status"] = "verified"
+          Path("verification_report.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          '@ | python -
+
+      - name: Upload verification report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.resolve.outputs.verify_artifact }}
+          path: |
+            verification_report.json
+            verification_show.txt
+            verification_show.json
+            verification_smoke.json
+          retention-days: 14
+          compression-level: 0

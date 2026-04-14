@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from scripts.package_ollama_models import MANIFEST_NAME
+from scripts.verify_ollama_artifact import build_verification_report
+
+
+def _write_prepared_stage(tmp_path: Path, *, source_mode: str, quantization_origin: str) -> Path:
+    stage_root = tmp_path / "prepared_stage"
+    stage_root.mkdir()
+    (stage_root / MANIFEST_NAME).write_text(
+        json.dumps(
+            {
+                "format": "ollama-chunked-stage-v1",
+                "copied_files": ["manifests/example.json"],
+                "split_files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (stage_root / "prepare_metadata.json").write_text(
+        json.dumps(
+            {
+                "model_name": "gemma4:26b-a4b-it-q4_K_M",
+                "source_mode": source_mode,
+                "quantization_origin": quantization_origin,
+                "prepared_artifact_name": "connector-agent-llm-prepared",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (stage_root / "ollama_show.txt").write_text("show output", encoding="utf-8")
+    (stage_root / "ollama_show.json").write_text("{}", encoding="utf-8")
+    return stage_root
+
+
+def test_build_verification_report_accepts_turboquant_import_stage(tmp_path: Path) -> None:
+    stage_root = _write_prepared_stage(
+        tmp_path,
+        source_mode="gguf-import",
+        quantization_origin="turboquant",
+    )
+    report = build_verification_report(
+        stage_root=stage_root,
+        expected_model="gemma4:26b-a4b-it-q4_K_M",
+        source_run_id="12345",
+        require_turboquant=True,
+    )
+    assert report["status"] == "prepared"
+    assert report["source_mode"] == "gguf-import"
+    assert report["quantization_origin"] == "turboquant"
+
+
+def test_build_verification_report_rejects_official_pull_when_turboquant_required(
+    tmp_path: Path,
+) -> None:
+    stage_root = _write_prepared_stage(
+        tmp_path,
+        source_mode="official-pull",
+        quantization_origin="stock-ollama",
+    )
+    with pytest.raises(ValueError, match="source_mode=gguf-import"):
+        build_verification_report(
+            stage_root=stage_root,
+            expected_model="gemma4:26b-a4b-it-q4_K_M",
+            source_run_id="12345",
+            require_turboquant=True,
+        )
+
+
+def test_build_verification_report_allows_official_pull_when_turboquant_not_required(
+    tmp_path: Path,
+) -> None:
+    stage_root = _write_prepared_stage(
+        tmp_path,
+        source_mode="official-pull",
+        quantization_origin="stock-ollama",
+    )
+    report = build_verification_report(
+        stage_root=stage_root,
+        expected_model="gemma4:26b-a4b-it-q4_K_M",
+        source_run_id="12345",
+        require_turboquant=False,
+    )
+    assert report["source_mode"] == "official-pull"

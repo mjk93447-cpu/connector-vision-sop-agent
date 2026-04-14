@@ -84,7 +84,7 @@ class TestGemmaConfig:
         model = cfg["llm"]["model_path"]
         assert "gemma" in model.lower(), (
             f"config.json model_path should target gemma — got: {model!r}. "
-            "Run: update llm.model_path to 'gemma4:26b-a4b-q4_K_M'"
+            "Run: update llm.model_path to 'gemma4:26b-a4b-it-q4_K_M'"
         )
 
     def test_turboquant_flags_enabled(self) -> None:

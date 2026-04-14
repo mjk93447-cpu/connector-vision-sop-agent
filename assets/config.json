@@ -29,7 +29,7 @@
   "llm": {
     "enabled": true,
     "backend": "ollama",
-    "model_path": "gemma4:26b-a4b-q4_K_M",
+    "model_path": "gemma4:26b-a4b-it-q4_K_M",
     "http_url": "http://localhost:11434/api/chat",
     "ctx_size": 8192,
     "gpu_layers": 0,

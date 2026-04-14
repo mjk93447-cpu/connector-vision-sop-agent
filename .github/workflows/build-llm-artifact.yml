@@ -1,44 +1,71 @@
-name: Build Ollama LLM Artifact
+name: Prepare Ollama LLM Artifact
 
 on:
   workflow_dispatch:
     inputs:
-      runner_label:
-        description: "GitHub runner label"
+      runner_labels_json:
+        description: 'JSON array of runner labels. Use a larger or self-hosted runner for Gemma 4 26B.'
         required: true
-        default: "windows-latest"
+        default: '["self-hosted","linux","x64","ollama-large"]'
         type: string
       model_name:
-        description: "Ollama model to pull when pull_model=true"
+        description: "Target Ollama model name"
         required: true
-        default: "gemma4:26b-a4b-q4_K_M"
+        default: "gemma4:26b-a4b-it-q4_K_M"
         type: string
-      pull_model:
-        description: "Pull the requested model before packaging"
+      source_mode:
+        description: "Model preparation mode"
         required: true
-        default: true
-        type: boolean
-      ollama_models_root:
-        description: "Optional pre-existing Ollama models root"
+        default: "official-pull"
+        type: choice
+        options:
+          - official-pull
+          - gguf-import
+      gguf_url:
+        description: "Required when source_mode=gguf-import. URL to a prebuilt GGUF, e.g. TurboQuant output."
         required: false
         default: ""
         type: string
+      quantization_origin:
+        description: "Describe the quantization path, e.g. turboquant, stock-ollama, custom-gguf"
+        required: true
+        default: "turboquant"
+        type: string
+      turboquant_required:
+        description: "Whether downstream verification must require TurboQuant evidence"
+        required: true
+        default: true
+        type: boolean
       chunk_size_bytes:
         description: "Per-file split size for staged model blobs"
         required: true
         default: "2147483648"
         type: string
-      artifact_name:
-        description: "Uploaded artifact name"
+      prepared_artifact_name:
+        description: "Uploaded prepared artifact name"
         required: true
-        default: "connector-agent-llm-local-cache"
+        default: "connector-agent-llm-prepared"
+        type: string
+      retention_days:
+        description: "Retention days for the prepared artifact"
+        required: true
+        default: "7"
         type: string
 
 jobs:
   build-llm-artifact:
-    runs-on: ${{ inputs.runner_label }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     permissions:
       contents: read
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_MODELS: ${{ github.workspace }}/.ollama_runtime/models
+      OLLAMA_STAGING_ROOT: ${{ github.workspace }}/ollama_artifact_stage
+      PREPARED_ARTIFACT_NAME: ${{ inputs.prepared_artifact_name }}
+      TARGET_MODEL_NAME: ${{ inputs.model_name }}
+      SOURCE_MODE: ${{ inputs.source_mode }}
+      QUANTIZATION_ORIGIN: ${{ inputs.quantization_origin }}
+      TURBOQUANT_REQUIRED: ${{ inputs.turboquant_required }}
 
     steps:
       - name: Checkout
@@ -49,59 +76,129 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Ensure Ollama CLI exists
+      - name: Ensure Ollama runtime workspace exists
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:OLLAMA_MODELS -Force | Out-Null
+          New-Item -ItemType Directory -Path $env:OLLAMA_STAGING_ROOT -Force | Out-Null
+
+      - name: Install Ollama when missing
         shell: pwsh
         run: |
           if (Get-Command ollama -ErrorAction SilentlyContinue) {
             Write-Host "Ollama already available."
             exit 0
           }
-          winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
+          if ($env:RUNNER_OS -eq "Windows") {
+            winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
+          } else {
+            bash -lc "curl -fsSL https://ollama.com/install.sh | sh"
+          }
           if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
             throw "Ollama installation failed."
           }
 
-      - name: Start Ollama
+      - name: Start Ollama server
         shell: pwsh
         run: |
-          Start-Process -FilePath "ollama" -ArgumentList "serve"
-          Start-Sleep -Seconds 10
+          if ($env:RUNNER_OS -eq "Windows") {
+            Start-Process -FilePath "ollama" -ArgumentList "serve"
+          } else {
+            Start-Process -FilePath "ollama" -ArgumentList "serve" -RedirectStandardOutput "ollama-serve.log" -RedirectStandardError "ollama-serve.log"
+          }
+          Start-Sleep -Seconds 15
 
-      - name: Pull target model
-        if: ${{ inputs.pull_model }}
+      - name: Prepare model via official pull
+        if: ${{ inputs.source_mode == 'official-pull' }}
         shell: pwsh
         run: |
           ollama pull "${{ inputs.model_name }}"
 
-      - name: Resolve models root
-        id: models-root
+      - name: Prepare model via GGUF import
+        if: ${{ inputs.source_mode == 'gguf-import' }}
         shell: pwsh
         run: |
-          $root = "${{ inputs.ollama_models_root }}"
-          if (-not $root) {
-            $root = Join-Path $env:USERPROFILE ".ollama\models"
+          if (-not "${{ inputs.gguf_url }}") {
+            throw "gguf_url is required when source_mode=gguf-import."
           }
-          if (-not (Test-Path $root)) {
-            throw "Ollama models root not found: $root"
-          }
-          "root=$root" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          New-Item -ItemType Directory -Path "gguf-import" -Force | Out-Null
+          @'
+          import pathlib
+          import urllib.request
+
+          url = r"${{ inputs.gguf_url }}"
+          target = pathlib.Path("gguf-import/model.gguf").resolve()
+          target.parent.mkdir(parents=True, exist_ok=True)
+          urllib.request.urlretrieve(url, target)
+          print(target)
+          '@ | python -
+          @'
+          from pathlib import Path
+
+          gguf = Path("gguf-import/model.gguf").resolve()
+          modelfile = Path("gguf-import/Modelfile")
+          modelfile.write_text(f"FROM {gguf.as_posix()}\n", encoding="utf-8")
+          print(modelfile.read_text(encoding="utf-8"))
+          '@ | python -
+          ollama create "${{ inputs.model_name }}" -f "gguf-import/Modelfile"
+
+      - name: Capture show output and preparation metadata
+        shell: pwsh
+        run: |
+          $prepareMeta = @{
+            schema_version = "1"
+            stage = "prepare"
+            model_name = "${{ inputs.model_name }}"
+            source_mode = "${{ inputs.source_mode }}"
+            gguf_url = "${{ inputs.gguf_url }}"
+            quantization_origin = "${{ inputs.quantization_origin }}"
+            turboquant_required = [System.Convert]::ToBoolean("${{ inputs.turboquant_required }}")
+            prepared_artifact_name = "${{ inputs.prepared_artifact_name }}"
+            chunk_size_bytes = [Int64]::Parse("${{ inputs.chunk_size_bytes }}")
+            runner_os = $env:RUNNER_OS
+            github_run_id = "${{ github.run_id }}"
+            github_repository = "${{ github.repository }}"
+          } | ConvertTo-Json -Depth 5
+          Set-Content -LiteralPath "prepare_metadata.json" -Value $prepareMeta -Encoding UTF8
+          ollama show "${{ inputs.model_name }}" | Out-File -FilePath "ollama_show.txt" -Encoding utf8
+          @'
+          import json
+          import os
+          import urllib.request
+
+          model = os.environ["TARGET_MODEL_NAME"]
+          req = urllib.request.Request(
+              "http://127.0.0.1:11434/api/show",
+              data=json.dumps({"model": model}).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=120) as resp:
+              data = json.loads(resp.read().decode("utf-8"))
+          with open("ollama_show.json", "w", encoding="utf-8") as fh:
+              json.dump(data, fh, ensure_ascii=False, indent=2)
+          '@ | python -
 
       - name: Stage chunked Ollama cache
         shell: pwsh
         run: |
           python scripts/package_ollama_models.py stage `
-            --source "${{ steps.models-root.outputs.root }}" `
-            --output "ollama_artifact_stage" `
-            --chunk-size "${{ inputs.chunk_size_bytes }}" *> $null
+            --source "${env:OLLAMA_MODELS}" `
+            --output "${env:OLLAMA_STAGING_ROOT}" `
+            --chunk-size "${{ inputs.chunk_size_bytes }}"
 
-      - name: Capture installed models list
+      - name: Add metadata files to stage
         shell: pwsh
         run: |
-          ollama list | Out-File -FilePath "ollama_artifact_stage\ollama_models_list.txt" -Encoding utf8
+          Copy-Item "prepare_metadata.json" "${env:OLLAMA_STAGING_ROOT}\prepare_metadata.json" -Force
+          Copy-Item "ollama_show.txt" "${env:OLLAMA_STAGING_ROOT}\ollama_show.txt" -Force
+          Copy-Item "ollama_show.json" "${env:OLLAMA_STAGING_ROOT}\ollama_show.json" -Force
+          ollama list | Out-File -FilePath "${env:OLLAMA_STAGING_ROOT}\ollama_models_list.txt" -Encoding utf8
 
-      - name: Upload chunked LLM artifact
+      - name: Upload prepared LLM artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}
+          name: ${{ inputs.prepared_artifact_name }}
           path: ollama_artifact_stage/
-          retention-days: 14
+          retention-days: ${{ fromJSON(inputs.retention_days) }}
+          compression-level: 0

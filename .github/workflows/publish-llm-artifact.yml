@@ -1,0 +1,110 @@
+name: Publish Verified Ollama LLM Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      verify_run_id:
+        description: "Workflow run id of Verify Ollama LLM Artifact"
+        required: true
+        type: string
+      verify_artifact_name:
+        description: "Verification report artifact name"
+        required: true
+        default: "connector-agent-llm-verify-report"
+        type: string
+      published_artifact_name:
+        description: "Final published artifact name"
+        required: true
+        default: "connector-agent-llm-verified-cache"
+        type: string
+  workflow_run:
+    workflows:
+      - Verify Ollama LLM Artifact
+    types:
+      - completed
+
+jobs:
+  publish-verified-llm:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve verification run and artifact
+        id: resolve
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $verifyRunId = "${{ inputs.verify_run_id }}"
+            $verifyArtifact = "${{ inputs.verify_artifact_name }}"
+            $publishArtifact = "${{ inputs.published_artifact_name }}"
+          } else {
+            $verifyRunId = "${{ github.event.workflow_run.id }}"
+            $verifyArtifact = "connector-agent-llm-verify-report"
+            $publishArtifact = "connector-agent-llm-verified-cache"
+          }
+          "verify_run_id=$verifyRunId" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "verify_artifact=$verifyArtifact" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "publish_artifact=$publishArtifact" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Download verification report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.resolve.outputs.verify_artifact }}
+          path: verify_report
+          run-id: ${{ steps.resolve.outputs.verify_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve prepared artifact source
+        id: prepared
+        shell: pwsh
+        run: |
+          $report = Get-Content "verify_report\verification_report.json" | ConvertFrom-Json
+          if ($report.status -ne "verified") {
+            throw "Verification report is not marked as verified."
+          }
+          "source_run_id=$($report.source_run_id)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "prepared_artifact_name=$($report.prepared_artifact_name)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "model_name=$($report.model_name)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Download prepared LLM stage
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.prepared.outputs.prepared_artifact_name }}
+          path: prepared_stage
+          run-id: ${{ steps.prepared.outputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble published bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "published_bundle\llm_stage" -Force | Out-Null
+          New-Item -ItemType Directory -Path "published_bundle\verification" -Force | Out-Null
+          Copy-Item "prepared_stage\*" "published_bundle\llm_stage" -Recurse -Force
+          Copy-Item "verify_report\*" "published_bundle\verification" -Recurse -Force
+          Copy-Item "assets\launchers\MERGE_GUIDE.txt" "published_bundle\MERGE_GUIDE.txt" -Force
+          Copy-Item "assets\launchers\PLACE_LLM_HERE.txt" "published_bundle\PLACE_LLM_HERE.txt" -Force
+          $manifest = @{
+            schema_version = "1"
+            bundle_type = "verified-ollama-llm-cache"
+            model_name = "${{ steps.prepared.outputs.model_name }}"
+            source_run_id = "${{ steps.prepared.outputs.source_run_id }}"
+            verify_run_id = "${{ steps.resolve.outputs.verify_run_id }}"
+            prepared_artifact_name = "${{ steps.prepared.outputs.prepared_artifact_name }}"
+            verification_artifact_name = "${{ steps.resolve.outputs.verify_artifact }}"
+            published_at = "${{ github.run_id }}"
+          } | ConvertTo-Json -Depth 5
+          Set-Content -LiteralPath "published_bundle\bundle_manifest.json" -Value $manifest -Encoding UTF8
+
+      - name: Upload published LLM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.resolve.outputs.publish_artifact }}
+          path: published_bundle/
+          retention-days: 30
+          compression-level: 0

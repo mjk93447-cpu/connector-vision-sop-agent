@@ -3,7 +3,7 @@ Offline LLM integration for Connector Vision SOP Agent.
 
 Supported backends:
 - ``ollama`` : Ollama local server (recommended). Native /api/chat endpoint.
-               Install: https://ollama.com  /  ollama pull gemma4:26b-a4b-q4_K_M
+               Install: https://ollama.com  /  ollama pull gemma4:26b-a4b-it-q4_K_M
 - ``http``   : LM Studio / Ollama or any OpenAI-compatible HTTP server.
 
 Heavy dependencies are NOT loaded at import time.
@@ -17,7 +17,7 @@ New in v3.0:
 - brief_mode        : shorter max_output_tokens for faster responses
 
 New in v5.2:
-- Gemma 4 26B A4B Q4_K_M default runtime target
+- Gemma 4 26B A4B IT Q4_K_M default runtime target
 - TurboQuant capability flags in config
 - image_b64 parameter for screenshot attachment
 - Ollama /api/chat native endpoint (NDJSON streaming)
@@ -38,7 +38,7 @@ from src.runtime_compat import detect_runtime_flavor
 BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/api/chat"
-_OLLAMA_DEFAULT_MODEL = "gemma4:26b-a4b-q4_K_M"
+_OLLAMA_DEFAULT_MODEL = "gemma4:26b-a4b-it-q4_K_M"
 
 # Brief mode: shorter token limit for fast responses.
 # Gemma local brief responses do not need long reasoning buffers here.
@@ -345,7 +345,7 @@ class OfflineLLM:
 
         설치 및 모델 준비:
             winget install Ollama.Ollama
-            ollama pull gemma4:26b-a4b-q4_K_M
+            ollama pull gemma4:26b-a4b-it-q4_K_M
             ollama serve
         """
 

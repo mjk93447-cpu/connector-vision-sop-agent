@@ -19,8 +19,9 @@ PACKAGE ARTIFACTS
 
 OPTIONAL MANUAL ARTIFACTS
 --------------------------------------------------
-  - connector-agent-llm-local-cache.zip
-  - connector-agent-llm-local-cache.zip.001 / .002 ... (when split packaging is used)
+  - connector-agent-llm-prepared
+  - connector-agent-llm-verify-report
+  - connector-agent-llm-verified-cache
 
 FUNCTION SHARING POLICY
 --------------------------------------------------
@@ -52,7 +53,7 @@ INSTALL
        or
      - connector-agent-app-gpu.zip
   3. Keep the extracted folder structure unchanged.
-  4. Optional: merge connector-agent-llm-local-cache.zip only when the offline LLM
+  4. Optional: merge connector-agent-llm-verified-cache only when the offline LLM
      feature is needed on the target PC.
 
 RUN
@@ -61,6 +62,7 @@ RUN
   - If ollama.exe is absent, the launcher continues in non-LLM mode.
   - If the LLM artifact contains split model chunks, use MERGE_OLLAMA_PARTS.ps1
     after extraction to restore the original blob files.
+  - For cloud-built model artifacts, see docs/GITHUB_LLM_PIPELINE.md
 
 FINAL FOLDER STRUCTURE
 --------------------------------------------------
