@@ -104,6 +104,30 @@ jobs:
             --require-turboquant "${{ steps.resolve.outputs.require_turbo }}" `
             --output "verification_report.json"
 
+      - name: Resolve active restore root
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+
+          prepare_metadata = json.loads(Path("prepared_stage/prepare_metadata.json").read_text(encoding="utf-8"))
+          active_root = str(prepare_metadata.get("active_models_root", "")).strip()
+          if not active_root:
+              show_json = json.loads(Path("prepared_stage/ollama_show.json").read_text(encoding="utf-8"))
+              parent_model = str(show_json.get("details", {}).get("parent_model", "")).strip()
+              if parent_model:
+                  parent_path = Path(parent_model)
+                  active_root = (parent_path.parent.parent).as_posix()
+          if not active_root:
+              raise SystemExit("Unable to resolve active Ollama restore root from prepared artifact.")
+          Path("active_restore_root.txt").write_text(active_root, encoding="utf-8")
+          print(active_root)
+          '@ | python -
+          $activeRoot = Get-Content -LiteralPath "active_restore_root.txt" -Raw
+          "OLLAMA_MODELS=$($activeRoot.Trim())" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Restoring Ollama models to: $($activeRoot.Trim())"
+
       - name: Restore prepared stage into active OLLAMA_MODELS
         shell: pwsh
         run: |

@@ -168,26 +168,9 @@ jobs:
           print(target)
           '@ | python -
 
-      - name: Capture show output and preparation metadata
+      - name: Capture show output
         shell: pwsh
         run: |
-          $prepareMeta = @{
-            schema_version = "1"
-            stage = "prepare"
-            model_name = "${{ inputs.model_name }}"
-            source_mode = "gguf-import"
-            gguf_url = "${{ inputs.gguf_url }}"
-            gguf_manifest_url = "${{ inputs.gguf_manifest_url }}"
-            quantization_manifest_url = "${{ inputs.quantization_manifest_url }}"
-            quantization_origin = "turboquant"
-            turboquant_required = $true
-            prepared_artifact_name = "${{ inputs.prepared_artifact_name }}"
-            chunk_size_bytes = [Int64]::Parse("${{ inputs.chunk_size_bytes }}")
-            runner_os = $env:RUNNER_OS
-            github_run_id = "${{ github.run_id }}"
-            github_repository = "${{ github.repository }}"
-          } | ConvertTo-Json -Depth 5
-          Set-Content -LiteralPath "prepare_metadata.json" -Value $prepareMeta -Encoding UTF8
           ollama show "${{ inputs.model_name }}" | Out-File -FilePath "ollama_show.txt" -Encoding utf8
           @'
           import json
@@ -207,11 +190,72 @@ jobs:
               json.dump(data, fh, ensure_ascii=False, indent=2)
           '@ | python -
 
+      - name: Resolve active Ollama models root and metadata
+        shell: pwsh
+        run: |
+          @'
+          import json
+          import os
+          from pathlib import Path
+
+          show_json = json.loads(Path("ollama_show.json").read_text(encoding="utf-8"))
+          candidates = []
+
+          parent_model = str(show_json.get("details", {}).get("parent_model", "")).strip()
+          if parent_model:
+              parent_path = Path(parent_model)
+              for candidate in [parent_path.parent.parent, parent_path.parent]:
+                  if (candidate / "blobs").exists() or (candidate / "manifests").exists():
+                      candidates.append(candidate)
+
+          env_root = os.environ.get("OLLAMA_MODELS", "").strip()
+          if env_root:
+              candidates.append(Path(env_root))
+
+          for raw in ["/usr/share/ollama/.ollama/models", str(Path.home() / ".ollama" / "models")]:
+              candidates.append(Path(raw))
+
+          active_root = None
+          for candidate in candidates:
+              if candidate.exists() and ((candidate / "blobs").exists() or (candidate / "manifests").exists()):
+                  active_root = candidate.resolve()
+                  break
+
+          if active_root is None:
+              raise SystemExit("Unable to determine active Ollama model root.")
+
+          Path("active_models_root.txt").write_text(active_root.as_posix(), encoding="utf-8")
+          prepare_meta = {
+              "schema_version": "1",
+              "stage": "prepare",
+              "model_name": os.environ["TARGET_MODEL_NAME"],
+              "source_mode": "gguf-import",
+              "gguf_url": r"${{ inputs.gguf_url }}",
+              "gguf_manifest_url": r"${{ inputs.gguf_manifest_url }}",
+              "quantization_manifest_url": r"${{ inputs.quantization_manifest_url }}",
+              "quantization_origin": "turboquant",
+              "turboquant_required": True,
+              "prepared_artifact_name": r"${{ inputs.prepared_artifact_name }}",
+              "chunk_size_bytes": int(r"${{ inputs.chunk_size_bytes }}"),
+              "runner_os": os.environ.get("RUNNER_OS", ""),
+              "github_run_id": r"${{ github.run_id }}",
+              "github_repository": r"${{ github.repository }}",
+              "active_models_root": active_root.as_posix(),
+          }
+          Path("prepare_metadata.json").write_text(
+              json.dumps(prepare_meta, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          '@ | python -
+          $activeRoot = Get-Content -LiteralPath "active_models_root.txt" -Raw
+          "ACTIVE_OLLAMA_MODELS=$($activeRoot.Trim())" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Active Ollama models root: $($activeRoot.Trim())"
+
       - name: Stage chunked Ollama cache
         shell: pwsh
         run: |
           python scripts/package_ollama_models.py stage `
-            --source "${env:OLLAMA_MODELS}" `
+            --source "${env:ACTIVE_OLLAMA_MODELS}" `
             --output "${env:OLLAMA_STAGING_ROOT}" `
             --chunk-size "${{ inputs.chunk_size_bytes }}"
 
