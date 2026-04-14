@@ -3,10 +3,15 @@ name: Verify Ollama LLM Artifact
 on:
   workflow_dispatch:
     inputs:
-      runner_labels_json:
-        description: 'JSON array of runner labels for verification. Larger or self-hosted is recommended.'
+      runner_label:
+        description: "Single runner label. Use this for standard GitHub-hosted runners like ubuntu-latest."
         required: true
-        default: '["self-hosted","linux","x64","ollama-large"]'
+        default: "ubuntu-latest"
+        type: string
+      runner_labels_json:
+        description: 'Optional JSON array of runner labels for self-hosted or larger runners.'
+        required: false
+        default: ""
         type: string
       source_run_id:
         description: "Workflow run id of Prepare Ollama LLM Artifact"
@@ -41,7 +46,7 @@ on:
 jobs:
   verify-llm-artifact:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["self-hosted","linux","x64","ollama-large"]') }}
+    runs-on: ${{ inputs.runner_labels_json != '' && fromJSON(inputs.runner_labels_json) || inputs.runner_label }}
     permissions:
       actions: read
       contents: read

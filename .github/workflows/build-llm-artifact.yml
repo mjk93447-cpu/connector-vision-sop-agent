@@ -3,10 +3,15 @@ name: Prepare Ollama LLM Artifact
 on:
   workflow_dispatch:
     inputs:
-      runner_labels_json:
-        description: 'JSON array of runner labels. Use a larger or self-hosted runner for Gemma 4 26B.'
+      runner_label:
+        description: "Single runner label. Use this for standard GitHub-hosted runners like ubuntu-latest."
         required: true
-        default: '["self-hosted","linux","x64","ollama-large"]'
+        default: "ubuntu-latest"
+        type: string
+      runner_labels_json:
+        description: 'Optional JSON array of runner labels. Use this only for self-hosted or larger runners.'
+        required: false
+        default: ""
         type: string
       model_name:
         description: "Target Ollama model name"
@@ -46,7 +51,7 @@ on:
 
 jobs:
   build-llm-artifact:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    runs-on: ${{ inputs.runner_labels_json != '' && fromJSON(inputs.runner_labels_json) || inputs.runner_label }}
     permissions:
       contents: read
     env:

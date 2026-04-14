@@ -110,6 +110,8 @@ Default source:
 
 - `BugTraceAI-Apex-G4-26B-Q4.gguf`
 - Public source URL supports range downloads and is about 16.8 GB
+- Quick runner test: `runner_label=ubuntu-latest`
+- Real prepare/verify target: `runner_labels_json=["self-hosted","linux","x64","ollama-large"]`
 
 ## Artifact layout
 
