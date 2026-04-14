@@ -78,14 +78,39 @@ jobs:
       - name: Install Ollama runtime
         shell: pwsh
         run: |
+          $ollamaExe = ""
           if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
             winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
           }
           $cmd = Get-Command ollama -ErrorAction SilentlyContinue
-          if (-not $cmd) {
+          if ($cmd) {
+            $ollamaExe = $cmd.Source
+          }
+          if (-not $ollamaExe) {
+            $candidates = @(
+              (Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"),
+              (Join-Path $env:ProgramFiles "Ollama\ollama.exe")
+            )
+            if ($env:ProgramFiles -and (Test-Path "${env:ProgramFiles(x86)}")) {
+              $candidates += (Join-Path ${env:ProgramFiles(x86)} "Ollama\ollama.exe")
+            }
+            foreach ($candidate in $candidates) {
+              if ($candidate -and (Test-Path $candidate)) {
+                $ollamaExe = $candidate
+                break
+              }
+            }
+          }
+          if (-not $ollamaExe) {
+            $whereResult = & where.exe ollama 2>$null | Select-Object -First 1
+            if ($whereResult) {
+              $ollamaExe = $whereResult.Trim()
+            }
+          }
+          if (-not $ollamaExe) {
             throw "Unable to locate ollama.exe after installation."
           }
-          "OLLAMA_EXE=$($cmd.Source)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "OLLAMA_EXE=$ollamaExe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Set runtime flavor
         shell: pwsh
