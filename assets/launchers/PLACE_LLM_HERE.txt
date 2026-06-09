@@ -1,8 +1,18 @@
-Drop the connector-agent-llm artifact contents here.
+Drop offline Ollama model cache here (v7.0.0):
 
-Required contents:
-  - blobs\
-  - manifests\
+  ollama_models\
+    blobs\
+    manifests\
 
-This folder keeps the LLM separate so it only needs to be rebuilt when the
-LLM stack changes.
+Required model tags:
+
+  qwen3:8b     — SOP Generate atomizer
+  gemma4:9b    — LLM Chat + recovery_action
+
+Build locally:
+
+  ollama pull qwen3:8b
+  ollama pull gemma4:9b
+  python scripts/package_ollama_models.py stage --source %USERPROFILE%\.ollama\models --output llm_stage
+
+Or extract connector-agent-llm-local-cache.zip from the release.

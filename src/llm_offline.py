@@ -33,16 +33,40 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Literal, Optional, Type
 
 from src.config_loader import detect_local_accelerator
+from src.llm_model_registry import (
+    recommend_sop_generation_tag,
+    validate_sop_generation_model,
+)
 from src.runtime_compat import detect_runtime_flavor
 
 BackendType = Literal["http", "ollama"]
 
 _OLLAMA_DEFAULT_URL = "http://localhost:11434/api/chat"
 _OLLAMA_DEFAULT_MODEL = "gemma4:26b-a4b-it-q4_K_M"
+_SOP_GENERATION_DEFAULT_MODEL = recommend_sop_generation_tag()
 
 # Brief mode: shorter token limit for fast responses.
 # Gemma local brief responses do not need long reasoning buffers here.
 _BRIEF_MAX_TOKENS = 512
+
+
+@dataclass
+class SOPGenerationLLMConfig:
+    model_path: str = _SOP_GENERATION_DEFAULT_MODEL
+    ctx_size: int = 32768
+    max_output_tokens: int = 4096
+    temperature: float = 0.1
+
+    @classmethod
+    def from_dict(
+        cls: Type["SOPGenerationLLMConfig"], data: Dict[str, Any]
+    ) -> "SOPGenerationLLMConfig":
+        return cls(
+            model_path=str(data.get("model_path", _SOP_GENERATION_DEFAULT_MODEL)),
+            ctx_size=int(data.get("ctx_size", 32768)),
+            max_output_tokens=int(data.get("max_output_tokens", 4096)),
+            temperature=float(data.get("temperature", 0.1)),
+        )
 
 
 @dataclass
@@ -56,9 +80,14 @@ class LLMConfig:
     max_output_tokens: int = 1024
     turboquant_enabled: bool = True
     turboquant_mode: str = "--turboquant"
+    sop_generation: SOPGenerationLLMConfig | None = None
 
     @classmethod
     def from_dict(cls: Type["LLMConfig"], data: Dict[str, Any]) -> "LLMConfig":
+        sop_raw = data.get("sop_generation")
+        sop_generation = None
+        if isinstance(sop_raw, dict):
+            sop_generation = SOPGenerationLLMConfig.from_dict(sop_raw)
         return cls(
             backend=data.get("backend", "ollama"),
             model_path=data.get("model_path", _OLLAMA_DEFAULT_MODEL),
@@ -69,7 +98,11 @@ class LLMConfig:
             max_output_tokens=int(data.get("max_output_tokens", 1024)),
             turboquant_enabled=bool(data.get("turboquant_enabled", True)),
             turboquant_mode=str(data.get("turboquant_mode", "--turboquant")),
+            sop_generation=sop_generation,
         )
+
+    def sop_generation_cfg(self) -> SOPGenerationLLMConfig:
+        return self.sop_generation or SOPGenerationLLMConfig()
 
 
 _OLLAMA_BASE_URL = "http://localhost:11434"
@@ -178,6 +211,64 @@ class OfflineLLM:
     # Ollama health check
     # ------------------------------------------------------------------ #
 
+    def _ollama_base_url(self) -> str:
+        url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
+        if "/v1/" in url:
+            return url.split("/v1/")[0]
+        if "/api/" in url:
+            return url.split("/api/")[0]
+        return _OLLAMA_BASE_URL
+
+    def _ensure_model_installed(self, model_path: str) -> None:
+        try:
+            import requests  # type: ignore[import]
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError("requests package required") from exc
+
+        base = self._ollama_base_url()
+        tags_resp = requests.get(
+            base + "/api/tags",
+            timeout=_HEALTH_TIMEOUT,
+            proxies={"http": None, "https": None},
+        )
+        tags_resp.raise_for_status()
+        models = tags_resp.json().get("models", [])
+        names = {
+            str(model.get("name", "")) for model in models if isinstance(model, dict)
+        }
+        if names and model_path not in names:
+            raise RuntimeError(f"Ollama model '{model_path}' is not installed.")
+
+    def check_sop_generation_health(self) -> str:
+        """Verify Ollama is ready for SOP Generate using the sop_generation model slot."""
+        if self.cfg.backend != "ollama":
+            raise RuntimeError(
+                "SOP Generate requires the Ollama backend for document-to-SOP generation."
+            )
+        sop_cfg = self.cfg.sop_generation_cfg()
+        validate_sop_generation_model(sop_cfg.model_path)
+        try:
+            import requests  # type: ignore[import]
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError("requests package required") from exc
+
+        base = self._ollama_base_url()
+        try:
+            resp = requests.get(
+                base,
+                timeout=_HEALTH_TIMEOUT,
+                proxies={"http": None, "https": None},
+            )
+            resp.raise_for_status()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Ollama server not running at {base}. "
+                "Run 'ollama serve' first, or start start_agent.bat."
+            ) from exc
+
+        self._ensure_model_installed(sop_cfg.model_path)
+        return f"SOP Generate ready with {sop_cfg.model_path}"
+
     def check_health(self) -> Optional[str]:
         """Verify Ollama server is reachable before issuing a chat request.
 
@@ -199,15 +290,7 @@ class OfflineLLM:
         except Exception as exc:  # pragma: no cover
             raise RuntimeError("requests package required") from exc
 
-        # Derive base URL from configured completions URL
-        url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
-        # Strip "/api/..." or "/v1/..." suffix to reach the root endpoint
-        if "/v1/" in url:
-            base = url.split("/v1/")[0]
-        elif "/api/" in url:
-            base = url.split("/api/")[0]
-        else:
-            base = _OLLAMA_BASE_URL
+        base = self._ollama_base_url()
 
         try:
             # proxies={"http": None, "https": None} overrides system/env proxy settings
@@ -229,22 +312,7 @@ class OfflineLLM:
         # 하드웨어 감지 및 정보 반환
         if self.cfg.model_path:
             try:
-                tags_resp = requests.get(
-                    base + "/api/tags",
-                    timeout=_HEALTH_TIMEOUT,
-                    proxies={"http": None, "https": None},
-                )
-                tags_resp.raise_for_status()
-                models = tags_resp.json().get("models", [])
-                names = {
-                    str(model.get("name", ""))
-                    for model in models
-                    if isinstance(model, dict)
-                }
-                if names and self.cfg.model_path not in names:
-                    raise RuntimeError(
-                        f"Ollama model '{self.cfg.model_path}' is not installed."
-                    )
+                self._ensure_model_installed(self.cfg.model_path)
             except RuntimeError:
                 raise
             except Exception:
@@ -268,6 +336,26 @@ class OfflineLLM:
     # ------------------------------------------------------------------ #
     # 핵심 채팅 인터페이스
     # ------------------------------------------------------------------ #
+
+    def chat_sop_generation(
+        self,
+        system: str,
+        history: List[Dict[str, str]],
+        brief: bool = False,
+        json_mode: bool = False,
+    ) -> str:
+        """Chat completion using the dedicated SOP generation model slot."""
+        sop_cfg = self.cfg.sop_generation_cfg()
+        return self._chat_ollama(
+            system,
+            history,
+            brief=brief,
+            model_override=sop_cfg.model_path,
+            ctx_override=sop_cfg.ctx_size,
+            max_tokens_override=sop_cfg.max_output_tokens,
+            temperature_override=sop_cfg.temperature,
+            json_mode=json_mode,
+        )
 
     def chat(
         self,
@@ -337,6 +425,11 @@ class OfflineLLM:
         history: List[Dict[str, str]],
         brief: bool = False,
         image_b64: Optional[str] = None,
+        model_override: Optional[str] = None,
+        ctx_override: Optional[int] = None,
+        max_tokens_override: Optional[int] = None,
+        temperature_override: Optional[float] = None,
+        json_mode: bool = False,
     ) -> str:
         """Ollama /api/chat (native format) — non-streaming request.
 
@@ -358,7 +451,7 @@ class OfflineLLM:
             ) from exc
 
         url = self.cfg.http_url or _OLLAMA_DEFAULT_URL
-        model = self.cfg.model_path or _OLLAMA_DEFAULT_MODEL
+        model = model_override or self.cfg.model_path or _OLLAMA_DEFAULT_MODEL
 
         messages: List[Dict[str, Any]] = []
         if not history or history[0].get("role") != "system":
@@ -372,16 +465,26 @@ class OfflineLLM:
                     msg["images"] = [image_b64]
                     break
 
-        max_tokens = _BRIEF_MAX_TOKENS if brief else self.cfg.max_output_tokens
+        max_tokens = (
+            _BRIEF_MAX_TOKENS
+            if brief
+            else (max_tokens_override or self.cfg.max_output_tokens)
+        )
         options = self._get_optimized_options(brief=brief)
+        if ctx_override is not None:
+            options["num_ctx"] = ctx_override
+        if temperature_override is not None:
+            options["temperature"] = temperature_override
         options["num_predict"] = max_tokens  # Ollama native uses num_predict
 
-        payload = {
+        payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": False,
             "options": options,
         }
+        if json_mode:
+            payload["format"] = "json"
         # connect 10s, read 120s (non-streaming: total response timeout)
         resp = requests.post(
             url,
@@ -708,84 +811,40 @@ class OfflineLLM:
         source_path: str = "",
         source_type: str = "txt",
     ) -> Dict[str, Any]:
-        """Convert an SOP document into strict JSON using the local Gemma model.
+        """Convert an SOP document into strict JSON via SOPLLMAtomizer."""
+        from pathlib import Path
 
-        The returned payload is designed to be schema-friendly for the new
-        document ingestion workflow. If the model output cannot be parsed,
-        the caller should fall back to a rule-based atomizer.
-        """
+        from src.sop_document_ingest import (
+            SOPDocumentExtraction,
+            SOPDocumentIngestor,
+            SOPSourceRef,
+        )
+        from src.sop_llm_atomizer import SOPLLMAtomizer
 
-        system = (
-            "You are an offline SOP document atomizer for a factory automation tool. "
-            "Convert the source document into a fully atomized JSON object. "
-            "Split combined instructions into the smallest safe actions. "
-            "Assign one best matching class_name from the provided registry. "
-            "Return JSON only, with keys version, title, source_path, source_type, "
-            "raw_text, metadata, steps. Do not add commentary."
+        extraction = SOPDocumentExtraction(
+            source_path=source_path,
+            source_type=source_type,
+            title=source_path or "Imported SOP",
+            raw_text=document_text,
+            refs=[
+                SOPSourceRef(
+                    kind="section",
+                    index=1,
+                    label="Section 1",
+                    text=document_text,
+                )
+            ],
         )
-        payload = {
-            "source_path": source_path,
-            "source_type": source_type,
-            "class_names": class_names,
-            "document_text": document_text,
-            "output_schema": {
-                "version": "6.0.0",
-                "title": "string",
-                "source_path": "string",
-                "source_type": "pdf|txt",
-                "raw_text": "string",
-                "metadata": {
-                    "source_file_name": "string",
-                    "atomization_mode": "llm",
-                    "class_registry": class_names,
-                },
-                "steps": [
-                    {
-                        "id": "step_001",
-                        "name": "string",
-                        "type": "click|drag|validate_pins|click_sequence|type_text|press_key|wait_ms|auth_sequence|input_text|mold_setup",
-                        "target": "string|null",
-                        "description": "string",
-                        "enabled": True,
-                        "class_name": "string|null",
-                        "confidence": 0.0,
-                        "source_page": 1,
-                        "source_span": "string",
-                        "preconditions": [],
-                        "postconditions": [],
-                    }
-                ],
-            },
-        }
-        raw = self.chat(
-            system=system,
-            history=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-            brief=True,
+        atomized = SOPLLMAtomizer(llm=self).atomize(extraction)
+        ingestor = SOPDocumentIngestor(llm=self)
+        path = Path(source_path or "imported.txt")
+        payload = ingestor._artifact_from_canonical_steps(  # noqa: SLF001
+            atomized.steps,
+            path,
+            document_text,
+            source_type,
+            atomized.atomization_mode,
         )
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                return parsed
-        except Exception:
-            pass
-        clean = raw.strip()
-        if clean.startswith("```"):
-            clean = clean.strip("`")
-            if clean.startswith("json"):
-                clean = clean[4:].strip()
-        try:
-            parsed = json.loads(clean)
-            if isinstance(parsed, dict):
-                return parsed
-        except Exception:
-            pass
-        return {
-            "version": "6.0.0",
-            "title": source_path or "Imported SOP",
-            "source_path": source_path,
-            "source_type": source_type,
-            "raw_text": document_text,
-            "metadata": {"atomization_mode": "llm_parse_failed"},
-            "steps": [],
-            "raw": raw,
-        }
+        payload.setdefault("metadata", {})["class_registry"] = class_names
+        payload["metadata"]["coverage_report"] = atomized.coverage_report.to_json()
+        return payload

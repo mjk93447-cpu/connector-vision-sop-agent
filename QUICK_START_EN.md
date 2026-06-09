@@ -18,6 +18,15 @@ Full guide: `README_INSTALL_EN.md`
 4. Reload the model
 5. Re-test in `Tab 1 - Run SOP`
 
+## When importing a new work instruction (v7.0.0)
+
+1. Go to `Tab 3 - SOP Generate`
+2. Upload PDF, PPTX, TXT, or MD
+3. Review coverage and answer questions
+4. Dry-run compile, then Finalize and Apply
+
+Requires offline `qwen3:8b` in the local Ollama cache.
+
 ## When the SOP flow changes
 
 1. Go to `Tab 4 - SOP Editor`

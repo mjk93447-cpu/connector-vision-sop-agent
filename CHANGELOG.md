@@ -1,5 +1,39 @@
 # Changelog
 
+## [7.0.0] - 2026-06-09
+
+### Added
+
+- `src/llm_model_registry.py` — Ollama model capability registry (Qwen 3.7 / Kimi 2.6
+  offline status, 16GB recommendations for `qwen3:8b` / `qwen3:4b`).
+- `src/sop_llm_atomizer.py` — four-pass LLM atomization (outline, extract, merge,
+  audit) with JSON repair and rule-based fallback.
+- `llm.sop_generation` config slot for a dedicated SOP Generate model separate
+  from Chat / recovery (`gemma4:9b`).
+- SOP Generate UI: coverage panel, atomization progress, Stop, dry-run compile.
+- `logs/sop_generation_audit.jsonl` for source-ref to step traceability.
+
+### Changed
+
+- `SOPGenerationService.generate_from_document()` now calls `SOPLLMAtomizer`
+  instead of rule-only extraction; rules remain as fallback.
+- `generation_readiness()` validates `qwen3:8b` (or configured sop_generation tag)
+  instead of Gemma 4 26B TurboQuant.
+- `SOPDocumentIngestor` and `OfflineLLM.atomize_sop_document()` delegate to the
+  shared atomizer (duplicate LLM prompts removed).
+- Default Chat model in `assets/config.json`: `gemma4:9b` (16GB-friendly).
+- Launchers and install guides updated for dual-model offline bundles.
+
+### Fixed
+
+- Finalize blocked when coverage audit reports unmapped document sections.
+- Circular import between ingest and atomizer resolved via lazy import.
+
+### Release
+
+- Shipping baseline bumped to `7.0.0`.
+- See `docs/V7_0_0_FOCUS.md` for deployment and model staging.
+
 ## [6.0.0] - 2026-04-14
 
 ### Changed

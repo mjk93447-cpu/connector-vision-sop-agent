@@ -32,7 +32,11 @@ def model_asset_path(name: str | Path) -> Path:
     if candidate.is_absolute():
         return candidate
 
-    if len(candidate.parts) >= 2 and candidate.parts[0] == "assets" and candidate.parts[1] == "models":
+    if (
+        len(candidate.parts) >= 2
+        and candidate.parts[0] == "assets"
+        and candidate.parts[1] == "models"
+    ):
         return resolve_app_path(candidate)
 
     return resolve_app_path(MODEL_ASSETS_DIR / candidate.name)
@@ -174,7 +178,7 @@ def is_viable_model_artifact(candidate: str | Path) -> bool:
 def resolve_runtime_model(configured: str | Path | None = None) -> Path:
     """Resolve the model path that live SOP detection should load.
 
-    Runtime rule for v6.0.0:
+    Runtime rule for v7.0.0:
     1. If the config explicitly points to a non-COCO model and it exists, honor it.
     2. If the config still points at the legacy COCO base path, auto-upgrade to the
        best available fine-tuned/pretrained seed when one exists.
@@ -186,9 +190,8 @@ def resolve_runtime_model(configured: str | Path | None = None) -> Path:
     if configured:
         configured_path = model_asset_path(configured)
         configured_name = Path(configured).name
-        if (
-            configured_name != COCO_BASE_MODEL_NAME
-            and is_viable_model_artifact(configured_path)
+        if configured_name != COCO_BASE_MODEL_NAME and is_viable_model_artifact(
+            configured_path
         ):
             return configured_path
 

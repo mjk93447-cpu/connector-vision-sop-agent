@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "6.0.0",
+    [string]$Version = "7.0.0",
     [string]$DistDir = "dist",
     [string]$WorkDir = "build-release",
     [string]$OutputRoot = "",
@@ -70,6 +70,9 @@ if (-not (Test-Path $exePath)) {
 New-Item -ItemType Directory -Path $appStage -Force | Out-Null
 Copy-Item $exePath (Join-Path $appStage "connector_vision_agent.exe") -Force
 Copy-Item "assets\launchers\start_agent.bat" (Join-Path $appStage "start_agent.bat") -Force
+if (Test-Path "install_first_time.bat") {
+    Copy-Item "install_first_time.bat" (Join-Path $appStage "install_first_time.bat") -Force
+}
 Copy-Item "assets\launchers\stop_ollama.bat" (Join-Path $appStage "stop_ollama.bat") -Force
 Copy-Item "assets\launchers\restore_ollama_stage.ps1" (Join-Path $appStage "restore_ollama_stage.ps1") -Force
 Copy-Item "assets\launchers\INSTALL_GUIDE.txt" (Join-Path $appStage "INSTALL_GUIDE.txt") -Force

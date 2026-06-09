@@ -41,7 +41,9 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         self._service = generation_service
         self._canonical: Optional[Dict[str, Any]] = None
         self._answer_widgets: Dict[str, Any] = {}
+        self._generating = False
         self._setup_ui()
+        self._service.set_progress_callback(self._on_atomize_progress)
         self._refresh_runtime_readiness()
 
     def _setup_ui(self) -> None:
@@ -56,7 +58,9 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         header.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(header)
 
-        self._status = QLabel("1. Upload a PDF, PPTX, TXT, or MD document to generate a canonical SOP.")
+        self._status = QLabel(
+            "1. Upload a PDF, PPTX, TXT, or MD document to generate a canonical SOP."
+        )
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
 
@@ -68,21 +72,37 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         upload_layout = QHBoxLayout(upload_box)
         self._btn_upload = QPushButton("Upload Document")
         self._btn_upload.clicked.connect(self._on_upload)
+        self._btn_stop = QPushButton("Stop")
+        self._btn_stop.clicked.connect(self._on_stop_generation)
+        self._btn_stop.setEnabled(False)
         self._btn_import = QPushButton("Import SOP Package")
         self._btn_import.clicked.connect(self._on_import_package)
         upload_layout.addWidget(self._btn_upload)
+        upload_layout.addWidget(self._btn_stop)
         upload_layout.addWidget(self._btn_import)
         upload_layout.addStretch()
         layout.addWidget(upload_box)
 
-        preview_box = QGroupBox("2. Analysis Preview")
+        self._progress = QLabel("")
+        self._progress.setWordWrap(True)
+        layout.addWidget(self._progress)
+
+        coverage_box = QGroupBox("2. Coverage")
+        coverage_layout = QVBoxLayout(coverage_box)
+        self._coverage = QTextEdit()
+        self._coverage.setReadOnly(True)
+        self._coverage.setMaximumHeight(120)
+        coverage_layout.addWidget(self._coverage)
+        layout.addWidget(coverage_box)
+
+        preview_box = QGroupBox("3. Analysis Preview")
         preview_layout = QVBoxLayout(preview_box)
         self._preview = QTextEdit()
         self._preview.setReadOnly(True)
         preview_layout.addWidget(self._preview)
         layout.addWidget(preview_box, stretch=1)
 
-        question_box = QGroupBox("3. Questions")
+        question_box = QGroupBox("4. Questions")
         question_layout = QVBoxLayout(question_box)
         self._question_scroll = QScrollArea()
         self._question_scroll.setWidgetResizable(True)
@@ -95,10 +115,12 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         question_layout.addWidget(self._btn_apply_answers)
         layout.addWidget(question_box, stretch=1)
 
-        action_box = QGroupBox("4. Finalize / Apply / Export")
+        action_box = QGroupBox("5. Finalize / Apply / Export")
         action_layout = QHBoxLayout(action_box)
         self._btn_finalize = QPushButton("Finalize")
         self._btn_finalize.clicked.connect(self._on_finalize)
+        self._btn_dry_run = QPushButton("Dry-run compile")
+        self._btn_dry_run.clicked.connect(self._on_dry_run)
         self._btn_apply_now = QPushButton("Apply now")
         self._btn_apply_now.clicked.connect(self._on_apply_now)
         self._btn_save_canonical = QPushButton("Save canonical only")
@@ -109,6 +131,7 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         self._btn_export.clicked.connect(self._on_export_package)
         for button in [
             self._btn_finalize,
+            self._btn_dry_run,
             self._btn_apply_now,
             self._btn_save_canonical,
             self._btn_save_both,
@@ -136,7 +159,37 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
     def set_canonical(self, canonical: Dict[str, Any]) -> None:
         self._canonical = canonical
         self._render_preview()
+        self._render_coverage()
         self._render_questions()
+
+    def _on_atomize_progress(self, phase: str, current: int, total: int) -> None:
+        if _QT_AVAILABLE:
+            self._progress.setText(f"Atomization pass '{phase}': {current}/{total}")
+
+    def _render_coverage(self) -> None:
+        if not _QT_AVAILABLE:
+            return
+        if not self._canonical:
+            self._coverage.clear()
+            return
+        atomization = self._canonical.get("atomization", {})
+        coverage = atomization.get("coverage_report", {})
+        lines = [
+            f"Mode: {atomization.get('mode', 'unknown')}",
+            f"Coverage: {coverage.get('coverage_percent', 0)}% "
+            f"({coverage.get('mapped_refs', 0)}/{coverage.get('total_refs', 0)} refs)",
+        ]
+        unmapped = coverage.get("unmapped_refs") or []
+        if unmapped:
+            lines.append("Unmapped sections:")
+            for ref in unmapped:
+                if isinstance(ref, dict):
+                    lines.append(f"  - {ref.get('label') or ref.get('index')}")
+        warnings = atomization.get("warnings") or []
+        if warnings:
+            lines.append("Warnings:")
+            lines.extend(f"  - {item}" for item in warnings)
+        self._coverage.setPlainText("\n".join(lines))
 
     def _render_preview(self) -> None:
         if not _QT_AVAILABLE:
@@ -149,8 +202,12 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         preview = {
             "title": self._canonical.get("metadata", {}).get("title"),
             "status": self._canonical.get("metadata", {}).get("status"),
-            "source_type": self._canonical.get("source_document", {}).get("source_type"),
-            "source_refs": len(self._canonical.get("source_document", {}).get("refs", [])),
+            "source_type": self._canonical.get("source_document", {}).get(
+                "source_type"
+            ),
+            "source_refs": len(
+                self._canonical.get("source_document", {}).get("refs", [])
+            ),
             "workflow_steps": len(workflow_steps),
             "questions": len(self._canonical.get("questions_asked", [])),
             "supported_steps": compile_result.get("supported_steps", []),
@@ -218,18 +275,54 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         if not path:
             return
         try:
+            self._generating = True
+            self._btn_upload.setEnabled(False)
+            self._btn_stop.setEnabled(True)
+            self._progress.setText("Starting document atomization...")
             canonical = self._service.generate_from_document(path)
             self.set_canonical(canonical)
-            self.set_status("Analysis ready. Review the preview and answer the generated questions.")
+            self.set_status(
+                "Analysis ready. Review the preview and answer the generated questions."
+            )
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Generation Failed", str(exc))
+        finally:
+            self._generating = False
+            self._btn_upload.setEnabled(True)
+            self._btn_stop.setEnabled(False)
+
+    def _on_stop_generation(self) -> None:
+        llm = getattr(self._service, "_llm", None)
+        if llm is not None and hasattr(llm, "cancel"):
+            llm.cancel()
+        self._progress.setText("Generation cancelled.")
+        self._generating = False
+        self._btn_upload.setEnabled(True)
+        self._btn_stop.setEnabled(False)
+
+    def _on_dry_run(self) -> None:
+        if not _QT_AVAILABLE or not self._canonical:
+            return
+        try:
+            compile_result = self._service.dry_run_compile(self._canonical)
+            step_count = len(compile_result.runtime_json.get("steps", []))
+            warnings = compile_result.warnings
+            message = f"Dry-run produced {step_count} runtime step(s)."
+            if warnings:
+                message += "\nWarnings:\n" + "\n".join(f"- {item}" for item in warnings)
+            QMessageBox.information(self, "Dry-run Compile", message)
+            self.set_status("Dry-run compile completed.")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Dry-run Failed", str(exc))
 
     def _on_apply_answers(self) -> None:
         if not _QT_AVAILABLE or not self._canonical:
             return
         answers = self._collect_answers()
         try:
-            canonical = self._service.answer_generation_questions(self._canonical, answers)
+            canonical = self._service.answer_generation_questions(
+                self._canonical, answers
+            )
             self.set_canonical(canonical)
             self.set_status("Answers applied to the canonical SOP.")
         except Exception as exc:  # noqa: BLE001
@@ -255,7 +348,9 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
                 self._service.build_runtime_profile(),
             )
             if not compile_result.runtime_json.get("steps"):
-                raise ValueError("No automatable runtime steps were produced. Use save/export only.")
+                raise ValueError(
+                    "No automatable runtime steps were produced. Use save/export only."
+                )
             self.set_canonical(finalized)
             parent = self.parent()
             if parent is None or not hasattr(parent, "apply_generated_runtime"):
@@ -303,14 +398,20 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
                 self._service.build_runtime_profile(),
             )
             canonical_path = Path(path)
-            runtime_path = canonical_path.with_name(canonical_path.stem + ".compiled.json")
-            canonical_path.write_text(json.dumps(finalized, ensure_ascii=False, indent=2), encoding="utf-8")
+            runtime_path = canonical_path.with_name(
+                canonical_path.stem + ".compiled.json"
+            )
+            canonical_path.write_text(
+                json.dumps(finalized, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             runtime_path.write_text(
                 json.dumps(compile_result.runtime_json, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
             self.set_canonical(finalized)
-            self.set_status(f"Saved canonical and compiled runtime JSON to {canonical_path.parent}")
+            self.set_status(
+                f"Saved canonical and compiled runtime JSON to {canonical_path.parent}"
+            )
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Save Failed", str(exc))
 
@@ -351,6 +452,8 @@ class SOPGeneratePanel(QWidget):  # type: ignore[misc]
         try:
             data = self._service.import_sop_package(path)
             self.set_canonical(data["canonical"])
-            self.set_status("Imported SOP package. Review and apply or export as needed.")
+            self.set_status(
+                "Imported SOP package. Review and apply or export as needed."
+            )
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Import Failed", str(exc))

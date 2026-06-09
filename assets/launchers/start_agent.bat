@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title Connector Vision SOP Agent v6.0.0 [Offline]
+title Connector Vision SOP Agent v7.0.0 [Offline]
 
 set MODEL_ROOT=%~dp0ollama_models
 if exist "%~dp0llm_stage\ollama_split_manifest.json" set MODEL_ROOT=%~dp0llm_stage
@@ -9,8 +9,11 @@ if exist "%~dp0ollama_models\ollama_split_manifest.json" set MODEL_ROOT=%~dp0oll
 set OLLAMA_MODELS=%MODEL_ROOT%
 set OLLAMA_HOST=127.0.0.1:11434
 set OLLAMA_ORIGINS=*
-if not defined OLLAMA_CONTEXT_LENGTH set OLLAMA_CONTEXT_LENGTH=8192
-if "%OLLAMA_CONTEXT_LENGTH%"=="0" set OLLAMA_CONTEXT_LENGTH=8192
+if not defined OLLAMA_CONTEXT_LENGTH set OLLAMA_CONTEXT_LENGTH=32768
+if "%OLLAMA_CONTEXT_LENGTH%"=="0" set OLLAMA_CONTEXT_LENGTH=32768
+
+set SOP_GEN_MODEL=qwen3:8b
+set CHAT_MODEL=gemma4:9b
 
 rem Clear proxy variables so Ollama and the GUI talk to localhost directly.
 set HTTP_PROXY=
@@ -21,17 +24,15 @@ set ALL_PROXY=
 set all_proxy=
 
 rem Bypass corporate HTTP proxy for localhost (Ollama) connections.
-rem Without this, Python requests routes http://127.0.0.1:11434 through the
-rem company proxy (e.g. 107.100.72.56) which cannot reach this machine's
-rem loopback adapter and returns 503 Service Unavailable.
 set NO_PROXY=localhost,127.0.0.1,::1
 set no_proxy=localhost,127.0.0.1,::1
 
 echo ================================================================
-echo  Connector Vision SOP Agent v6.0.0  [Fully Offline]
-echo  GUI  : PyQt6 7-tab MainWindow (Vision, SOP Generate, SOP Editor, Training...)
-echo  LLM  : Gemma 4 26B A4B IT Q4_K_M  (Ollama + TurboQuant)
-echo  YOLO : GUI runtime + local pretrained fine-tune seed bundle
+echo  Connector Vision SOP Agent v7.0.0  [Fully Offline]
+echo  GUI  : PyQt6 MainWindow (SOP Generate, SOP Editor, Training...)
+echo  SOP  : %SOP_GEN_MODEL%  (document atomize / 4-pass LLM)
+echo  Chat : %CHAT_MODEL%  (LLM Chat + recovery_action)
+echo  YOLO : yolo26x_local_pretrained.pt runtime seed
 echo ================================================================
 echo.
 echo [prep] Ollama model root: %OLLAMA_MODELS%
@@ -54,19 +55,25 @@ if exist "%~dp0ollama.exe" (
     echo [WARN] ollama.exe not found. Continuing with GUI smoke / non-LLM mode.
 )
 
-echo [2/3] Verifying Gemma + TurboQuant runtime (OLLAMA_MODELS=%OLLAMA_MODELS%)...
+echo [2/3] Verifying offline LLM models (OLLAMA_MODELS=%OLLAMA_MODELS%)...
 if exist "%~dp0ollama.exe" (
     "%~dp0ollama.exe" list
     if errorlevel 1 (
         echo [WARN] ollama list returned an error. Ollama may still be starting.
-        echo        If the EXE fails to connect, wait 10s and retry start_agent.bat.
     ) else (
-        "%~dp0ollama.exe" show "gemma4:26b-a4b-it-q4_K_M" >nul 2>&1
+        "%~dp0ollama.exe" show "%SOP_GEN_MODEL%" >nul 2>&1
         if errorlevel 1 (
-            echo [WARN] Expected Gemma 4 TurboQuant model is not ready in %OLLAMA_MODELS%.
-            echo        Extract the verified LLM bundle so llm_stage\ or ollama_models\ is present.
+            echo [WARN] SOP Generate model %SOP_GEN_MODEL% is not ready.
+            echo        Stage qwen3:8b into %OLLAMA_MODELS% or run install_first_time.bat.
         ) else (
-            echo Gemma 4 TurboQuant model is ready.
+            echo SOP Generate model %SOP_GEN_MODEL% is ready.
+        )
+        "%~dp0ollama.exe" show "%CHAT_MODEL%" >nul 2>&1
+        if errorlevel 1 (
+            echo [WARN] Chat model %CHAT_MODEL% is not ready.
+            echo        Stage gemma4:9b into %OLLAMA_MODELS% or run install_first_time.bat.
+        ) else (
+            echo Chat model %CHAT_MODEL% is ready.
         )
     )
 ) else (

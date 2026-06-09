@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -40,7 +39,9 @@ def test_finalize_requires_required_answers(tmp_path: Path) -> None:
     except ValueError as exc:
         assert "Required SOP generation questions are unanswered" in str(exc)
     else:
-        raise AssertionError("finalize_canonical_sop should block when required answers are missing")
+        raise AssertionError(
+            "finalize_canonical_sop should block when required answers are missing"
+        )
 
 
 def test_package_round_trip(tmp_path: Path) -> None:
@@ -48,9 +49,13 @@ def test_package_round_trip(tmp_path: Path) -> None:
     src.write_text("Click LOGIN", encoding="utf-8")
     service = SOPGenerationService()
     canonical = service.generate_from_document(src)
-    answered = service.answer_generation_questions(canonical, {"workflow_goal": "ui_automation"})
+    answered = service.answer_generation_questions(
+        canonical, {"workflow_goal": "ui_automation"}
+    )
     finalized = service.finalize_canonical_sop(answered)
-    compiled = service.compile_to_runtime_json(finalized, service.build_runtime_profile())
+    compiled = service.compile_to_runtime_json(
+        finalized, service.build_runtime_profile()
+    )
 
     package_path = tmp_path / "bundle.zip"
     service.save_sop_package(finalized, compiled, package_path)
@@ -94,12 +99,23 @@ def test_sop_editor_supports_runtime_specific_fields_via_source() -> None:
     assert "mold_setup" in source
 
 
-def test_generation_readiness_requires_gemma_turboquant_runtime() -> None:
+def test_generation_readiness_requires_llm_runtime() -> None:
     service = SOPGenerationService()
     try:
         service.generation_readiness()
     except RuntimeError as exc:
-        assert "TurboQuant" in str(exc)
-        assert "Gemma" in str(exc)
+        assert "Ollama" in str(exc) or "sop_generation" in str(exc)
     else:
-        raise AssertionError("generation_readiness should require Gemma + TurboQuant runtime")
+        raise AssertionError(
+            "generation_readiness should require configured Ollama runtime"
+        )
+
+
+def test_generate_from_document_includes_atomization_metadata(tmp_path: Path) -> None:
+    src = tmp_path / "sample.txt"
+    src.write_text("Click LOGIN\nWait 500 ms", encoding="utf-8")
+    service = SOPGenerationService()
+    canonical = service.generate_from_document(src)
+    assert "atomization" in canonical
+    assert "coverage_report" in canonical["atomization"]
+    assert canonical["workflow"]["steps"]

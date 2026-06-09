@@ -74,7 +74,7 @@ Tier A 실사: ✅ MSD / SSGD / DeepPCB / Roboflow
 | DeepPCB | PCB 결함 (bbox) | 학술용 | ~1,000+ |
 | Roboflow | PCB/Connector/Fiducial | 프로젝트별 | ~5,000+ |
 
-## ★ 현재 상태: v4.0.0 — SOP Editor 타입별 편집 + Tier A Pretrain
+## ★ 현재 상태: v7.0.0 — SOP Generate Ollama AI (qwen3:8b + gemma4:9b 듀얼 슬롯)
 
 - SOP Editor (Tab 4): type_text/press_key/wait_ms/auth_sequence 타입별 전용 입력 필드
 - LLM Chat ROI: 📸 버튼 → 드래그로 영역 선택 → 800px/JPEG q80 압축

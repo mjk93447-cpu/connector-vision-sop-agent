@@ -105,7 +105,16 @@
         "max_output_tokens": {"type": "number", "minimum": 64},
         "turboquant_enabled": {"type": "boolean"},
         "turboquant_mode": {"type": "string"},
-        "allow_config_write": {"type": "boolean"}
+        "allow_config_write": {"type": "boolean"},
+        "sop_generation": {
+          "type": "object",
+          "properties": {
+            "model_path": {"type": "string"},
+            "ctx_size": {"type": "number", "minimum": 2048},
+            "max_output_tokens": {"type": "number", "minimum": 256},
+            "temperature": {"type": "number", "minimum": 0.0, "maximum": 2.0}
+          }
+        }
       }
     },
     "ocr": {

@@ -157,6 +157,7 @@ jobs:
           New-Item -ItemType Directory -Path $pkg -Force | Out-Null
           Copy-Item "dist\connector_vision_agent.exe" "$pkg\connector_vision_agent.exe" -Force
           Copy-Item "assets\launchers\start_agent.bat" "$pkg\start_agent.bat"
+          if (Test-Path "install_first_time.bat") { Copy-Item "install_first_time.bat" "$pkg\install_first_time.bat" }
           Copy-Item "assets\launchers\stop_ollama.bat" "$pkg\stop_ollama.bat"
           Copy-Item "assets\launchers\restore_ollama_stage.ps1" "$pkg\restore_ollama_stage.ps1"
           Copy-Item "assets\launchers\INSTALL_GUIDE.txt" "$pkg\INSTALL_GUIDE.txt"

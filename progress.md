@@ -1,9 +1,9 @@
 # Progress — Connector Vision SOP Agent
 
-_최종 갱신: 2026-03-27 (v4.0.0 정식 배포 — SOP Editor 타입별 편집 UI + CI 빌드 수정 + 733 pass)_
+_최종 갱신: 2026-06-09 (v7.0.0 — SOP Generate Ollama AI, qwen3:8b + gemma4:9b 듀얼 슬롯)_
 
 ## 현재 브랜치
-`main` (v4.0.0 정식 배포 완료)
+`main` (v7.0.0 SOP Generate Ollama AI 통합)
 
 ## 완료 체크포인트
 | CP | 내용 | 테스트 | 커버리지 |

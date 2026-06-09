@@ -1,87 +1,26 @@
 ================================================================
-Connector Vision SOP Agent v6.0.0 - Deployment Guide
+Connector Vision SOP Agent v7.0.0 — Deployment Merge Guide
 ================================================================
 
-REQUIRED DOWNLOADS
-  1. connector-agent-app-cpu.zip   full app pack with CPU-only torch runtime
-  2. connector-agent-app-gpu.zip   full app pack with CUDA-enabled torch runtime
+Merge order for a complete offline line PC pack:
 
-OPTIONAL DOWNLOADS
-  3. connector-agent-llm-verified-cache        verified cloud-built Ollama cache
-     or split parts connector-agent-llm-local-cache.zip.001 / .002 ...
+  1. Extract connector-agent-app-cpu.zip OR connector-agent-app-gpu.zip
+  2. Extract connector-agent-llm-local-cache.zip into the same root
+     (creates ollama_models\ or llm_stage\ with blobs + manifests)
+  3. Run install_first_time.bat as Administrator once
+  4. Launch start_agent.bat
 
-CHOOSE ONE APP PACK
-  - CPU pack:
-    normal on CPU-only PCs
-    normal on GPU PCs, but CPU only
+Required models in the LLM cache:
 
-  - GPU pack:
-    CUDA preferred on NVIDIA PCs
-    still usable on CPU-only PCs through CPU fallback
+  qwen3:8b    — SOP Generate (4-pass atomizer)
+  gemma4:9b   — LLM Chat + SOP recovery
 
-INSTALL STEPS
-  1. Create folder: C:\tools\connector_agent\
-  2. Extract exactly one app pack into that folder:
-     - connector-agent-app-cpu.zip
-       or
-     - connector-agent-app-gpu.zip
-  3. Optional: extract connector-agent-llm-verified-cache into the same folder.
-     The launcher accepts:
-     - C:\tools\connector_agent\llm_stage\
-     - C:\tools\connector_agent\ollama_models\
-     and rebuilds split blobs automatically on first launch.
+Config reference: assets\config.json
 
-FINAL FOLDER STRUCTURE
-  connector_agent\
-  +-- connector_vision_agent.exe   <- SOP agent with bundled runtime
-  +-- start_agent.bat              <- DOUBLE-CLICK TO RUN
-  +-- restore_ollama_stage.ps1
-  +-- runtime_flavor.txt
-  +-- assets\
-  |   +-- config.json
-  |   +-- sop_steps.json
-  |   +-- models\
-  |       +-- yolo26x.pt
-  |       +-- yolo26x_pretrained.pt
-  |       +-- yolo26x_local_pretrained.pt
-  +-- stop_ollama.bat
-  +-- ollama_models\
-      +-- blobs\sha256-...
-      +-- manifests\...
+  llm.model_path              = gemma4:9b
+  llm.sop_generation.model_path = qwen3:8b
 
-FEATURE PARITY
-  CPU and GPU app packs share the same code and user-facing features:
-  - GUI
-  - fine-tuning
-  - SOP Run
-  - SOP Editor
-  - Config
-  - Audit
-  - SOP Generate
+If only one model is present, the GUI still opens but SOP Generate or
+LLM Chat will show a readiness warning until the missing tag is staged.
 
-  The only intended runtime difference is torch acceleration behavior.
-  The runtime itself is embedded into the EXE instead of shipping as a
-  separate `_internal` folder.
-
-HOW TO RUN
-  Double-click start_agent.bat
-  -> Starts Ollama server when available
-  -> Restores split TurboQuant model blobs when llm_stage\ or ollama_models\ contains ollama_split_manifest.json
-  -> Opens the 7-tab PyQt6 GUI
-
-CUSTOMIZATION
-  - Edit assets\config.json to tune timing, thresholds, and runtime behavior
-  - Edit assets\sop_steps.json to modify SOP steps without rebuilding
-  - Use Tab 4 SOP Editor for live SOP updates
-
-LLM MODEL INFO
-  Target deployment: Gemma 4 26B A4B IT Q4_K_M + TurboQuant
-  Verified cache    : cloud-built GGUF import path verified through Ollama show + smoke chat
-  Split policy      : individual model blobs larger than 2 GB are chunked for transport and restored by the launcher
-
-TROUBLESHOOTING
-  - If GUI does not open: run start_agent.bat from cmd and inspect the output
-  - If SOP Generate fails: ensure ollama.exe is present and the expected model cache was extracted beside the app
-  - For GitHub cloud-built model artifacts: see docs\GITHUB_LLM_PIPELINE.md
-  - If YOLO detects nothing: verify assets\models\yolo26x_local_pretrained.pt
 ================================================================

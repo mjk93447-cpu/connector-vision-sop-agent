@@ -1,41 +1,29 @@
 # connector-vision-sop-agent
 
-Connector Vision SOP Agent 5.1.0 for offline OLED line operation.
+Connector Vision SOP Agent **7.0.0** for offline OLED line operation.
 
 ## Canonical paths
 
 - `src/gui_app.py`: main GUI entrypoint
 - `assets/launchers/start_agent.bat`: packaged launcher
-- `src/gui/panels/training_panel.py`: active fine-tuning flow
-- `src/gui/panels/sop_editor_panel.py`: active SOP Editor flow
-- `src/gui/panels/sop_panel.py`: active SOP Run flow
+- `src/gui/panels/sop_generate_panel.py`: SOP Generate (document → runtime SOP)
+- `src/sop_llm_atomizer.py`: 4-pass LLM atomization engine
+- `src/llm_model_registry.py`: Ollama model capability registry
+- `docs/V7_0_0_FOCUS.md`: 7.0.0 release focus
 - `docs/ACTIVE_PATHS.md`: active vs archived path map
-- `docs/MODEL_ARTIFACT_NAMING.md`: model naming rules
-- `docs/V5_1_0_FOCUS.md`: 5.1.0 release focus
-- `docs/AI_AGENT_GUIDE.md`: shared workflow guidance for Claude, Cursor Codex sidebar, and ChatGPT 5.4 medium
 
-## Current product direction
+## v7.0.0 highlights
 
-Pretraining is complete. `assets/models/yolo26x_local_pretrained.pt` is the
-active seed for Tab 7 fine-tuning, and `runs/detect/train/weights/best.pt`
-is promoted back into that runtime slot after fine-tuning.
+- **SOP Generate AI**: PDF / PPTX / TXT / MD → canonical SOP → compiled runtime steps
+- **Dual LLM slots**: `qwen3:8b` (SOP Generate) + `gemma4:9b` (Chat / recovery)
+- **Coverage audit**: unmapped document sections block finalize until resolved
+- **16GB offline policy**: no cloud-only models (Qwen 3.7 / Kimi 2.6 documented as future)
 
-Archived pretrain code and dataset-prep paths remain in the repository only
-for historical/manual rebuilds. Do not use them for new feature work, SOP
-development, release engineering, or standard line deployment.
+## Release artifacts
 
-## Release highlights
-
-- `5.1.0` standardizes the shipping app around the PyQt6 GUI bundle.
-- Fine-tuning, SOP Editor, and SOP Run are the active product surfaces.
-- Shipping artifacts are `cpu` and `gpu` full packs with shared app code.
-- The packaged runtime is embedded into `connector_vision_agent.exe` instead of
-  being deployed as an external `_internal` runtime folder.
-- The CPU pack runs anywhere and stays CPU-only.
-- The GPU pack prefers CUDA on NVIDIA PCs and falls back to CPU on CPU-only PCs.
-- Archived pretrain code is now physically isolated under `legacy/pretrain/`.
-- Agent workflow guidance now covers Claude, Cursor Codex sidebar, and
-  ChatGPT 5.4 medium instead of a Claude-only operating model.
+- `connector-agent-app-cpu` — CPU torch runtime
+- `connector-agent-app-gpu` — CUDA torch runtime with CPU fallback
+- `connector-agent-llm-local-cache` — optional `qwen3:8b` + `gemma4:9b` Ollama blobs
 
 ## Build
 
@@ -43,28 +31,20 @@ development, release engineering, or standard line deployment.
 build.bat
 ```
 
-This builds the GUI app bundle EXE from `build_exe.spec`.
+Local release pack (EXE + launcher + optional LLM stage):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_release_artifacts.ps1 -Version 7.0.0
+```
 
 ## Test
 
 ```bash
-pytest -q
+pytest tests/unit/test_sop_llm_atomizer.py tests/unit/test_sop_generation.py -q
 ```
 
-## Packaging policy
+## First launch (line PC)
 
-- App artifacts:
-  - `connector-agent-app-cpu`
-  - `connector-agent-app-gpu`
-- Shared features in both packs:
-  - `connector_vision_agent.exe`
-  - `start_agent.bat`
-  - `assets/config.json`
-  - `assets/sop_steps.json`
-  - `assets/models/yolo26x.pt`
-  - `assets/models/yolo26x_local_pretrained.pt`
-- Runtime difference only:
-  - CPU pack ships CPU-only torch runtime
-  - GPU pack ships CUDA-enabled torch runtime with CPU fallback
-- Pretrain datasets are archived local-only materials and are excluded from the
-  active app bundle.
+1. Extract app pack + LLM bundle into one folder
+2. Run `install_first_time.bat` as Administrator (once)
+3. Double-click `start_agent.bat`

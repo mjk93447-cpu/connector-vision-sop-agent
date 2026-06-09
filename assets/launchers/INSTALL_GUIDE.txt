@@ -1,97 +1,56 @@
 ================================================================
-Connector Vision SOP Agent v6.0.0 - Full App Packs
+Connector Vision SOP Agent v7.0.0 - Full App Packs
  INSTALL GUIDE
 ================================================================
 
 PACKAGE ARTIFACTS
 --------------------------------------------------
   1. connector-agent-app-cpu.zip
-     - complete Windows app bundle
-     - single-file EXE runtime bundle
-     - runs on CPU-only PCs without any extra runtime merge
-     - also runs on GPU PCs, but uses CPU only
-
   2. connector-agent-app-gpu.zip
-     - complete Windows app bundle
-     - single-file EXE runtime bundle
-     - prefers CUDA on NVIDIA PCs
-     - still runs on CPU-only PCs by falling back to CPU
+  3. connector-agent-llm-local-cache.zip (optional offline LLM bundle)
 
-OPTIONAL MANUAL ARTIFACTS
+REQUIRED OFFLINE LLM MODELS (v7.0.0)
 --------------------------------------------------
-  - connector-agent-llm-prepared
-  - connector-agent-llm-verify-report
-  - connector-agent-llm-verified-cache
+  SOP Generate : qwen3:8b   (llm.sop_generation in config.json)
+  Chat/Recovery: gemma4:9b  (llm.model_path in config.json)
+
+  Lite RAM fallback: qwen3:4b for SOP Generate only.
 
 FUNCTION SHARING POLICY
 --------------------------------------------------
-  The CPU and GPU app packs share the same application code and features:
-  - PyQt6 GUI
-  - Training tab YOLO26x fine-tuning
-  - SOP Run
-  - SOP Editor
-  - Config / Audit
-  - SOP Generate
-
-  The only intended difference is the packaged torch runtime:
-  - CPU pack: CPU-only torch runtime
-  - GPU pack: CUDA-enabled torch runtime with CPU fallback
-
-CANONICAL ENTRYPOINTS
---------------------------------------------------
-  - Main app: src/gui_app.py -> connector_vision_agent.exe
-  - Training tab fine-tuning promotes the latest runs\detect\train\weights\best.pt
-    into assets\models\yolo26x_local_pretrained.pt automatically
-  - Model naming reference: docs/MODEL_ARTIFACT_NAMING.md
+  CPU and GPU app packs share the same application code:
+  - PyQt6 GUI (SOP Generate, SOP Run, SOP Editor, Training, LLM Chat)
+  - 4-pass document atomizer (PDF/PPTX/TXT/MD -> runtime SOP steps)
+  - YOLO26x vision + OCR-first control
 
 INSTALL
 --------------------------------------------------
-  1. Create a deployment folder, for example:
-     C:\tools\connector_agent\
-  2. Extract exactly one full app pack into that folder:
-     - connector-agent-app-cpu.zip
-       or
-     - connector-agent-app-gpu.zip
-  3. Keep the extracted folder structure unchanged.
-  4. When offline LLM is needed, extract connector-agent-llm-verified-cache into
-     the same folder. The launcher accepts either:
-     - llm_stage\
-     - ollama_models\
-     and restores split blobs automatically on first start.
-
-RUN
---------------------------------------------------
-  - Double-click start_agent.bat to launch the main SOP agent.
-  - If ollama.exe is absent, the launcher continues in non-LLM mode.
-  - If llm_stage\ or ollama_models\ contains split model chunks, start_agent.bat
-    runs restore_ollama_stage.ps1 automatically before starting Ollama.
-  - For cloud-built model artifacts, see docs/GITHUB_LLM_PIPELINE.md
+  1. Create deployment folder, e.g. C:\tools\connector_agent\
+  2. Extract one app pack (cpu or gpu).
+  3. Extract LLM bundle into the same root as ollama_models\ or llm_stage\.
+  4. Run install_first_time.bat once as Administrator (registers models).
+  5. Double-click start_agent.bat.
 
 FINAL FOLDER STRUCTURE
 --------------------------------------------------
   connector_agent\
   +-- connector_vision_agent.exe
   +-- start_agent.bat
-  +-- stop_ollama.bat
-  +-- restore_ollama_stage.ps1
-  +-- runtime_flavor.txt
+  +-- install_first_time.bat
+  +-- ollama.exe
+  +-- ollama_models\   (blobs\ + manifests\)
   +-- assets\
-  |   +-- config.json
+  |   +-- config.json          (version 7.0.0)
   |   +-- sop_steps.json
   |   +-- models\
   |       +-- yolo26x_local_pretrained.pt
-  +-- PLACE_APP_HERE.txt
-  +-- README.md
   +-- README_INSTALL_EN.md
+  +-- docs\V7_0_0_FOCUS.md
 
 RUNTIME BEHAVIOR
 --------------------------------------------------
-  - The Python runtime, torch stack, and packaged dependencies are embedded
-    into connector_vision_agent.exe.
-  - The launcher prefers a colocated TurboQuant Gemma bundle in llm_stage\ or
-    ollama_models\ and validates gemma4:26b-a4b-it-q4_K_M on startup.
-  - CPU pack on CPU-only PC: normal operation
-  - CPU pack on GPU PC: normal operation, CPU only
-  - GPU pack on GPU PC: CUDA preferred
-  - GPU pack on CPU-only PC: normal operation via CPU fallback
+  - start_agent.bat restores split LLM chunks automatically.
+  - SOP Generate tab requires qwen3:8b (or configured sop_generation tag).
+  - LLM Chat and recovery_action use gemma4:9b.
+  - See docs/V7_0_0_FOCUS.md for operator workflow.
 ================================================================

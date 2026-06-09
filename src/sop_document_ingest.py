@@ -5,11 +5,22 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from src.class_registry import ClassRegistry
 
-_STEP_TYPES = {"click", "drag", "validate_pins", "click_sequence", "type_text", "press_key", "wait_ms", "auth_sequence", "input_text", "mold_setup"}
+_STEP_TYPES = {
+    "click",
+    "drag",
+    "validate_pins",
+    "click_sequence",
+    "type_text",
+    "press_key",
+    "wait_ms",
+    "auth_sequence",
+    "input_text",
+    "mold_setup",
+}
 _DOC_SUFFIXES = {".txt", ".md", ".pdf", ".pptx"}
 
 
@@ -137,7 +148,23 @@ class SOPDocumentIngestor:
         class_names = registry.class_names()
 
         if self._llm is not None and raw_text.strip():
-            parsed = self._atomize_with_llm(path, raw_text, class_names)
+            from src.sop_llm_atomizer import SOPLLMAtomizer  # noqa: PLC0415
+
+            atomizer = SOPLLMAtomizer(llm=self._llm)
+            atomized = atomizer.atomize(extraction)
+            if (
+                atomized.atomization_mode in {"llm", "rules_fallback"}
+                and atomized.steps
+            ):
+                parsed = self._artifact_from_canonical_steps(
+                    atomized.steps,
+                    path,
+                    raw_text,
+                    source_type,
+                    atomized.atomization_mode,
+                )
+            else:
+                parsed = self._atomize_with_rules(raw_text, class_names)
         else:
             parsed = self._atomize_with_rules(raw_text, class_names)
 
@@ -149,7 +176,9 @@ class SOPDocumentIngestor:
         self.validate_artifact(parsed)
         return parsed
 
-    def export_json(self, artifact: SOPDocumentArtifact, destination: str | Path) -> Path:
+    def export_json(
+        self, artifact: SOPDocumentArtifact, destination: str | Path
+    ) -> Path:
         dest = Path(destination)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(
@@ -184,10 +213,13 @@ class SOPDocumentIngestor:
             raw_text = "\n\n".join(ref.text for ref in refs if ref.text.strip()).strip()
             if not raw_text:
                 raw_text = self._extract_pdf_text(path)
-        title = self._extract_title(
-            [ref.label for ref in refs]
-            + [line.strip() for line in raw_text.splitlines() if line.strip()]
-        ) or path.stem
+        title = (
+            self._extract_title(
+                [ref.label for ref in refs]
+                + [line.strip() for line in raw_text.splitlines() if line.strip()]
+            )
+            or path.stem
+        )
         return SOPDocumentExtraction(
             source_path=str(path),
             source_type=suffix.lstrip("."),
@@ -199,7 +231,9 @@ class SOPDocumentIngestor:
 
     def _build_text_refs(self, text: str) -> List[SOPSourceRef]:
         refs: List[SOPSourceRef] = []
-        blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+        blocks = [
+            block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()
+        ]
         if not blocks:
             blocks = [line.strip() for line in text.splitlines() if line.strip()]
         for idx, block in enumerate(blocks, start=1):
@@ -335,76 +369,69 @@ class SOPDocumentIngestor:
                 )
         return refs
 
-    def _atomize_with_llm(
-        self, path: Path, raw_text: str, class_names: Sequence[str]
+    def _artifact_from_canonical_steps(
+        self,
+        canonical_steps: Sequence[Dict[str, Any]],
+        path: Path,
+        raw_text: str,
+        source_type: str,
+        atomization_mode: str,
     ) -> Dict[str, Any]:
-        system = (
-            "You are an offline SOP atomization engine for a factory line. "
-            "Convert the uploaded SOP into strict JSON only. "
-            "Split compound instructions into atomic steps. "
-            "Assign one best matching class_name from the provided registry. "
-            "Use only classes from this list: "
-            + ", ".join(class_names)
-            + ". Return JSON with keys: version, title, source_path, source_type, raw_text, metadata, steps."
+        steps: List[Dict[str, Any]] = []
+        for idx, step in enumerate(canonical_steps, start=1):
+            if not isinstance(step, dict):
+                continue
+            step_type = self._canonical_action_to_type(
+                str(step.get("action_kind") or "click")
+            )
+            target_obj = (
+                step.get("target") if isinstance(step.get("target"), dict) else {}
+            )
+            target_name = (
+                str(target_obj.get("name") or target_obj.get("text") or "").strip()
+                or None
+            )
+            atom = SOPAtom(
+                id=str(step.get("id") or f"step_{idx:03d}"),
+                name=str(step.get("title") or f"Step {idx}"),
+                type=step_type,
+                target=target_name,
+                description=str(step.get("intent") or step.get("title") or ""),
+                class_name=target_name,
+                confidence=self._safe_float(step.get("confidence")),
+                source_span=(
+                    str((step.get("source_refs") or [{}])[0].get("label", ""))
+                    if step.get("source_refs")
+                    else None
+                ),
+                preconditions=self._ensure_string_list(step.get("preconditions")),
+                postconditions=self._ensure_string_list(step.get("postconditions")),
+                raw_text=str(step.get("intent") or ""),
+            )
+            steps.append(atom.to_step())
+        title = (
+            self._extract_title([step.get("name", "") for step in steps]) or path.stem
         )
-        prompt = {
+        return {
+            "version": "6.0.0",
+            "title": title,
             "source_path": str(path),
-            "source_type": path.suffix.lower().lstrip("."),
-            "class_names": list(class_names),
-            "document_text": raw_text,
-            "output_schema": {
-                "version": "6.0.0",
-                "title": "string",
-                "source_path": "string",
-                "source_type": "pdf|txt",
-                "raw_text": "string",
-                "metadata": {"source_file_name": "string", "atomization_notes": "string"},
-                "steps": [
-                    {
-                        "id": "step_001",
-                        "name": "string",
-                        "type": "click|type_text|press_key|wait_ms|drag|validate_pins|auth_sequence|input_text|mold_setup",
-                        "target": "string|null",
-                        "description": "string",
-                        "enabled": True,
-                        "class_name": "string|null",
-                        "confidence": 0.0,
-                        "source_page": 1,
-                        "source_span": "string",
-                        "preconditions": [],
-                        "postconditions": [],
-                    }
-                ],
-            },
+            "source_type": source_type,
+            "raw_text": raw_text,
+            "metadata": {"atomization_mode": atomization_mode},
+            "steps": steps,
         }
-        raw = self._llm.chat(
-            system=system,
-            history=[{"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}],
-            brief=True,
-        )
-        parsed = self._parse_json_blob(raw)
-        if parsed is None:
-            return self._atomize_with_rules(raw_text, class_names)
-        return parsed
 
-    def _parse_json_blob(self, text: str) -> Optional[Dict[str, Any]]:
-        clean = text.strip()
-        if clean.startswith("```"):
-            clean = clean.strip("`")
-            if clean.startswith("json"):
-                clean = clean[4:].strip()
-        try:
-            parsed = json.loads(clean)
-        except Exception:
-            start = clean.find("{")
-            end = clean.rfind("}")
-            if start < 0 or end <= start:
-                return None
-            try:
-                parsed = json.loads(clean[start : end + 1])
-            except Exception:
-                return None
-        return parsed if isinstance(parsed, dict) else None
+    def _canonical_action_to_type(self, action_kind: str) -> str:
+        mapping = {
+            "click": "click",
+            "input": "type_text",
+            "wait": "wait_ms",
+            "drag": "drag",
+            "auth": "auth_sequence",
+            "validate": "validate_pins",
+        }
+        return mapping.get(action_kind, "click")
 
     def _atomize_with_rules(
         self, raw_text: str, class_names: Sequence[str]
@@ -452,7 +479,9 @@ class SOPDocumentIngestor:
         if not isinstance(metadata, dict):
             metadata = {"note": str(metadata)}
         metadata.setdefault("source_file_name", path.name)
-        metadata.setdefault("atomization_mode", "llm" if self._llm is not None else "rules")
+        metadata.setdefault(
+            "atomization_mode", "llm" if self._llm is not None else "rules"
+        )
         metadata.setdefault("class_registry", ClassRegistry.load().class_names())
         return SOPDocumentArtifact(
             version=str(data.get("version", "6.0.0")),
@@ -479,7 +508,9 @@ class SOPDocumentIngestor:
                 name=str(item.get("name") or item.get("description") or f"Step {idx}"),
                 type=step_type,
                 target=self._sanitize_target(item.get("target")),
-                description=str(item.get("description") or item.get("source_text") or ""),
+                description=str(
+                    item.get("description") or item.get("source_text") or ""
+                ),
                 enabled=bool(item.get("enabled", True)),
                 class_name=self._sanitize_target(item.get("class_name")),
                 confidence=self._safe_float(item.get("confidence")),
@@ -534,13 +565,14 @@ class SOPDocumentIngestor:
             return "drag"
         if any(word in lowered for word in ("verify", "check", "count")):
             return "validate_pins"
-        if any(word in lowered for word in ("login", "recipe", "save", "apply", "open", "click")):
+        if any(
+            word in lowered
+            for word in ("login", "recipe", "save", "apply", "open", "click")
+        ):
             return "click"
         return "click"
 
-    def _infer_class_name(
-        self, line: str, class_names: Sequence[str]
-    ) -> Optional[str]:
+    def _infer_class_name(self, line: str, class_names: Sequence[str]) -> Optional[str]:
         lowered = line.lower()
         for class_name in class_names:
             if class_name.lower().replace("_", " ") in lowered:

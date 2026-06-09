@@ -48,7 +48,7 @@ from src.gui.panels.vision_panel import VisionPanel
 from src.gui.workers import AnalysisWorker, LLMStreamWorker, LLMWorker, SopWorker
 from src.sop_generation import RuntimeCompileResult, SOPGenerationService
 
-_APP_VERSION = "6.0.0"
+_APP_VERSION = "7.0.0"
 
 
 class MainWindow(QMainWindow):  # type: ignore[misc]

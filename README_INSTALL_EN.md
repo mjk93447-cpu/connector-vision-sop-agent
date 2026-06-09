@@ -1,6 +1,6 @@
 # Connector Vision SOP Agent Installation Guide
 
-Version 5.1.0
+Version 7.0.0
 
 ## Canonical paths
 
@@ -8,7 +8,7 @@ Version 5.1.0
 - Packaged launcher: `assets/launchers/start_agent.bat`
 - Active path map: `docs/ACTIVE_PATHS.md`
 - Model naming: `docs/MODEL_ARTIFACT_NAMING.md`
-- 5.1.0 focus: `docs/V5_1_0_FOCUS.md`
+- 7.0.0 focus: `docs/V7_0_0_FOCUS.md`
 - Shared AI agent workflow: `docs/AI_AGENT_GUIDE.md`
 
 ## Important policy
@@ -51,11 +51,21 @@ The Python runtime and packaged dependencies are embedded into
 3. Confirm the PyQt6 GUI opens.
 4. If the GUI does not open, treat that as a packaging defect.
 
+## Offline LLM models (v7.0.0)
+
+| Role | Ollama tag | Config key |
+|------|------------|------------|
+| SOP Generate | `qwen3:8b` | `llm.sop_generation.model_path` |
+| LLM Chat / recovery | `gemma4:9b` | `llm.model_path` |
+
+Stage both tags into `ollama_models/` before first use, or run `install_first_time.bat`.
+
 ## Daily operation
 
 1. Use `Tab 1 - Run SOP` for production execution.
-2. Use `Tab 4 - SOP Editor` for controlled SOP changes.
-3. Use `Tab 7 - Training` for fine-tuning and model reload.
+2. Use `Tab 3 - SOP Generate` to import work instructions (PDF/PPTX/TXT/MD).
+3. Use `Tab 4 - SOP Editor` for controlled SOP changes.
+4. Use `Tab 7 - Training` for fine-tuning and model reload.
 
 ## Fine-tuning workflow
 
