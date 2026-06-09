@@ -96,7 +96,7 @@ _MODEL_CAPABILITIES: Tuple[ModelCapability, ...] = (
         tool_calling=True,
         min_ram_gb=10,
         role="chat_recovery",
-        notes="Reliable tool calling for Chat and recovery_action.",
+        notes="Config alias; pull gemma4:e4b in Ollama then create gemma4:9b tag.",
     ),
     ModelCapability(
         tag="gemma4:26b-a4b-it-q4_K_M",

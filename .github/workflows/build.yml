@@ -116,7 +116,12 @@ jobs:
         run: |
           $ollama = if ($env:OLLAMA_EXE) { $env:OLLAMA_EXE } else { "ollama" }
           & $ollama pull qwen3:8b
-          & $ollama pull gemma4:9b
+          # Ollama library tag is gemma4:e4b (~9.6GB); config slot uses gemma4:9b alias.
+          & $ollama pull gemma4:e4b
+          @"
+          FROM gemma4:e4b
+          "@ | Out-File -FilePath "Modelfile.gemma4-9b" -Encoding utf8
+          & $ollama create gemma4:9b -f "Modelfile.gemma4-9b"
           & $ollama list | Out-File -FilePath "ollama_models_list.txt" -Encoding utf8
           & $ollama show qwen3:8b | Out-File -FilePath "ollama_show_qwen3_8b.txt" -Encoding utf8
           & $ollama show gemma4:9b | Out-File -FilePath "ollama_show_gemma4_9b.txt" -Encoding utf8
