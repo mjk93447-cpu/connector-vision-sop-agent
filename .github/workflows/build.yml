@@ -21,6 +21,7 @@ on:
       - "scripts/assemble_release_pack.ps1"
       - "scripts/build_release_artifacts.ps1"
       - "scripts/package_ollama_models.py"
+      - "scripts/publish_release_bundle.py"
       - "src/model_artifacts.py"
       - "requirements-common.txt"
       - "requirements-dev.txt"
@@ -31,6 +32,90 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  prepare-llm-models:
+    name: Prepare Ollama models (qwen3:8b + gemma4:9b)
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_MODELS: ${{ github.workspace }}/.ollama_runtime/models
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Ensure Ollama runtime workspace exists
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path $env:OLLAMA_MODELS -Force | Out-Null
+
+      - name: Install Ollama when missing
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
+          }
+          if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            throw "Ollama installation failed."
+          }
+
+      - name: Start Ollama server
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "ollama" -ArgumentList "serve"
+          $ready = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              Invoke-WebRequest -Uri "http://127.0.0.1:11434/api/version" -UseBasicParsing -TimeoutSec 5 | Out-Null
+              $ready = $true
+              break
+            } catch {
+              Write-Host "Waiting for Ollama server..."
+            }
+          }
+          if (-not $ready) { throw "Ollama server did not become ready." }
+
+      - name: Pull v7 offline models
+        shell: pwsh
+        run: |
+          ollama pull qwen3:8b
+          ollama pull gemma4:9b
+          ollama list | Out-File -FilePath "ollama_models_list.txt" -Encoding utf8
+          ollama show qwen3:8b | Out-File -FilePath "ollama_show_qwen3_8b.txt" -Encoding utf8
+          ollama show gemma4:9b | Out-File -FilePath "ollama_show_gemma4_9b.txt" -Encoding utf8
+
+      - name: Stage chunked Ollama cache
+        shell: pwsh
+        run: |
+          python scripts/package_ollama_models.py stage `
+            --source "${env:OLLAMA_MODELS}" `
+            --output "ollama_artifact_stage" `
+            --chunk-size 2000000000
+          Copy-Item "ollama_models_list.txt" "ollama_artifact_stage\ollama_models_list.txt" -Force
+          Copy-Item "ollama_show_qwen3_8b.txt" "ollama_artifact_stage\ollama_show_qwen3_8b.txt" -Force
+          Copy-Item "ollama_show_gemma4_9b.txt" "ollama_artifact_stage\ollama_show_gemma4_9b.txt" -Force
+          Set-Content -LiteralPath "ollama_artifact_stage\prepare_metadata.json" -Value (@{
+            schema_version = "1"
+            bundle_type = "connector-agent-llm-v7-cache"
+            models = @("qwen3:8b", "gemma4:9b")
+            release_tag = "${{ github.ref_name }}"
+          } | ConvertTo-Json -Depth 4) -Encoding UTF8
+
+      - name: Upload LLM cache artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: connector-agent-llm-v7-cache
+          path: ollama_artifact_stage/
+          retention-days: 90
+          compression-level: 0
+
   build-app:
     name: App pack (${{ matrix.runtime_flavor }})
     runs-on: windows-latest
@@ -181,12 +266,89 @@ jobs:
           path: ${{ matrix.package_root }}/
           retention-days: 90
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  publish-release:
+    name: Publish GitHub Release bundle
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [prepare-llm-models, build-app]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
         with:
-          files: |
-            ${{ matrix.package_root }}/INSTALL_GUIDE.txt
-            ${{ matrix.package_root }}/MERGE_GUIDE.txt
+          python-version: "3.11"
+
+      - name: Download CPU app pack
+        uses: actions/download-artifact@v4
+        with:
+          name: connector-agent-app-cpu
+          path: connector_agent_app_cpu
+
+      - name: Download GPU app pack
+        uses: actions/download-artifact@v4
+        with:
+          name: connector-agent-app-gpu
+          path: connector_agent_app_gpu
+
+      - name: Download LLM cache
+        uses: actions/download-artifact@v4
+        with:
+          name: connector-agent-llm-v7-cache
+          path: ollama_artifact_stage
+
+      - name: Assemble release bundle zips
+        shell: pwsh
+        run: |
+          $bundleDir = "release_bundle"
+          New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
+          python scripts/package_ollama_models.py zipdir --source connector_agent_app_cpu --output "$bundleDir/connector-agent-app-cpu.zip"
+          python scripts/package_ollama_models.py zipdir --source connector_agent_app_gpu --output "$bundleDir/connector-agent-app-gpu.zip"
+          python scripts/package_ollama_models.py zipdir --source ollama_artifact_stage --output "$bundleDir/connector-agent-llm-local-cache.zip"
+          Copy-Item "assets/launchers/INSTALL_GUIDE.txt" "$bundleDir/INSTALL_GUIDE.txt" -Force
+          Copy-Item "assets/launchers/MERGE_GUIDE.txt" "$bundleDir/MERGE_GUIDE.txt" -Force
+          if (Test-Path "docs/V7_0_0_FOCUS.md") {
+            Copy-Item "docs/V7_0_0_FOCUS.md" "$bundleDir/V7_0_0_FOCUS.md" -Force
+          }
+          Get-ChildItem -LiteralPath $bundleDir -File | ForEach-Object {
+            Write-Host ("[release-bundle] {0} {1:N0} bytes" -f $_.Name, $_.Length)
+          }
+
+      - name: Publish release assets (split <=2GB)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $notes = @"
+          ## Connector Vision SOP Agent ${{ github.ref_name }}
+
+          Complete offline deployment pack:
+          - **connector-agent-app-cpu.zip** — EXE + CPU PyTorch + ollama.exe + YOLO
+          - **connector-agent-app-gpu.zip** — EXE + CUDA PyTorch + ollama.exe + YOLO
+          - **connector-agent-llm-local-cache.zip** — Ollama blobs for **qwen3:8b** + **gemma4:9b**
+
+          1. Extract one app zip (cpu or gpu) to your deployment root.
+          2. Extract the LLM zip into the same root (`ollama_models/` or `llm_stage/`).
+          3. Run `install_first_time.bat` once, then `start_agent.bat`.
+
+          Large assets are split into <=2GB parts. Use `restore_ollama_stage.ps1` or follow MERGE_GUIDE.txt.
+          "@
+          python scripts/publish_release_bundle.py `
+            --source-dir "release_bundle" `
+            --repo "${{ github.repository }}" `
+            --tag "${{ github.ref_name }}" `
+            --title "${{ github.ref_name }} — SOP Generate Ollama AI (full pack)" `
+            --notes $notes `
+            --asset-prefix "connector-agent-${{ github.ref_name }}" `
+            > release_publish_result.json
+          Get-Content release_publish_result.json
+
+      - name: Upload release publish result
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-publish-result-${{ github.ref_name }}
+          path: release_publish_result.json
+          retention-days: 14

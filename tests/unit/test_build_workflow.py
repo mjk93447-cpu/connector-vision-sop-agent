@@ -24,3 +24,12 @@ def test_build_workflow_emits_cpu_and_gpu_full_packs() -> None:
     assert "Install Ollama runtime" in content
     assert 'Copy-Item "assets\\launchers\\restore_ollama_stage.ps1"' in content
     assert 'Copy-Item $env:OLLAMA_EXE "$pkg\\ollama.exe" -Force' in content
+    assert "prepare-llm-models" in content
+    assert "ollama pull qwen3:8b" in content
+    assert "ollama pull gemma4:9b" in content
+    assert "connector-agent-llm-v7-cache" in content
+    assert "publish-release" in content
+    assert "scripts/publish_release_bundle.py" in content
+    assert "connector-agent-app-cpu.zip" in content
+    assert "connector-agent-llm-local-cache.zip" in content
+    assert "softprops/action-gh-release" not in content
