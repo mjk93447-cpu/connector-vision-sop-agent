@@ -61,14 +61,43 @@ jobs:
           if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
             winget install Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
           }
-          if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-            throw "Ollama installation failed."
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+          $ollamaExe = ""
+          $cmd = Get-Command ollama -ErrorAction SilentlyContinue
+          if ($cmd) { $ollamaExe = $cmd.Source }
+          if (-not $ollamaExe) {
+            $candidates = @(
+              (Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"),
+              (Join-Path $env:ProgramFiles "Ollama\ollama.exe")
+            )
+            if ($env:ProgramFiles -and (Test-Path "${env:ProgramFiles(x86)}")) {
+              $candidates += (Join-Path ${env:ProgramFiles(x86)} "Ollama\ollama.exe")
+            }
+            foreach ($candidate in $candidates) {
+              if ($candidate -and (Test-Path $candidate)) {
+                $ollamaExe = $candidate
+                break
+              }
+            }
           }
+          if (-not $ollamaExe) {
+            $whereResult = & where.exe ollama 2>$null | Select-Object -First 1
+            if ($whereResult) { $ollamaExe = $whereResult.Trim() }
+          }
+          if (-not $ollamaExe) {
+            throw "Unable to locate ollama.exe after installation."
+          }
+          $ollamaDir = Split-Path -Parent $ollamaExe
+          if ($env:Path -notlike "*$ollamaDir*") {
+            $env:Path = "$ollamaDir;$env:Path"
+          }
+          "OLLAMA_EXE=$ollamaExe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Start Ollama server
         shell: pwsh
         run: |
-          Start-Process -FilePath "ollama" -ArgumentList "serve"
+          $serveExe = if ($env:OLLAMA_EXE) { $env:OLLAMA_EXE } else { "ollama" }
+          Start-Process -FilePath $serveExe -ArgumentList "serve"
           $ready = $false
           for ($i = 0; $i -lt 60; $i++) {
             Start-Sleep -Seconds 2
